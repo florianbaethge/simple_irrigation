@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+/dist/
+/build/
+custom_components/simple_irrigation/frontend/node_modules/
+*.egg-info/
+
+# IDE
+.idea/
+.vscode/
+*.code-workspace
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Home Assistant / local
+.python-version
+
+# Accidental duplicate; panel sources live under custom_components/simple_irrigation/frontend/
+/frontend/

@@ -1,0 +1,335 @@
+{
+  "title": "Simple Irrigation",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Simple Irrigation",
+        "description": "Legen Sie die Installation an und öffnen Sie „Simple Irrigation“ in der Seitenleiste, um Zonen und Zeitplan zu konfigurieren.",
+        "data": {
+          "name": "Name der Installation",
+          "pre_start_switches": "Vorlauf-Ausgänge (Ein/Aus)",
+          "default_mode": "Standardmodus",
+          "max_parallel_zones": "Max. parallele Zonen"
+        }
+      }
+    },
+    "error": {
+      "invalid_max_parallel": "Die maximale Anzahl paralleler Zonen muss mindestens 1 sein."
+    }
+  },
+  "selector": {
+    "default_mode": {
+      "options": {
+        "eco": "Eco",
+        "normal": "Normal",
+        "extra": "Extra"
+      }
+    }
+  },
+  "entity": {
+    "select": {
+      "mode": {
+        "name": "Modus",
+        "state": {
+          "eco": "Eco",
+          "normal": "Normal",
+          "extra": "Extra"
+        }
+      }
+    },
+    "sensor": {
+      "active_zones": {
+        "name": "Aktive Zonen"
+      },
+      "next_run": {
+        "name": "Nächster Lauf"
+      },
+      "pause_until": {
+        "name": "Pause bis"
+      },
+      "zone_next_run": {
+        "name": "Nächster Lauf"
+      },
+      "zone_last_run": {
+        "name": "Letzter Lauf"
+      }
+    },
+    "binary_sensor": {
+      "running": {
+        "name": "Läuft"
+      },
+      "paused": {
+        "name": "Pausiert"
+      },
+      "error_state": {
+        "name": "Fehler"
+      },
+      "zone_active": {
+        "name": "Aktiv"
+      }
+    },
+    "button": {
+      "run_due": {
+        "name": "Fällige Zonen starten"
+      },
+      "stop_all": {
+        "name": "Alles stoppen"
+      },
+      "zone_run_now": {
+        "name": "Jetzt starten"
+      }
+    }
+  },
+  "services": {
+    "run_zone": {
+      "name": "Zone starten",
+      "description": "Startet einen planähnlichen Lauf für eine Zone mit der konfigurierten Dauer für den aktuellen Modus.",
+      "fields": {
+        "zone_id": {
+          "name": "Zonen-ID",
+          "description": "Interne Zonenkennung (siehe Diagnose / Panel)."
+        },
+        "config_entry_id": {
+          "name": "Konfigurationseintrags-ID",
+          "description": "Optional. Ziel-Installation bei mehreren Simple-Irrigation-Einträgen."
+        }
+      }
+    },
+    "run_zone_with_duration": {
+      "name": "Zone mit Dauer starten",
+      "description": "Bewässert eine Zone für eine feste Dauer in Minuten; Eco/Normal/Extra wird für diesen Lauf ignoriert.",
+      "fields": {
+        "zone_id": {
+          "name": "Zonen-ID",
+          "description": "Interne Zonenkennung."
+        },
+        "duration_min": {
+          "name": "Dauer (Minuten)",
+          "description": "Laufzeit der Zone (1–1440)."
+        },
+        "config_entry_id": {
+          "name": "Konfigurationseintrags-ID",
+          "description": "Optional. Ziel-Installation bei mehreren Einträgen."
+        }
+      }
+    },
+    "run_due_zones": {
+      "name": "Fällige Zonen starten",
+      "description": "Startet, was laut Zeitplan jetzt fällig wäre (wie die Schaltfläche „Fällige Zonen starten“).",
+      "fields": {
+        "config_entry_id": {
+          "name": "Konfigurationseintrags-ID",
+          "description": "Optional. Ziel-Installation bei mehreren Einträgen."
+        }
+      }
+    },
+    "stop_all": {
+      "name": "Alles stoppen",
+      "description": "Beendet den aktuellen Bewässerungszyklus und schaltet die Zonenausgänge aus.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Konfigurationseintrags-ID",
+          "description": "Optional. Ziel-Installation bei mehreren Einträgen."
+        }
+      }
+    },
+    "set_mode": {
+      "name": "Modus setzen",
+      "description": "Setzt den globalen Bewässerungsmodus (Eco, Normal oder Extra).",
+      "fields": {
+        "mode": {
+          "name": "Modus",
+          "description": "eco, normal oder extra."
+        },
+        "config_entry_id": {
+          "name": "Konfigurationseintrags-ID",
+          "description": "Optional. Ziel-Installation bei mehreren Einträgen."
+        }
+      }
+    },
+    "pause_until": {
+      "name": "Pause bis",
+      "description": "Pausiert automatische Zeitplan-Läufe bis zum angegebenen Datum und Uhrzeit.",
+      "fields": {
+        "until": {
+          "name": "Bis",
+          "description": "Datum und Uhrzeit, ab dem der Zeitplan wieder laufen darf."
+        },
+        "config_entry_id": {
+          "name": "Konfigurationseintrags-ID",
+          "description": "Optional. Ziel-Installation bei mehreren Einträgen."
+        }
+      }
+    },
+    "clear_pause": {
+      "name": "Pause aufheben",
+      "description": "Hebt eine geplante Pause auf, damit automatische Läufe wieder möglich sind.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Konfigurationseintrags-ID",
+          "description": "Optional. Ziel-Installation bei mehreren Einträgen."
+        }
+      }
+    }
+  },
+  "panel": {
+    "sidebar_title": "Simple Bewässerung",
+    "loading": "Wird geladen…",
+    "main_title": "Simple Irrigation",
+    "tab_general": "Allgemein",
+    "tab_zones": "Zonen",
+    "tab_schedule": "Zeitplan",
+    "tab_status": "Status",
+    "entry_picker_title": "Simple Irrigation",
+    "entry_picker_lead": "Wählen Sie eine Installation, um Zonen, Wochenzeitplan und Laufzeitoptionen zu bearbeiten. Jeder Eintrag ist ein unabhängiger Bewässerungsplan.",
+    "entry_picker_loading": "Installationen werden geladen…",
+    "entry_badge_ha": "Integration deaktiviert",
+    "entry_badge_plan_off": "Plan aus",
+    "entry_badge_active": "Aktiv",
+    "entry_card_desc": "Zonen, Zeitplan-Slots, Reihenfolge und Vorlauf-Ausgänge für diese Steuerung konfigurieren.",
+    "entry_picker_empty": "Noch keine Installation. Fügen Sie die Integration unter Einstellungen → Geräte & Dienste → Integration hinzufügen hinzu und suchen Sie nach Simple Irrigation.",
+    "entry_picker_howto": "Weiteren Plan hinzufügen (z. B. Frühling / Sommer / anderer Garten): Einstellungen → Geräte & Dienste → Integration hinzufügen → Simple Irrigation. Jeder Plan erscheint in der Liste oben.",
+    "errors_request_failed": "Anfrage fehlgeschlagen",
+    "errors_not_running_skip": "Aktuell läuft nichts.",
+    "entity_placeholder_example": "z. B. switch.rasen_ventil",
+    "general_card_current_run": "Aktueller Lauf",
+    "general_label_irrigation_state": "Bewässerungsstatus",
+    "general_state_preparing": "Vorbereitung",
+    "general_state_stopping": "Wird gestoppt…",
+    "general_state_running": "Läuft",
+    "general_state_error_idle": "Fehler (Leerlauf)",
+    "general_state_idle": "Leerlauf",
+    "general_preparing_hint": "Vorlauf-Ausgänge und Verzögerung, bevor die Zonen starten.",
+    "general_active_zones": "Aktive Zonen",
+    "general_next_zones": "Nächste Zonen",
+    "general_last_error": "Letzter Fehler",
+    "general_scheduled_pause_hint": "Geplante Pausen steuern Sie unten bei „Plan“. Sie beenden keinen bereits laufenden Lauf — dafür „Stoppen“ verwenden.",
+    "general_stop_irrigation": "Bewässerung stoppen",
+    "general_skip_phase": "Zur nächsten Phase springen",
+    "general_clear_error": "Fehlermeldung löschen",
+    "general_card_schedule_overview": "Zeitplan-Übersicht",
+    "general_plan_off_hint": "Dieser Plan ist ausgeschaltet. Es starten keine automatischen Läufe, bis Sie ihn wieder aktivieren.",
+    "general_next_scheduled_run": "Nächster geplanter Lauf",
+    "general_no_slots": "Keine aktivierten Zeitplan-Slots oder noch keine Zonen zugewiesen.",
+    "general_none_scheduled": "Nichts geplant",
+    "general_card_plan_control": "Plan-Steuerung",
+    "general_enable_plan": "Automatische Bewässerung für diesen Plan aktivieren",
+    "general_pause_active_hint": "Geplante Läufe sind pausiert bis {when} (Ortszeit). Sie können dies unten aufheben oder den Dienst simple_irrigation.clear_pause mit config_entry_id in Automatisierungen verwenden.",
+    "general_skip_today": "Heute überspringen",
+    "general_clear_pause": "Pause aufheben",
+    "general_card_settings": "Allgemeine Einstellungen",
+    "general_installation_name": "Name der Installation",
+    "general_installation_name_desc": "Wird in Listen angezeigt und hilft bei mehreren Steuerungen.",
+    "general_field_name": "Name",
+    "general_pre_start_title": "Vorlauf-Ausgänge",
+    "general_pre_start_desc": "Schalter, die vor jeder Zone eingeschaltet werden (z. B. Pumpe oder Hauptventil). Dieselben Entity-IDs wie überall in Home Assistant; leer lassen, wenn nicht benötigt.",
+    "general_pre_start_output_n": "Vorlauf-Ausgang (Ein/Aus)",
+    "general_pre_start_output_i": "Vorlauf {n}",
+    "general_remove": "Entfernen",
+    "general_add_pre_start": "Vorlauf-Ausgang hinzufügen",
+    "general_watering_mode": "Bewässerungsmodus",
+    "general_watering_mode_desc": "Legt fest, welche Dauerspalte pro Zone gilt: Eco (kürzer), Normal oder Extra (länger). Sie können den Modus auch per Automatisierung setzen — z. B. bei Tankfüllstand oder Außentemperatur — mit dem Dienst simple_irrigation.set_mode und mode eco, normal oder extra (und config_entry_id bei mehreren Plänen).",
+    "general_mode_eco": "Eco",
+    "general_mode_normal": "Normal",
+    "general_mode_extra": "Extra",
+    "general_max_parallel": "Max. parallele Zonen",
+    "general_max_parallel_desc": "Wie viele Zonen gleichzeitig laufen dürfen. Exklusive Zonen laufen immer allein.",
+    "general_max_parallel_field": "Max. parallele Zonen",
+    "general_saving": "Wird gespeichert…",
+    "general_save": "Speichern",
+    "zones_card_title": "Zonen",
+    "zones_intro": "Jede Zone hat einen oder mehrere Ausgänge und Laufzeiten für Eco / Normal / Extra. Ordnen Sie Zonen auf dem Tab „Zeitplan“ Slots zu. Mit Bearbeiten ändern Sie jeweils eine Zone.",
+    "zones_add_zone": "Zone hinzufügen",
+    "zones_detail_disabled": "Deaktiviert · ",
+    "zones_detail_exclusive": "Exklusiv · ",
+    "zones_detail_durations": "Eco {eco} Min. / Normal {normal} Min. / Extra {extra} Min.",
+    "zones_detail_outputs_one": " · 1 Ausgang",
+    "zones_detail_outputs_many": " · {n} Ausgänge",
+    "zones_edit": "Bearbeiten",
+    "zones_field_name_title": "Name",
+    "zones_field_name_desc": "Bezeichnung dieser Zone in Oberfläche und Zeitplan.",
+    "zones_field_zone_name": "Zonenname",
+    "zones_outputs_title": "Bewässerungsausgänge",
+    "zones_outputs_desc": "Ein oder mehrere Schalter, Helfer oder Gruppen (dieselben Entity-IDs wie in den Entwicklerwerkzeugen). Eingeben oder aus Vorschlägen wählen; mehrere Zeilen für mehrere Ventile oder eine Gruppen-Entity.",
+    "zones_output_first": "Zonenausgang (Ein/Aus)",
+    "zones_output_n": "Ausgang {n}",
+    "zones_add_output": "Ausgang hinzufügen",
+    "zones_runtime_title": "Laufzeit pro Modus (Minuten)",
+    "zones_runtime_desc": "Wie lange diese Zone läuft, wenn die Installation im Modus Eco, Normal oder Extra ist.",
+    "zones_duration_eco": "Eco",
+    "zones_duration_normal": "Normal",
+    "zones_duration_extra": "Extra",
+    "zones_behavior_title": "Verhalten",
+    "zones_behavior_desc": "Zone vorübergehend deaktivieren oder so einstellen, dass sie nie parallel zu anderen läuft.",
+    "zones_enabled": "Aktiviert",
+    "zones_exclusive": "Exklusiv (nie parallel zu anderen Zonen)",
+    "zones_dialog_new_title": "Neue Bewässerungszone",
+    "zones_dialog_edit_title": "Zone bearbeiten: {name}",
+    "zones_cancel": "Abbrechen",
+    "zones_adding": "Wird hinzugefügt…",
+    "zones_add_zone_btn": "Zone hinzufügen",
+    "zones_confirm_delete": "Diese Zone löschen?",
+    "zones_delete_zone": "Zone löschen",
+    "zones_saving_changes": "Wird gespeichert…",
+    "zones_save_changes": "Änderungen speichern",
+    "schedule_card_title": "Zeitplan",
+    "schedule_intro": "Slots sind wöchentliche Startzeiten mit einer geordneten Zonenliste. Mit Bearbeiten in der Zeile Zonen, Reihenfolge und Optionen ändern. Zonen zuerst unter „Zonen“ anlegen.",
+    "schedule_add_slot": "Slot hinzufügen",
+    "schedule_disabled_suffix": " · deaktiviert",
+    "schedule_zones_in_order_one": "1 Zone in Lauffolge",
+    "schedule_zones_in_order_many": "{n} Zonen in Lauffolge",
+    "schedule_run_slot_now": "Diesen Slot jetzt starten",
+    "schedule_edit": "Bearbeiten",
+    "schedule_dialog_new_title": "Neuer Zeitplan-Slot",
+    "schedule_dialog_new_hint": "Legen Sie eine wiederkehrende Uhrzeit an; Zonen legen Sie per Bearbeiten in der Zeile fest und speichern.",
+    "schedule_name_optional_title": "Name (optional)",
+    "schedule_name_optional_desc": "Kurze Bezeichnung für diesen Slot in der Übersicht und bei der Auswahl.",
+    "schedule_slot_name": "Slot-Name",
+    "schedule_weekday_title": "Wochentag",
+    "schedule_weekday_desc": "Wochentag, an dem dieser Lauf startet.",
+    "schedule_local_time_title": "Ortszeit",
+    "schedule_local_time_desc": "Startzeit in der Home-Assistant-Zeitzone. Gespeichert als 24-Stunden (HH:MM); die Übersicht nutzt Ihr Profil-Zeitformat (12- oder 24-Stunden).",
+    "schedule_time_hhmm": "Uhrzeit (HH:MM)",
+    "schedule_slot_enabled": "Slot aktiviert",
+    "schedule_adding": "Wird hinzugefügt…",
+    "schedule_add_slot_btn": "Slot hinzufügen",
+    "schedule_err_busy": "Bewässerung läuft bereits.",
+    "schedule_err_empty_slot": "Fügen Sie dieser Slot-Liste mindestens eine Zone hinzu.",
+    "schedule_err_no_runnable": "Keine aktivierten Zonen in diesem Slot.",
+    "schedule_err_unknown_slot": "Unbekannter Slot.",
+    "schedule_edit_dialog_title": "Slot bearbeiten · {summary}",
+    "schedule_start_time_title": "Startzeit",
+    "schedule_run_order_title": "Lauffolge",
+    "schedule_run_order_desc": "Zonen laufen in Listenreihenfolge. Phasen zeigen die Gruppierung: Zonen in derselben Phase starten gemeinsam, wenn Parallelregeln es erlauben; exklusive Zonen laufen immer allein. Deaktivierte Zonen werden zur Laufzeit übersprungen und erscheinen nicht in einer Phase.",
+    "schedule_phase_n": "Phase {n}",
+    "schedule_up": "Hoch",
+    "schedule_down": "Runter",
+    "schedule_remove": "Entfernen",
+    "schedule_add_zone_title": "Zone hinzufügen",
+    "schedule_choose_zone": "Zone wählen…",
+    "schedule_add_to_list": "Zur Liste hinzufügen",
+    "schedule_all_zones_in_slot": "Alle Zonen sind bereits in diesem Slot.",
+    "schedule_create_zones_first": "Legen Sie zuerst Zonen unter „Zonen“ an.",
+    "schedule_confirm_delete_slot": "Diesen Slot löschen?",
+    "schedule_delete_slot": "Slot löschen",
+    "schedule_saving": "Wird gespeichert…",
+    "schedule_save_slot": "Slot speichern",
+    "status_card_title": "Laufzeitstatus",
+    "status_intro": "Kurzüberblick, was die Steuerung gerade macht. Panel neu laden oder Tab wechseln zum Aktualisieren.",
+    "status_state_label": "Status:",
+    "status_state_run_in_progress": "Lauf aktiv",
+    "status_state_error": "Fehler",
+    "status_state_idle": "Leerlauf / Warten",
+    "status_manual_label": "Manueller Lauf:",
+    "status_manual_text": "Dieser Zyklus wurde über das Panel („Diesen Slot jetzt starten“) oder einen Zonen-Dienst gestartet, nicht vom wöchentlichen Zeitplan.",
+    "status_scheduled_label": "Geplanter Lauf:",
+    "status_scheduled_text": "Dieser Zyklus wurde durch den Zeitplan ausgelöst.",
+    "status_idle_hint": "Während eines Laufs zeigt diese Seite, ob er manuell oder geplant war. manual_run im Rohstatus ist nur bei manuellen Zyklen wahr.",
+    "status_active_zones": "Aktive Zonen:",
+    "status_queued_zones": "Zonen in Warteschlange:",
+    "status_last_error": "Letzter Fehler:",
+    "status_error_clear_hint": "Die Meldung verschwindet, wenn ein Lauf erfolgreich endet, wenn Sie die Bewässerung unter „Allgemein“ stoppen oder dort „Fehlermeldung löschen“ nutzen. Nach einem Fehler bleibt sie sichtbar, bis eines davon eintritt. Nach einem Neustart nach unterbrochenem Lauf kann eine Wiederherstellungsmeldung erscheinen.",
+    "status_show_raw": "Rohdaten anzeigen (Debug)",
+    "status_hide_raw": "Rohdaten ausblenden"
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "title": "Simple Irrigation",
+  "config": {
+    "error": {
+      "invalid_max_parallel": "Maximum parallel zones must be at least 1."
+    },
+    "step": {
+      "user": {
+        "title": "Simple Irrigation",
+        "description": "Create the installation, then open Simple Irrigation in the sidebar to configure zones and schedule.",
+        "data": {
+          "name": "Installation name",
+          "pre_start_switches": "Pre-start outputs (on/off)",
+          "default_mode": "Default mode",
+          "max_parallel_zones": "Maximum parallel zones"
+        }
+      }
+    }
+  },
+  "selector": {
+    "default_mode": {
+      "options": {
+        "eco": "Eco",
+        "normal": "Normal",
+        "extra": "Extra"
+      }
+    }
+  }
+}

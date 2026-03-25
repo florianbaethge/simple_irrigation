@@ -1,0 +1,77 @@
+# https://developers.home-assistant.io/docs/core/integration-services-yaml
+
+run_zone:
+  fields:
+    zone_id:
+      required: true
+      selector:
+        text: {}
+    config_entry_id:
+      required: false
+      selector:
+        text: {}
+
+run_zone_with_duration:
+  fields:
+    zone_id:
+      required: true
+      selector:
+        text: {}
+    duration_min:
+      required: true
+      selector:
+        number:
+          min: 1
+          max: 1440
+          mode: box
+    config_entry_id:
+      required: false
+      selector:
+        text: {}
+
+run_due_zones:
+  fields:
+    config_entry_id:
+      required: false
+      selector:
+        text: {}
+
+stop_all:
+  fields:
+    config_entry_id:
+      required: false
+      selector:
+        text: {}
+
+set_mode:
+  fields:
+    mode:
+      required: true
+      selector:
+        select:
+          options:
+            - eco
+            - normal
+            - extra
+    config_entry_id:
+      required: false
+      selector:
+        text: {}
+
+pause_until:
+  fields:
+    until:
+      required: true
+      selector:
+        datetime: {}
+    config_entry_id:
+      required: false
+      selector:
+        text: {}
+
+clear_pause:
+  fields:
+    config_entry_id:
+      required: false
+      selector:
+        text: {}

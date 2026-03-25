@@ -1,0 +1,335 @@
+{
+  "title": "Simple Irrigation",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Simple Irrigation",
+        "description": "Create the installation, then open Simple Irrigation in the sidebar to configure zones and schedule.",
+        "data": {
+          "name": "Installation name",
+          "pre_start_switches": "Pre-start outputs (on/off)",
+          "default_mode": "Default mode",
+          "max_parallel_zones": "Maximum parallel zones"
+        }
+      }
+    },
+    "error": {
+      "invalid_max_parallel": "Maximum parallel zones must be at least 1."
+    }
+  },
+  "selector": {
+    "default_mode": {
+      "options": {
+        "eco": "Eco",
+        "normal": "Normal",
+        "extra": "Extra"
+      }
+    }
+  },
+  "entity": {
+    "select": {
+      "mode": {
+        "name": "Mode",
+        "state": {
+          "eco": "Eco",
+          "normal": "Normal",
+          "extra": "Extra"
+        }
+      }
+    },
+    "sensor": {
+      "active_zones": {
+        "name": "Active zones"
+      },
+      "next_run": {
+        "name": "Next run"
+      },
+      "pause_until": {
+        "name": "Pause until"
+      },
+      "zone_next_run": {
+        "name": "Next run"
+      },
+      "zone_last_run": {
+        "name": "Last run"
+      }
+    },
+    "binary_sensor": {
+      "running": {
+        "name": "Running"
+      },
+      "paused": {
+        "name": "Paused"
+      },
+      "error_state": {
+        "name": "Error"
+      },
+      "zone_active": {
+        "name": "Active"
+      }
+    },
+    "button": {
+      "run_due": {
+        "name": "Run due zones"
+      },
+      "stop_all": {
+        "name": "Stop all"
+      },
+      "zone_run_now": {
+        "name": "Run now"
+      }
+    }
+  },
+  "services": {
+    "run_zone": {
+      "name": "Run zone",
+      "description": "Starts a scheduled-style run for one zone using its configured duration for the current mode.",
+      "fields": {
+        "zone_id": {
+          "name": "Zone ID",
+          "description": "Internal zone identifier from the installation (shown in diagnostics / panel)."
+        },
+        "config_entry_id": {
+          "name": "Config entry ID",
+          "description": "Optional. Target installation when more than one Simple Irrigation entry exists."
+        }
+      }
+    },
+    "run_zone_with_duration": {
+      "name": "Run zone with duration",
+      "description": "Runs a zone for a fixed duration in minutes, ignoring Eco/Normal/Extra column for this run.",
+      "fields": {
+        "zone_id": {
+          "name": "Zone ID",
+          "description": "Internal zone identifier."
+        },
+        "duration_min": {
+          "name": "Duration (minutes)",
+          "description": "How long to run the zone (1–1440)."
+        },
+        "config_entry_id": {
+          "name": "Config entry ID",
+          "description": "Optional. Target installation when multiple entries exist."
+        }
+      }
+    },
+    "run_due_zones": {
+      "name": "Run due zones",
+      "description": "Runs whatever is due now according to schedule (same idea as the Run due zones button).",
+      "fields": {
+        "config_entry_id": {
+          "name": "Config entry ID",
+          "description": "Optional. Target installation when multiple entries exist."
+        }
+      }
+    },
+    "stop_all": {
+      "name": "Stop all",
+      "description": "Stops the current irrigation cycle and turns off zone outputs.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Config entry ID",
+          "description": "Optional. Target installation when multiple entries exist."
+        }
+      }
+    },
+    "set_mode": {
+      "name": "Set mode",
+      "description": "Sets global watering mode (Eco, Normal, or Extra).",
+      "fields": {
+        "mode": {
+          "name": "Mode",
+          "description": "eco, normal, or extra."
+        },
+        "config_entry_id": {
+          "name": "Config entry ID",
+          "description": "Optional. Target installation when multiple entries exist."
+        }
+      }
+    },
+    "pause_until": {
+      "name": "Pause until",
+      "description": "Pauses automatic scheduled runs until the given date and time.",
+      "fields": {
+        "until": {
+          "name": "Until",
+          "description": "Date and time when scheduled runs may resume."
+        },
+        "config_entry_id": {
+          "name": "Config entry ID",
+          "description": "Optional. Target installation when multiple entries exist."
+        }
+      }
+    },
+    "clear_pause": {
+      "name": "Clear pause",
+      "description": "Clears a scheduled pause so automatic runs can occur again.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Config entry ID",
+          "description": "Optional. Target installation when multiple entries exist."
+        }
+      }
+    }
+  },
+  "panel": {
+    "sidebar_title": "Simple Irrigation",
+    "loading": "Loading…",
+    "main_title": "Simple Irrigation",
+    "tab_general": "General",
+    "tab_zones": "Zones",
+    "tab_schedule": "Schedule",
+    "tab_status": "Status",
+    "entry_picker_title": "Simple Irrigation",
+    "entry_picker_lead": "Pick an installation to edit zones, weekly schedule, and runtime options. Each entry is an independent irrigation plan.",
+    "entry_picker_loading": "Loading installations…",
+    "entry_badge_ha": "Integration disabled",
+    "entry_badge_plan_off": "Plan off",
+    "entry_badge_active": "Active",
+    "entry_card_desc": "Configure zones, schedule slots, run order, and pre-start outputs for this controller.",
+    "entry_picker_empty": "No installations yet. Add the integration under Settings → Devices & services → Add integration, then search for Simple Irrigation.",
+    "entry_picker_howto": "Add another plan (e.g. spring / summer / another garden): use Settings → Devices & services → Add integration → Simple Irrigation. Each plan appears in the list above.",
+    "errors_request_failed": "Request failed",
+    "errors_not_running_skip": "Nothing is running right now.",
+    "entity_placeholder_example": "e.g. switch.lawn_valve",
+    "general_card_current_run": "Current run",
+    "general_label_irrigation_state": "Irrigation state",
+    "general_state_preparing": "Preparing",
+    "general_state_stopping": "Stopping…",
+    "general_state_running": "Running",
+    "general_state_error_idle": "Error (idle)",
+    "general_state_idle": "Idle",
+    "general_preparing_hint": "Pre-start outputs and delay before zones begin.",
+    "general_active_zones": "Active zones",
+    "general_next_zones": "Next zones",
+    "general_last_error": "Last error",
+    "general_scheduled_pause_hint": "Scheduled pauses use Plan control below. They do not stop a run already in progress — use Stop here.",
+    "general_stop_irrigation": "Stop irrigation",
+    "general_skip_phase": "Skip to next phase",
+    "general_clear_error": "Clear error message",
+    "general_card_schedule_overview": "Schedule overview",
+    "general_plan_off_hint": "This plan is turned off. No automatic runs will start until you enable it again.",
+    "general_next_scheduled_run": "Next scheduled run",
+    "general_no_slots": "No enabled schedule slots or no zones assigned yet.",
+    "general_none_scheduled": "None scheduled",
+    "general_card_plan_control": "Plan control",
+    "general_enable_plan": "Enable automatic irrigation for this plan",
+    "general_pause_active_hint": "Scheduled runs are paused until {when} (local time). You can clear this below or use the simple_irrigation.clear_pause service with config_entry_id in automations.",
+    "general_skip_today": "Skip irrigation today",
+    "general_clear_pause": "Clear pause",
+    "general_card_settings": "General settings",
+    "general_installation_name": "Installation name",
+    "general_installation_name_desc": "Shown in lists and helps you tell multiple controllers apart.",
+    "general_field_name": "Name",
+    "general_pre_start_title": "Pre-start outputs",
+    "general_pre_start_desc": "Switches turned on before any zone runs (e.g. pump or master valve). Use the same entity IDs as elsewhere in Home Assistant; leave blank when not needed.",
+    "general_pre_start_output_n": "Pre-start output (on/off)",
+    "general_pre_start_output_i": "Pre-start {n}",
+    "general_remove": "Remove",
+    "general_add_pre_start": "Add pre-start output",
+    "general_watering_mode": "Watering mode",
+    "general_watering_mode_desc": "Sets which per-zone duration column is used: Eco (shorter), Normal, or Extra (longer). You can also drive this from automations—for example when water tank level or outdoor temperature should pick Eco vs Extra—by calling the simple_irrigation.set_mode service with mode set to eco, normal, or extra (and config_entry_id if you have several plans).",
+    "general_mode_eco": "Eco",
+    "general_mode_normal": "Normal",
+    "general_mode_extra": "Extra",
+    "general_max_parallel": "Max parallel zones",
+    "general_max_parallel_desc": "How many zones may irrigate at the same time. Exclusive zones always run alone.",
+    "general_max_parallel_field": "Max parallel zones",
+    "general_saving": "Saving…",
+    "general_save": "Save",
+    "zones_card_title": "Zones",
+    "zones_intro": "Each zone has one or more outputs and run times for Eco / Normal / Extra mode. Attach zones to schedule slots on the Schedule tab. Use Edit to change one zone at a time.",
+    "zones_add_zone": "Add zone",
+    "zones_detail_disabled": "Disabled · ",
+    "zones_detail_exclusive": "Exclusive · ",
+    "zones_detail_durations": "Eco {eco}m / Normal {normal}m / Extra {extra}m",
+    "zones_detail_outputs_one": " · 1 output",
+    "zones_detail_outputs_many": " · {n} outputs",
+    "zones_edit": "Edit",
+    "zones_field_name_title": "Name",
+    "zones_field_name_desc": "Label for this zone in the UI and schedules.",
+    "zones_field_zone_name": "Zone name",
+    "zones_outputs_title": "Irrigation outputs",
+    "zones_outputs_desc": "One or more switches, helpers, or groups (same entity IDs as in Developer Tools). Type or pick from suggestions; add rows for several valves, or use one group entity.",
+    "zones_output_first": "Zone output (on/off)",
+    "zones_output_n": "Output {n}",
+    "zones_add_output": "Add output",
+    "zones_runtime_title": "Runtime per mode (minutes)",
+    "zones_runtime_desc": "How long this zone runs when the installation is in Eco, Normal, or Extra mode.",
+    "zones_duration_eco": "Eco",
+    "zones_duration_normal": "Normal",
+    "zones_duration_extra": "Extra",
+    "zones_behavior_title": "Behavior",
+    "zones_behavior_desc": "Disable a zone temporarily or restrict it to run without others.",
+    "zones_enabled": "Enabled",
+    "zones_exclusive": "Exclusive (never runs in parallel with other zones)",
+    "zones_dialog_new_title": "New irrigation zone",
+    "zones_dialog_edit_title": "Edit zone: {name}",
+    "zones_cancel": "Cancel",
+    "zones_adding": "Adding…",
+    "zones_add_zone_btn": "Add zone",
+    "zones_confirm_delete": "Delete this zone?",
+    "zones_delete_zone": "Delete zone",
+    "zones_saving_changes": "Saving…",
+    "zones_save_changes": "Save changes",
+    "schedule_card_title": "Schedule",
+    "schedule_intro": "Slots are weekly start times with an ordered list of zones. Use Edit on a row to change zones, order, and options. Link zones on the Zones tab first.",
+    "schedule_add_slot": "Add slot",
+    "schedule_disabled_suffix": " · disabled",
+    "schedule_zones_in_order_one": "1 zone in run order",
+    "schedule_zones_in_order_many": "{n} zones in run order",
+    "schedule_run_slot_now": "Run this slot now",
+    "schedule_edit": "Edit",
+    "schedule_dialog_new_title": "New schedule slot",
+    "schedule_dialog_new_hint": "Create a recurring time, then use Edit on the row to set zones and save.",
+    "schedule_name_optional_title": "Name (optional)",
+    "schedule_name_optional_desc": "A short label to recognize this slot in the overview and when picking a slot elsewhere.",
+    "schedule_slot_name": "Slot name",
+    "schedule_weekday_title": "Weekday",
+    "schedule_weekday_desc": "Day of the week this run starts.",
+    "schedule_local_time_title": "Local time",
+    "schedule_local_time_desc": "Start time in your Home Assistant time zone. Stored as 24-hour (HH:MM); the overview uses your profile time format (12-hour or 24-hour).",
+    "schedule_time_hhmm": "Time (HH:MM)",
+    "schedule_slot_enabled": "Slot enabled",
+    "schedule_adding": "Adding…",
+    "schedule_add_slot_btn": "Add slot",
+    "schedule_err_busy": "Irrigation is already running.",
+    "schedule_err_empty_slot": "Add at least one zone to this slot.",
+    "schedule_err_no_runnable": "No enabled zones to run in this slot.",
+    "schedule_err_unknown_slot": "Unknown slot.",
+    "schedule_edit_dialog_title": "Edit slot · {summary}",
+    "schedule_start_time_title": "Start time",
+    "schedule_run_order_title": "Run order",
+    "schedule_run_order_desc": "Zones run in list order. Phase labels show how runs group: zones in the same phase start together when parallel rules allow; exclusive zones always run alone. Disabled zones are skipped at runtime and are not shown in a phase.",
+    "schedule_phase_n": "Phase {n}",
+    "schedule_up": "Up",
+    "schedule_down": "Down",
+    "schedule_remove": "Remove",
+    "schedule_add_zone_title": "Add zone",
+    "schedule_choose_zone": "Choose a zone…",
+    "schedule_add_to_list": "Add to list",
+    "schedule_all_zones_in_slot": "All zones are already in this slot.",
+    "schedule_create_zones_first": "Create zones first on the Zones tab.",
+    "schedule_confirm_delete_slot": "Delete this slot?",
+    "schedule_delete_slot": "Delete slot",
+    "schedule_saving": "Saving…",
+    "schedule_save_slot": "Save slot",
+    "status_card_title": "Runtime status",
+    "status_intro": "Summary of what the controller is doing. Reload the panel or switch tabs to refresh.",
+    "status_state_label": "State:",
+    "status_state_run_in_progress": "Run in progress",
+    "status_state_error": "Error",
+    "status_state_idle": "Idle / waiting",
+    "status_manual_label": "Manual run:",
+    "status_manual_text": "This cycle was started from the panel (“Run this slot now”) or a zone service, not from the weekly schedule timer.",
+    "status_scheduled_label": "Scheduled run:",
+    "status_scheduled_text": "This cycle was triggered by the schedule.",
+    "status_idle_hint": "When a run is active, this page shows whether it was manual or scheduled. manual_run in raw state is only true during a manual cycle.",
+    "status_active_zones": "Active zones:",
+    "status_queued_zones": "Queued zones:",
+    "status_last_error": "Last error:",
+    "status_error_clear_hint": "The message clears when a run finishes successfully, when you stop irrigation from the General tab, or when you use Clear error message there. It stays visible after a failed run until one of those happens. A Home Assistant restart after an interrupted run may set a recovery message.",
+    "status_show_raw": "Show raw state (debug)",
+    "status_hide_raw": "Hide raw state"
+  }
+}

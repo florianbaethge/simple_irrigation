@@ -237,11 +237,11 @@ export class ViewZones extends LitElement {
   private _renderZoneFields(z: ZoneRow): TemplateResult {
     return html`
       <div class="field-block">
-        <span class="field-title">${t(this.hass, "panel.zones_field_name_title")}</span>
-        <p class="field-desc">${t(this.hass, "panel.zones_field_name_desc")}</p>
+        <span class="field-title">${t(this.hass, "config_panel.zones_field_name_title")}</span>
+        <p class="field-desc">${t(this.hass, "config_panel.zones_field_name_desc")}</p>
         <div class="field-row">
           <ha-textfield
-            .label=${t(this.hass, "panel.zones_field_zone_name")}
+            .label=${t(this.hass, "config_panel.zones_field_zone_name")}
             .value=${z.name}
             @input=${(e: Event) => {
               z.name = (e.target as HTMLInputElement).value;
@@ -251,8 +251,8 @@ export class ViewZones extends LitElement {
         </div>
       </div>
       <div class="field-block">
-        <span class="field-title">${t(this.hass, "panel.zones_outputs_title")}</span>
-        <p class="field-desc">${t(this.hass, "panel.zones_outputs_desc")}</p>
+        <span class="field-title">${t(this.hass, "config_panel.zones_outputs_title")}</span>
+        <p class="field-desc">${t(this.hass, "config_panel.zones_outputs_desc")}</p>
         <div class="field-row">
           <div class="entity-picker-rows">
             ${z.switch_entity_ids.map(
@@ -262,8 +262,8 @@ export class ViewZones extends LitElement {
                     this.hass,
                     this._zonesEntityListId(),
                     i === 0
-                      ? t(this.hass, "panel.zones_output_first")
-                      : t(this.hass, "panel.zones_output_n", { n: i + 1 }),
+                      ? t(this.hass, "config_panel.zones_output_first")
+                      : t(this.hass, "config_panel.zones_output_n", { n: i + 1 }),
                     eid,
                     (v) => {
                       const next = [...z.switch_entity_ids];
@@ -285,7 +285,7 @@ export class ViewZones extends LitElement {
                             this.requestUpdate();
                           }}
                         >
-                          ${t(this.hass, "panel.general_remove")}
+                          ${t(this.hass, "config_panel.general_remove")}
                         </button>
                       `
                     : nothing}
@@ -300,18 +300,18 @@ export class ViewZones extends LitElement {
                 this.requestUpdate();
               }}
             >
-              ${t(this.hass, "panel.zones_add_output")}
+              ${t(this.hass, "config_panel.zones_add_output")}
             </button>
           </div>
         </div>
       </div>
       <div class="field-block">
-        <span class="field-title">${t(this.hass, "panel.zones_runtime_title")}</span>
-        <p class="field-desc">${t(this.hass, "panel.zones_runtime_desc")}</p>
+        <span class="field-title">${t(this.hass, "config_panel.zones_runtime_title")}</span>
+        <p class="field-desc">${t(this.hass, "config_panel.zones_runtime_desc")}</p>
         <div class="duration-row">
           <ha-textfield
             type="number"
-            .label=${t(this.hass, "panel.zones_duration_eco")}
+            .label=${t(this.hass, "config_panel.zones_duration_eco")}
             .value=${String(z.duration_eco_min)}
             min="0"
             max="240"
@@ -321,7 +321,7 @@ export class ViewZones extends LitElement {
           ></ha-textfield>
           <ha-textfield
             type="number"
-            .label=${t(this.hass, "panel.zones_duration_normal")}
+            .label=${t(this.hass, "config_panel.zones_duration_normal")}
             .value=${String(z.duration_normal_min)}
             min="0"
             max="240"
@@ -331,7 +331,7 @@ export class ViewZones extends LitElement {
           ></ha-textfield>
           <ha-textfield
             type="number"
-            .label=${t(this.hass, "panel.zones_duration_extra")}
+            .label=${t(this.hass, "config_panel.zones_duration_extra")}
             .value=${String(z.duration_extra_min)}
             min="0"
             max="240"
@@ -342,8 +342,8 @@ export class ViewZones extends LitElement {
         </div>
       </div>
       <div class="field-block">
-        <span class="field-title">${t(this.hass, "panel.zones_behavior_title")}</span>
-        <p class="field-desc">${t(this.hass, "panel.zones_behavior_desc")}</p>
+        <span class="field-title">${t(this.hass, "config_panel.zones_behavior_title")}</span>
+        <p class="field-desc">${t(this.hass, "config_panel.zones_behavior_desc")}</p>
         <div class="checkboxes">
           <label
             ><input
@@ -353,7 +353,7 @@ export class ViewZones extends LitElement {
                 z.enabled = (e.target as HTMLInputElement).checked;
               }}
             />
-            ${t(this.hass, "panel.zones_enabled")}</label
+            ${t(this.hass, "config_panel.zones_enabled")}</label
           >
           <label
             ><input
@@ -363,7 +363,7 @@ export class ViewZones extends LitElement {
                 z.exclusive = (e.target as HTMLInputElement).checked;
               }}
             />
-            ${t(this.hass, "panel.zones_exclusive")}</label
+            ${t(this.hass, "config_panel.zones_exclusive")}</label
           >
         </div>
       </div>
@@ -376,10 +376,10 @@ export class ViewZones extends LitElement {
 
     return html`
       ${renderEntityDatalist(this.hass, this._zonesEntityListId(), domains)}
-      <ha-card .header=${t(this.hass, "panel.zones_card_title")}>
+      <ha-card .header=${t(this.hass, "config_panel.zones_card_title")}>
         <div class="card-content">
           ${this._msg ? html`<div class="error">${this._msg}</div>` : nothing}
-          <p class="intro">${t(this.hass, "panel.zones_intro")}</p>
+          <p class="intro">${t(this.hass, "config_panel.zones_intro")}</p>
           <div class="field-block toolbar">
             <button
               type="button"
@@ -388,7 +388,7 @@ export class ViewZones extends LitElement {
                 this._addDialogOpen = true;
               }}
             >
-              ${t(this.hass, "panel.zones_add_zone")}
+              ${t(this.hass, "config_panel.zones_add_zone")}
             </button>
           </div>
           ${zones.map((z) => {
@@ -398,17 +398,17 @@ export class ViewZones extends LitElement {
                 <div class="zone-list-main">
                   <p class="zone-list-name">${z.name || z.zone_id.slice(0, 8)}</p>
                   <p class="zone-list-detail">
-                    ${z.enabled ? "" : t(this.hass, "panel.zones_detail_disabled")}
-                    ${z.exclusive ? t(this.hass, "panel.zones_detail_exclusive") : ""}
-                    ${t(this.hass, "panel.zones_detail_durations", {
+                    ${z.enabled ? "" : t(this.hass, "config_panel.zones_detail_disabled")}
+                    ${z.exclusive ? t(this.hass, "config_panel.zones_detail_exclusive") : ""}
+                    ${t(this.hass, "config_panel.zones_detail_durations", {
                       eco: z.duration_eco_min,
                       normal: z.duration_normal_min,
                       extra: z.duration_extra_min,
                     })}
                     ${outs === 1
-                      ? t(this.hass, "panel.zones_detail_outputs_one")
+                      ? t(this.hass, "config_panel.zones_detail_outputs_one")
                       : outs > 1
-                        ? t(this.hass, "panel.zones_detail_outputs_many", { n: outs })
+                        ? t(this.hass, "config_panel.zones_detail_outputs_many", { n: outs })
                         : nothing}
                   </p>
                 </div>
@@ -421,7 +421,7 @@ export class ViewZones extends LitElement {
                       this._editDraft = this._cloneZone(z);
                     }}
                   >
-                    ${t(this.hass, "panel.zones_edit")}
+                    ${t(this.hass, "config_panel.zones_edit")}
                   </button>
                 </div>
               </div>
@@ -432,7 +432,7 @@ export class ViewZones extends LitElement {
 
       <ha-dialog
         .open=${this._addDialogOpen}
-        header-title=${t(this.hass, "panel.zones_dialog_new_title")}
+        header-title=${t(this.hass, "config_panel.zones_dialog_new_title")}
         @closed=${() => this._closeAddDialog()}
       >
         ${this._renderZoneFields(this._new)}
@@ -441,7 +441,7 @@ export class ViewZones extends LitElement {
             <div class="dialog-footer-lead"></div>
             <div class="dialog-footer-actions">
               <button type="button" class="btn-outline" @click=${() => this._closeAddDialog()} ?disabled=${this._busy}>
-                ${t(this.hass, "panel.zones_cancel")}
+                ${t(this.hass, "config_panel.zones_cancel")}
               </button>
               <button
                 type="button"
@@ -450,8 +450,8 @@ export class ViewZones extends LitElement {
                 @click=${() => this._saveZone("add", undefined, { ...this._new, zone_id: "" })}
               >
                 ${this._busy
-                  ? t(this.hass, "panel.zones_adding")
-                  : t(this.hass, "panel.zones_add_zone_btn")}
+                  ? t(this.hass, "config_panel.zones_adding")
+                  : t(this.hass, "config_panel.zones_add_zone_btn")}
               </button>
             </div>
           </div>
@@ -461,7 +461,7 @@ export class ViewZones extends LitElement {
       <ha-dialog
         .open=${edit !== null}
         header-title=${edit
-          ? t(this.hass, "panel.zones_dialog_edit_title", {
+          ? t(this.hass, "config_panel.zones_dialog_edit_title", {
               name: edit.name || edit.zone_id.slice(0, 8),
             })
           : ""}
@@ -479,12 +479,12 @@ export class ViewZones extends LitElement {
                       ?disabled=${this._busy}
                       @click=${() => {
                         if (!edit) return;
-                        if (confirm(t(this.hass, "panel.zones_confirm_delete"))) {
+                        if (confirm(t(this.hass, "config_panel.zones_confirm_delete"))) {
                           void this._saveZone("delete", edit.zone_id);
                         }
                       }}
                     >
-                      ${t(this.hass, "panel.zones_delete_zone")}
+                      ${t(this.hass, "config_panel.zones_delete_zone")}
                     </button>
                   `
                 : nothing}
@@ -496,7 +496,7 @@ export class ViewZones extends LitElement {
                 @click=${() => this._closeEditDialog()}
                 ?disabled=${this._busy}
               >
-                ${t(this.hass, "panel.zones_cancel")}
+                ${t(this.hass, "config_panel.zones_cancel")}
               </button>
               <button
                 type="button"
@@ -505,8 +505,8 @@ export class ViewZones extends LitElement {
                 @click=${() => edit && this._saveZone("update", edit.zone_id, edit)}
               >
                 ${this._busy
-                  ? t(this.hass, "panel.zones_saving_changes")
-                  : t(this.hass, "panel.zones_save_changes")}
+                  ? t(this.hass, "config_panel.zones_saving_changes")
+                  : t(this.hass, "config_panel.zones_save_changes")}
               </button>
             </div>
           </div>

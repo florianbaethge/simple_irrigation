@@ -172,7 +172,7 @@
       }
     }
   },
-  "panel": {
+  "config_panel": {
     "sidebar_title": "Simple Bewässerung",
     "loading": "Wird geladen…",
     "main_title": "Simple Irrigation",

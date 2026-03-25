@@ -42,7 +42,7 @@ export function renderNativeEntityField(
         class="entity-id-input"
         list=${listId}
         .value=${value}
-        placeholder=${t(hass, "panel.entity_placeholder_example")}
+        placeholder=${t(hass, "config_panel.entity_placeholder_example")}
         spellcheck="false"
         autocomplete="off"
         @input=${(e: Event) => onValue((e.target as HTMLInputElement).value)}

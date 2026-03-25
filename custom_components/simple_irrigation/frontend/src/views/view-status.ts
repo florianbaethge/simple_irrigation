@@ -82,49 +82,49 @@ export class ViewStatus extends LitElement {
     const lastErr = rs.last_error ? String(rs.last_error) : "";
 
     return html`
-      <ha-card .header=${t(this.hass, "panel.status_card_title")}>
+      <ha-card .header=${t(this.hass, "config_panel.status_card_title")}>
         <div class="card-content">
-          <p class="muted">${t(this.hass, "panel.status_intro")}</p>
+          <p class="muted">${t(this.hass, "config_panel.status_intro")}</p>
           <div class="summary">
             <p>
-              <strong>${t(this.hass, "panel.status_state_label")}</strong>
+              <strong>${t(this.hass, "config_panel.status_state_label")}</strong>
               ${busy
-                ? t(this.hass, "panel.status_state_run_in_progress")
+                ? t(this.hass, "config_panel.status_state_run_in_progress")
                 : stateStr === "error"
-                  ? t(this.hass, "panel.status_state_error")
-                  : t(this.hass, "panel.status_state_idle")}
+                  ? t(this.hass, "config_panel.status_state_error")
+                  : t(this.hass, "config_panel.status_state_idle")}
             </p>
             ${busy && manual
               ? html`<p>
-                  <strong>${t(this.hass, "panel.status_manual_label")}</strong>
-                  ${t(this.hass, "panel.status_manual_text")}
+                  <strong>${t(this.hass, "config_panel.status_manual_label")}</strong>
+                  ${t(this.hass, "config_panel.status_manual_text")}
                 </p>`
               : busy && !manual
                 ? html`<p>
-                    <strong>${t(this.hass, "panel.status_scheduled_label")}</strong>
-                    ${t(this.hass, "panel.status_scheduled_text")}
+                    <strong>${t(this.hass, "config_panel.status_scheduled_label")}</strong>
+                    ${t(this.hass, "config_panel.status_scheduled_text")}
                   </p>`
-                : html`<p class="muted">${t(this.hass, "panel.status_idle_hint")}</p>`}
+                : html`<p class="muted">${t(this.hass, "config_panel.status_idle_hint")}</p>`}
             ${active.length
               ? html`<p>
-                  <strong>${t(this.hass, "panel.status_active_zones")}</strong>
+                  <strong>${t(this.hass, "config_panel.status_active_zones")}</strong>
                   ${this._zoneList(active)}
                 </p>`
               : nothing}
             ${queued.length
               ? html`<p>
-                  <strong>${t(this.hass, "panel.status_queued_zones")}</strong>
+                  <strong>${t(this.hass, "config_panel.status_queued_zones")}</strong>
                   ${this._zoneList(queued)}
                 </p>`
               : nothing}
             ${lastErr
               ? html`<p>
-                  <strong>${t(this.hass, "panel.status_last_error")}</strong>
+                  <strong>${t(this.hass, "config_panel.status_last_error")}</strong>
                   ${lastErr}
                 </p>`
               : nothing}
             <p class="muted" style="margin-top:12px">
-              ${t(this.hass, "panel.status_error_clear_hint")}
+              ${t(this.hass, "config_panel.status_error_clear_hint")}
             </p>
           </div>
           <button
@@ -135,8 +135,8 @@ export class ViewStatus extends LitElement {
             }}
           >
             ${this._showRaw
-              ? t(this.hass, "panel.status_hide_raw")
-              : t(this.hass, "panel.status_show_raw")}
+              ? t(this.hass, "config_panel.status_hide_raw")
+              : t(this.hass, "config_panel.status_show_raw")}
           </button>
           ${this._showRaw
             ? html`<pre>${JSON.stringify(this.runState, null, 2)}</pre>`

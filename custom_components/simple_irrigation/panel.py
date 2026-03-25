@@ -42,10 +42,10 @@ async def async_register_panel(hass) -> None:
     )
 
     translations = await async_get_translations(
-        hass, hass.config.language, "panel", {DOMAIN}
+        hass, hass.config.language, "config_panel", {DOMAIN}
     )
     sidebar_title = translations.get(
-        f"component.{DOMAIN}.panel.sidebar_title", PANEL_TITLE
+        f"component.{DOMAIN}.config_panel.sidebar_title", PANEL_TITLE
     )
 
     await panel_custom.async_register_panel(

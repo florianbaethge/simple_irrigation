@@ -56,7 +56,7 @@ function fireEvent(node, type, detail) {
 
 /** Must match `DOMAIN` in the Python integration. */
 const TRANSLATION_DOMAIN = "simple_irrigation";
-/** Flat key under `component.simple_irrigation.*` (e.g. `panel.tab_general`). */
+/** Flat key under `component.simple_irrigation.*` (e.g. `config_panel.tab_general`). */
 function t(hass, path, placeholders) {
     if (!hass?.localize) {
         return path;
@@ -81,7 +81,7 @@ function t(hass, path, placeholders) {
 /** Home Assistant callApi may put a string or structured object in `error`. */
 function formatApiError(value, hass) {
     const fallback = hass?.localize != null
-        ? t(hass, "panel.errors_request_failed")
+        ? t(hass, "config_panel.errors_request_failed")
         : "Request failed";
     if (value == null || value === "") {
         return fallback;
@@ -398,7 +398,7 @@ function renderNativeEntityField(hass, listId, label, value, onValue) {
         class="entity-id-input"
         list=${listId}
         .value=${value}
-        placeholder=${t(hass, "panel.entity_placeholder_example")}
+        placeholder=${t(hass, "config_panel.entity_placeholder_example")}
         spellcheck="false"
         autocomplete="off"
         @input=${(e) => onValue(e.target.value)}
@@ -996,7 +996,7 @@ class ViewGeneral extends i {
     }
     _fmtWhen(iso) {
         if (!iso)
-            return t(this.hass, "panel.general_none_scheduled");
+            return t(this.hass, "config_panel.general_none_scheduled");
         try {
             const d = new Date(iso);
             return formatDateTimeForDisplay(this.hass, d);
@@ -1138,7 +1138,7 @@ class ViewGeneral extends i {
                 const err = res.error ?? "request_failed";
                 this._msg =
                     err === "not_running" && action === "skip_phase"
-                        ? t(this.hass, "panel.errors_not_running_skip")
+                        ? t(this.hass, "config_panel.errors_not_running_skip")
                         : String(err);
             }
             else {
@@ -1174,26 +1174,26 @@ class ViewGeneral extends i {
         const nextZonesLine = this._formatUpcomingPhases(rs);
         return b `
       ${renderEntityDatalist(this.hass, this._generalEntityListId(), domains)}
-      <ha-card .header=${t(this.hass, "panel.general_card_current_run")}>
+      <ha-card .header=${t(this.hass, "config_panel.general_card_current_run")}>
         <div class="card-content">
           <div class="run-hero">
             <ha-icon class="run-hero-icon" icon="mdi:sprinkler-variant"></ha-icon>
             <div class="run-hero-body">
-              <p class="run-hero-label">${t(this.hass, "panel.general_label_irrigation_state")}</p>
+              <p class="run-hero-label">${t(this.hass, "config_panel.general_label_irrigation_state")}</p>
               <p class="run-hero-state">
                 ${runBusy
             ? runStateStr === "preparing"
-                ? t(this.hass, "panel.general_state_preparing")
+                ? t(this.hass, "config_panel.general_state_preparing")
                 : runStateStr === "stopping"
-                    ? t(this.hass, "panel.general_state_stopping")
-                    : t(this.hass, "panel.general_state_running")
+                    ? t(this.hass, "config_panel.general_state_stopping")
+                    : t(this.hass, "config_panel.general_state_running")
             : runStateStr === "error"
-                ? t(this.hass, "panel.general_state_error_idle")
-                : t(this.hass, "panel.general_state_idle")}
+                ? t(this.hass, "config_panel.general_state_error_idle")
+                : t(this.hass, "config_panel.general_state_idle")}
               </p>
               ${runBusy && runStateStr === "preparing"
             ? b `<p class="muted-box" style="margin:0">
-                    ${t(this.hass, "panel.general_preparing_hint")}
+                    ${t(this.hass, "config_panel.general_preparing_hint")}
                   </p>`
             : A}
             </div>
@@ -1206,7 +1206,7 @@ class ViewGeneral extends i {
                         <li class="run-detail-pill">
                           <ha-icon icon="mdi:water"></ha-icon>
                           <span
-                            ><strong>${t(this.hass, "panel.general_active_zones")}</strong>
+                            ><strong>${t(this.hass, "config_panel.general_active_zones")}</strong>
                             ${activeIds.map((id) => this._zoneName(id)).join(", ")}</span
                           >
                         </li>
@@ -1217,7 +1217,7 @@ class ViewGeneral extends i {
                         <li class="run-detail-pill">
                           <ha-icon icon="mdi:playlist-play"></ha-icon>
                           <span
-                            ><strong>${t(this.hass, "panel.general_next_zones")}</strong>
+                            ><strong>${t(this.hass, "config_panel.general_next_zones")}</strong>
                             ${nextZonesLine}</span
                           >
                         </li>
@@ -1228,7 +1228,7 @@ class ViewGeneral extends i {
                         <li class="run-detail-pill">
                           <ha-icon icon="mdi:alert-circle-outline"></ha-icon>
                           <span
-                            ><strong>${t(this.hass, "panel.general_last_error")}</strong>
+                            ><strong>${t(this.hass, "config_panel.general_last_error")}</strong>
                             ${lastErr}</span
                           >
                         </li>
@@ -1239,7 +1239,7 @@ class ViewGeneral extends i {
             : A}
           ${showStop
             ? b `<p class="muted-box" style="margin-top:0">
-                ${t(this.hass, "panel.general_scheduled_pause_hint")}
+                ${t(this.hass, "config_panel.general_scheduled_pause_hint")}
               </p>`
             : A}
           ${showStop || showSkip || showClearErr
@@ -1252,7 +1252,7 @@ class ViewGeneral extends i {
                         ?disabled=${this._runCtrlBusy || !runBusy}
                         @click=${() => this._panelControlAction("stop")}
                       >
-                        ${t(this.hass, "panel.general_stop_irrigation")}
+                        ${t(this.hass, "config_panel.general_stop_irrigation")}
                       </button>
                     `
                 : A}
@@ -1264,7 +1264,7 @@ class ViewGeneral extends i {
                         ?disabled=${this._runCtrlBusy || !runBusy || runStateStr === "stopping"}
                         @click=${() => this._panelControlAction("skip_phase")}
                       >
-                        ${t(this.hass, "panel.general_skip_phase")}
+                        ${t(this.hass, "config_panel.general_skip_phase")}
                       </button>
                     `
                 : A}
@@ -1276,7 +1276,7 @@ class ViewGeneral extends i {
                         ?disabled=${this._runCtrlBusy}
                         @click=${() => this._panelControlAction("clear_error")}
                       >
-                        ${t(this.hass, "panel.general_clear_error")}
+                        ${t(this.hass, "config_panel.general_clear_error")}
                       </button>
                     `
                 : A}
@@ -1285,16 +1285,16 @@ class ViewGeneral extends i {
         </div>
       </ha-card>
 
-      <ha-card .header=${t(this.hass, "panel.general_card_schedule_overview")}>
+      <ha-card .header=${t(this.hass, "config_panel.general_card_schedule_overview")}>
         <div class="card-content">
           ${!this._planEnabled
-            ? b `<p class="muted-box">${t(this.hass, "panel.general_plan_off_hint")}</p>`
+            ? b `<p class="muted-box">${t(this.hass, "config_panel.general_plan_off_hint")}</p>`
             : A}
           <div class="schedule-overview-inner">
             <div class="schedule-hero">
               <ha-icon class="schedule-hero-icon" icon="mdi:calendar-clock"></ha-icon>
               <div class="schedule-hero-text">
-                <p class="schedule-hero-label">${t(this.hass, "panel.general_next_scheduled_run")}</p>
+                <p class="schedule-hero-label">${t(this.hass, "config_panel.general_next_scheduled_run")}</p>
                 <p class="schedule-next-big">${this._fmtWhen(nextGlobal)}</p>
               </div>
             </div>
@@ -1321,12 +1321,12 @@ class ViewGeneral extends i {
                       `)}
                   </ul>
                 `
-            : b `<p class="muted-box">${t(this.hass, "panel.general_no_slots")}</p>`}
+            : b `<p class="muted-box">${t(this.hass, "config_panel.general_no_slots")}</p>`}
           </div>
         </div>
       </ha-card>
 
-      <ha-card .header=${t(this.hass, "panel.general_card_plan_control")}>
+      <ha-card .header=${t(this.hass, "config_panel.general_card_plan_control")}>
         <div class="card-content">
           ${this._msg ? b `<div class="error">${this._msg}</div>` : A}
           <div class="plan-row">
@@ -1339,12 +1339,12 @@ class ViewGeneral extends i {
             void this._setPlanEnabled(Boolean(tgt.checked));
         }}
               ></ha-switch>
-              ${t(this.hass, "panel.general_enable_plan")}
+              ${t(this.hass, "config_panel.general_enable_plan")}
             </label>
           </div>
           ${pauseOn
             ? b `<p class="muted-box">
-                ${t(this.hass, "panel.general_pause_active_hint", {
+                ${t(this.hass, "config_panel.general_pause_active_hint", {
                 when: this._fmtPauseUntil(),
             })}
               </p>`
@@ -1356,7 +1356,7 @@ class ViewGeneral extends i {
               ?disabled=${this._busy || !this._planEnabled}
               @click=${() => this._skipToday()}
             >
-              ${t(this.hass, "panel.general_skip_today")}
+              ${t(this.hass, "config_panel.general_skip_today")}
             </button>
             <button
               type="button"
@@ -1364,20 +1364,20 @@ class ViewGeneral extends i {
               ?disabled=${this._busy || !pauseOn}
               @click=${() => this._clearPause()}
             >
-              ${t(this.hass, "panel.general_clear_pause")}
+              ${t(this.hass, "config_panel.general_clear_pause")}
             </button>
           </div>
         </div>
       </ha-card>
 
-      <ha-card .header=${t(this.hass, "panel.general_card_settings")}>
+      <ha-card .header=${t(this.hass, "config_panel.general_card_settings")}>
         <div class="card-content">
           <div class="field-block">
-            <span class="field-title">${t(this.hass, "panel.general_installation_name")}</span>
-            <p class="field-desc">${t(this.hass, "panel.general_installation_name_desc")}</p>
+            <span class="field-title">${t(this.hass, "config_panel.general_installation_name")}</span>
+            <p class="field-desc">${t(this.hass, "config_panel.general_installation_name_desc")}</p>
             <div class="field-row">
               <ha-textfield
-                .label=${t(this.hass, "panel.general_field_name")}
+                .label=${t(this.hass, "config_panel.general_field_name")}
                 .value=${this._name}
                 @input=${(e) => {
             this._name = e.target.value;
@@ -1386,15 +1386,15 @@ class ViewGeneral extends i {
             </div>
           </div>
           <div class="field-block">
-            <span class="field-title">${t(this.hass, "panel.general_pre_start_title")}</span>
-            <p class="field-desc">${t(this.hass, "panel.general_pre_start_desc")}</p>
+            <span class="field-title">${t(this.hass, "config_panel.general_pre_start_title")}</span>
+            <p class="field-desc">${t(this.hass, "config_panel.general_pre_start_desc")}</p>
             <div class="field-row">
               <div class="entity-picker-rows">
                 ${this._preStart.map((eid, i) => b `
                     <div class="entity-picker-row">
                       ${renderNativeEntityField(this.hass, this._generalEntityListId(), i === 0
-            ? t(this.hass, "panel.general_pre_start_output_n")
-            : t(this.hass, "panel.general_pre_start_output_i", { n: i + 1 }), eid, (v) => {
+            ? t(this.hass, "config_panel.general_pre_start_output_n")
+            : t(this.hass, "config_panel.general_pre_start_output_i", { n: i + 1 }), eid, (v) => {
             const next = [...this._preStart];
             next[i] = v;
             this._preStart = next;
@@ -1413,7 +1413,7 @@ class ViewGeneral extends i {
                 this.requestUpdate();
             }}
                             >
-                              ${t(this.hass, "panel.general_remove")}
+                              ${t(this.hass, "config_panel.general_remove")}
                             </button>
                           `
             : A}
@@ -1427,14 +1427,14 @@ class ViewGeneral extends i {
             this.requestUpdate();
         }}
                 >
-                  ${t(this.hass, "panel.general_add_pre_start")}
+                  ${t(this.hass, "config_panel.general_add_pre_start")}
                 </button>
               </div>
             </div>
           </div>
           <div class="field-block">
-            <span class="field-title">${t(this.hass, "panel.general_watering_mode")}</span>
-            <p class="field-desc">${t(this.hass, "panel.general_watering_mode_desc")}</p>
+            <span class="field-title">${t(this.hass, "config_panel.general_watering_mode")}</span>
+            <p class="field-desc">${t(this.hass, "config_panel.general_watering_mode_desc")}</p>
             <div class="field-row">
               <select
                 class="field-select"
@@ -1443,24 +1443,24 @@ class ViewGeneral extends i {
         }}
               >
                 <option value="eco" ?selected=${this._mode === "eco"}>
-                  ${t(this.hass, "panel.general_mode_eco")}
+                  ${t(this.hass, "config_panel.general_mode_eco")}
                 </option>
                 <option value="normal" ?selected=${this._mode === "normal"}>
-                  ${t(this.hass, "panel.general_mode_normal")}
+                  ${t(this.hass, "config_panel.general_mode_normal")}
                 </option>
                 <option value="extra" ?selected=${this._mode === "extra"}>
-                  ${t(this.hass, "panel.general_mode_extra")}
+                  ${t(this.hass, "config_panel.general_mode_extra")}
                 </option>
               </select>
             </div>
           </div>
           <div class="field-block">
-            <span class="field-title">${t(this.hass, "panel.general_max_parallel")}</span>
-            <p class="field-desc">${t(this.hass, "panel.general_max_parallel_desc")}</p>
+            <span class="field-title">${t(this.hass, "config_panel.general_max_parallel")}</span>
+            <p class="field-desc">${t(this.hass, "config_panel.general_max_parallel_desc")}</p>
             <div class="field-row">
               <ha-textfield
                 type="number"
-                .label=${t(this.hass, "panel.general_max_parallel_field")}
+                .label=${t(this.hass, "config_panel.general_max_parallel_field")}
                 .value=${String(this._maxParallel)}
                 min="1"
                 max="16"
@@ -1473,8 +1473,8 @@ class ViewGeneral extends i {
           <div class="action-row">
             <button type="button" class="save" @click=${() => this._save()} ?disabled=${this._busy}>
               ${this._busy
-            ? t(this.hass, "panel.general_saving")
-            : t(this.hass, "panel.general_save")}
+            ? t(this.hass, "config_panel.general_saving")
+            : t(this.hass, "config_panel.general_save")}
             </button>
           </div>
         </div>
@@ -1756,13 +1756,13 @@ class ViewSchedule extends i {
                 const err = res.error ?? "run_failed";
                 this._msg =
                     err === "busy"
-                        ? t(this.hass, "panel.schedule_err_busy")
+                        ? t(this.hass, "config_panel.schedule_err_busy")
                         : err === "empty_slot"
-                            ? t(this.hass, "panel.schedule_err_empty_slot")
+                            ? t(this.hass, "config_panel.schedule_err_empty_slot")
                             : err === "no_runnable_zones"
-                                ? t(this.hass, "panel.schedule_err_no_runnable")
+                                ? t(this.hass, "config_panel.schedule_err_no_runnable")
                                 : err === "unknown_slot"
-                                    ? t(this.hass, "panel.schedule_err_unknown_slot")
+                                    ? t(this.hass, "config_panel.schedule_err_unknown_slot")
                                     : String(err);
             }
             else {
@@ -1837,7 +1837,7 @@ class ViewSchedule extends i {
         const d = this._slotEditDraft;
         if (!d)
             return;
-        if (!confirm(t(this.hass, "panel.schedule_confirm_delete_slot")))
+        if (!confirm(t(this.hass, "config_panel.schedule_confirm_delete_slot")))
             return;
         const ok = await this._call({ action: "delete", slot_id: d.slot_id });
         if (ok) {
@@ -1850,17 +1850,17 @@ class ViewSchedule extends i {
         const draft = this._slotEditDraft;
         const addZoneOpts = draft ? this._addZoneOptionsForDraft(draft) : [];
         const editSlotTitle = draft != null
-            ? t(this.hass, "panel.schedule_edit_dialog_title", {
+            ? t(this.hass, "config_panel.schedule_edit_dialog_title", {
                 summary: draft.name.trim()
                     ? `${draft.name.trim()} · ${this._wd(draft.weekday)} ${this._fmtSlotTime(draft.time_local)}`
                     : `${this._wd(draft.weekday)} ${this._fmtSlotTime(draft.time_local)}`,
             })
             : "";
         return b `
-      <ha-card .header=${t(this.hass, "panel.schedule_card_title")}>
+      <ha-card .header=${t(this.hass, "config_panel.schedule_card_title")}>
         <div class="card-content">
           ${this._msg ? b `<div class="error">${this._msg}</div>` : A}
-          <p class="intro">${t(this.hass, "panel.schedule_intro")}</p>
+          <p class="intro">${t(this.hass, "config_panel.schedule_intro")}</p>
           <div class="toolbar">
             <button
               type="button"
@@ -1870,7 +1870,7 @@ class ViewSchedule extends i {
             this._addSlotDialogOpen = true;
         }}
             >
-              ${t(this.hass, "panel.schedule_add_slot")}
+              ${t(this.hass, "config_panel.schedule_add_slot")}
             </button>
           </div>
           ${slots.map((slot) => {
@@ -1883,12 +1883,12 @@ class ViewSchedule extends i {
                 ? b `<span class="slot-name">${slot.name}</span> · ${this._wd(slot.weekday)}
                         ${this._fmtSlotTime(slot.time_local)}`
                 : b `${this._wd(slot.weekday)} ${this._fmtSlotTime(slot.time_local)}`}
-                    ${slot.enabled ? "" : t(this.hass, "panel.schedule_disabled_suffix")}
+                    ${slot.enabled ? "" : t(this.hass, "config_panel.schedule_disabled_suffix")}
                   </p>
                   <p class="slot-row-meta">
                     ${n === 1
-                ? t(this.hass, "panel.schedule_zones_in_order_one")
-                : t(this.hass, "panel.schedule_zones_in_order_many", { n })}
+                ? t(this.hass, "config_panel.schedule_zones_in_order_one")
+                : t(this.hass, "config_panel.schedule_zones_in_order_many", { n })}
                   </p>
                 </div>
                 <div class="slot-row-actions">
@@ -1900,7 +1900,7 @@ class ViewSchedule extends i {
                 slot.zone_ids_ordered.length === 0}
                     @click=${() => this._runSlotNow(slot.slot_id)}
                   >
-                    ${t(this.hass, "panel.schedule_run_slot_now")}
+                    ${t(this.hass, "config_panel.schedule_run_slot_now")}
                   </button>
                   <button
                     type="button"
@@ -1911,7 +1911,7 @@ class ViewSchedule extends i {
                 this._slotEditDraft = this._cloneSlot(slot);
             }}
                   >
-                    ${t(this.hass, "panel.schedule_edit")}
+                    ${t(this.hass, "config_panel.schedule_edit")}
                   </button>
                 </div>
               </div>
@@ -1922,16 +1922,16 @@ class ViewSchedule extends i {
 
       <ha-dialog
         .open=${this._addSlotDialogOpen}
-        header-title=${t(this.hass, "panel.schedule_dialog_new_title")}
+        header-title=${t(this.hass, "config_panel.schedule_dialog_new_title")}
         @closed=${() => this._closeAddSlotDialog()}
       >
-        <p class="field-desc">${t(this.hass, "panel.schedule_dialog_new_hint")}</p>
+        <p class="field-desc">${t(this.hass, "config_panel.schedule_dialog_new_hint")}</p>
         <div class="field-block">
-          <span class="field-title">${t(this.hass, "panel.schedule_name_optional_title")}</span>
-          <p class="field-desc">${t(this.hass, "panel.schedule_name_optional_desc")}</p>
+          <span class="field-title">${t(this.hass, "config_panel.schedule_name_optional_title")}</span>
+          <p class="field-desc">${t(this.hass, "config_panel.schedule_name_optional_desc")}</p>
           <div class="field-row">
             <ha-textfield
-              .label=${t(this.hass, "panel.schedule_slot_name")}
+              .label=${t(this.hass, "config_panel.schedule_slot_name")}
               .value=${this._newSlotName}
               @input=${(e) => {
             this._newSlotName = e.target.value;
@@ -1940,8 +1940,8 @@ class ViewSchedule extends i {
           </div>
         </div>
         <div class="field-block">
-          <span class="field-title">${t(this.hass, "panel.schedule_weekday_title")}</span>
-          <p class="field-desc">${t(this.hass, "panel.schedule_weekday_desc")}</p>
+          <span class="field-title">${t(this.hass, "config_panel.schedule_weekday_title")}</span>
+          <p class="field-desc">${t(this.hass, "config_panel.schedule_weekday_desc")}</p>
           <select
             class="field-select"
             @change=${(e) => {
@@ -1954,11 +1954,11 @@ class ViewSchedule extends i {
           </select>
         </div>
         <div class="field-block">
-          <span class="field-title">${t(this.hass, "panel.schedule_local_time_title")}</span>
-          <p class="field-desc">${t(this.hass, "panel.schedule_local_time_desc")}</p>
+          <span class="field-title">${t(this.hass, "config_panel.schedule_local_time_title")}</span>
+          <p class="field-desc">${t(this.hass, "config_panel.schedule_local_time_desc")}</p>
           <div class="field-row">
             <ha-textfield
-              .label=${t(this.hass, "panel.schedule_time_hhmm")}
+              .label=${t(this.hass, "config_panel.schedule_time_hhmm")}
               .value=${this._newTime}
               @input=${(e) => {
             this._newTime = e.target.value;
@@ -1976,7 +1976,7 @@ class ViewSchedule extends i {
             this._newEnabled = e.target.checked;
         }}
               />
-              ${t(this.hass, "panel.schedule_slot_enabled")}</label
+              ${t(this.hass, "config_panel.schedule_slot_enabled")}</label
             >
           </div>
         </div>
@@ -1990,7 +1990,7 @@ class ViewSchedule extends i {
                 @click=${() => this._closeAddSlotDialog()}
                 ?disabled=${this._busy}
               >
-                ${t(this.hass, "panel.zones_cancel")}
+                ${t(this.hass, "config_panel.zones_cancel")}
               </button>
               <button
                 type="button"
@@ -2010,8 +2010,8 @@ class ViewSchedule extends i {
         }}
               >
                 ${this._busy
-            ? t(this.hass, "panel.schedule_adding")
-            : t(this.hass, "panel.schedule_add_slot_btn")}
+            ? t(this.hass, "config_panel.schedule_adding")
+            : t(this.hass, "config_panel.schedule_add_slot_btn")}
               </button>
             </div>
           </div>
@@ -2026,10 +2026,10 @@ class ViewSchedule extends i {
         ${draft
             ? b `
               <div class="field-block">
-                <span class="field-title">${t(this.hass, "panel.schedule_name_optional_title")}</span>
+                <span class="field-title">${t(this.hass, "config_panel.schedule_name_optional_title")}</span>
                 <div class="field-row">
                   <ha-textfield
-                    .label=${t(this.hass, "panel.schedule_slot_name")}
+                    .label=${t(this.hass, "config_panel.schedule_slot_name")}
                     .value=${draft.name}
                     @input=${(e) => {
                 draft.name = e.target.value;
@@ -2038,7 +2038,7 @@ class ViewSchedule extends i {
                 </div>
               </div>
               <div class="field-block">
-                <span class="field-title">${t(this.hass, "panel.schedule_weekday_title")}</span>
+                <span class="field-title">${t(this.hass, "config_panel.schedule_weekday_title")}</span>
                 <select
                   class="field-select"
                   .value=${String(draft.weekday)}
@@ -2053,10 +2053,10 @@ class ViewSchedule extends i {
                 </select>
               </div>
               <div class="field-block">
-                <span class="field-title">${t(this.hass, "panel.schedule_start_time_title")}</span>
+                <span class="field-title">${t(this.hass, "config_panel.schedule_start_time_title")}</span>
                 <div class="field-row">
                   <ha-textfield
-                    .label=${t(this.hass, "panel.schedule_time_hhmm")}
+                    .label=${t(this.hass, "config_panel.schedule_time_hhmm")}
                     .value=${draft.time_local}
                     @input=${(e) => {
                 draft.time_local = e.target.value;
@@ -2074,13 +2074,13 @@ class ViewSchedule extends i {
                 draft.enabled = e.target.checked;
             }}
                     />
-                    ${t(this.hass, "panel.schedule_slot_enabled")}</label
+                    ${t(this.hass, "config_panel.schedule_slot_enabled")}</label
                   >
                 </div>
               </div>
               <div class="field-block" style="margin-top:8px">
-                <span class="field-title">${t(this.hass, "panel.schedule_run_order_title")}</span>
-                <p class="field-desc">${t(this.hass, "panel.schedule_run_order_desc")}</p>
+                <span class="field-title">${t(this.hass, "config_panel.schedule_run_order_title")}</span>
+                <p class="field-desc">${t(this.hass, "config_panel.schedule_run_order_desc")}</p>
                 <ul class="zones">
                   ${(() => {
                 const pmap = phaseIndexByZoneId(draft.zone_ids_ordered, this._zonesPhaseInput(), this._maxParallelZones());
@@ -2091,7 +2091,7 @@ class ViewSchedule extends i {
                     const showPhase = pnum !== undefined && pnum !== prevP;
                     return b `
                         ${showPhase
-                        ? b `<li class="phase-sep"><span>${t(this.hass, "panel.schedule_phase_n", { n: pnum ?? 0 })}</span></li>`
+                        ? b `<li class="phase-sep"><span>${t(this.hass, "config_panel.schedule_phase_n", { n: pnum ?? 0 })}</span></li>`
                         : A}
                         <li>
                         <span>${idx + 1}. ${this._zoneName(zid)}</span>
@@ -2107,7 +2107,7 @@ class ViewSchedule extends i {
                         }
                     }}
                           >
-                            ${t(this.hass, "panel.schedule_up")}
+                            ${t(this.hass, "config_panel.schedule_up")}
                           </button>
                           <button
                             type="button"
@@ -2120,7 +2120,7 @@ class ViewSchedule extends i {
                         }
                     }}
                           >
-                            ${t(this.hass, "panel.schedule_down")}
+                            ${t(this.hass, "config_panel.schedule_down")}
                           </button>
                           <button
                             type="button"
@@ -2130,7 +2130,7 @@ class ViewSchedule extends i {
                         this.requestUpdate();
                     }}
                           >
-                            ${t(this.hass, "panel.schedule_remove")}
+                            ${t(this.hass, "config_panel.schedule_remove")}
                           </button>
                         </span>
                       </li>
@@ -2141,7 +2141,7 @@ class ViewSchedule extends i {
                 ${addZoneOpts.length
                 ? b `
                       <div class="field-block" style="margin-top:12px">
-                        <span class="field-title">${t(this.hass, "panel.schedule_add_zone_title")}</span>
+                        <span class="field-title">${t(this.hass, "config_panel.schedule_add_zone_title")}</span>
                         <select
                           class="field-select"
                           .value=${this._addZonePick}
@@ -2149,7 +2149,7 @@ class ViewSchedule extends i {
                     this._addZonePick = e.target.value;
                 }}
                         >
-                          <option value="">${t(this.hass, "panel.schedule_choose_zone")}</option>
+                          <option value="">${t(this.hass, "config_panel.schedule_choose_zone")}</option>
                           ${addZoneOpts.map((id) => b `<option value=${id}>${this._zoneName(id)}</option>`)}
                         </select>
                         <div class="action-row" style="margin-top:10px">
@@ -2169,14 +2169,14 @@ class ViewSchedule extends i {
                     }
                 }}
                           >
-                            ${t(this.hass, "panel.schedule_add_to_list")}
+                            ${t(this.hass, "config_panel.schedule_add_to_list")}
                           </button>
                         </div>
                       </div>
                     `
                 : zones && Object.keys(zones).length > 0
-                    ? b `<p class="field-desc">${t(this.hass, "panel.schedule_all_zones_in_slot")}</p>`
-                    : b `<p class="field-desc">${t(this.hass, "panel.schedule_create_zones_first")}</p>`}
+                    ? b `<p class="field-desc">${t(this.hass, "config_panel.schedule_all_zones_in_slot")}</p>`
+                    : b `<p class="field-desc">${t(this.hass, "config_panel.schedule_create_zones_first")}</p>`}
               </div>
             `
             : A}
@@ -2191,7 +2191,7 @@ class ViewSchedule extends i {
                       ?disabled=${this._busy}
                       @click=${() => this._deleteSlotDraft()}
                     >
-                      ${t(this.hass, "panel.schedule_delete_slot")}
+                      ${t(this.hass, "config_panel.schedule_delete_slot")}
                     </button>
                   `
             : A}
@@ -2203,7 +2203,7 @@ class ViewSchedule extends i {
                 @click=${() => this._closeEditDialog()}
                 ?disabled=${this._busy}
               >
-                ${t(this.hass, "panel.zones_cancel")}
+                ${t(this.hass, "config_panel.zones_cancel")}
               </button>
               <button
                 type="button"
@@ -2212,8 +2212,8 @@ class ViewSchedule extends i {
                 @click=${() => this._saveSlotDraft()}
               >
                 ${this._busy
-            ? t(this.hass, "panel.schedule_saving")
-            : t(this.hass, "panel.schedule_save_slot")}
+            ? t(this.hass, "config_panel.schedule_saving")
+            : t(this.hass, "config_panel.schedule_save_slot")}
               </button>
             </div>
           </div>
@@ -2309,49 +2309,49 @@ class ViewStatus extends i {
             : [];
         const lastErr = rs.last_error ? String(rs.last_error) : "";
         return b `
-      <ha-card .header=${t(this.hass, "panel.status_card_title")}>
+      <ha-card .header=${t(this.hass, "config_panel.status_card_title")}>
         <div class="card-content">
-          <p class="muted">${t(this.hass, "panel.status_intro")}</p>
+          <p class="muted">${t(this.hass, "config_panel.status_intro")}</p>
           <div class="summary">
             <p>
-              <strong>${t(this.hass, "panel.status_state_label")}</strong>
+              <strong>${t(this.hass, "config_panel.status_state_label")}</strong>
               ${busy
-            ? t(this.hass, "panel.status_state_run_in_progress")
+            ? t(this.hass, "config_panel.status_state_run_in_progress")
             : stateStr === "error"
-                ? t(this.hass, "panel.status_state_error")
-                : t(this.hass, "panel.status_state_idle")}
+                ? t(this.hass, "config_panel.status_state_error")
+                : t(this.hass, "config_panel.status_state_idle")}
             </p>
             ${busy && manual
             ? b `<p>
-                  <strong>${t(this.hass, "panel.status_manual_label")}</strong>
-                  ${t(this.hass, "panel.status_manual_text")}
+                  <strong>${t(this.hass, "config_panel.status_manual_label")}</strong>
+                  ${t(this.hass, "config_panel.status_manual_text")}
                 </p>`
             : busy && !manual
                 ? b `<p>
-                    <strong>${t(this.hass, "panel.status_scheduled_label")}</strong>
-                    ${t(this.hass, "panel.status_scheduled_text")}
+                    <strong>${t(this.hass, "config_panel.status_scheduled_label")}</strong>
+                    ${t(this.hass, "config_panel.status_scheduled_text")}
                   </p>`
-                : b `<p class="muted">${t(this.hass, "panel.status_idle_hint")}</p>`}
+                : b `<p class="muted">${t(this.hass, "config_panel.status_idle_hint")}</p>`}
             ${active.length
             ? b `<p>
-                  <strong>${t(this.hass, "panel.status_active_zones")}</strong>
+                  <strong>${t(this.hass, "config_panel.status_active_zones")}</strong>
                   ${this._zoneList(active)}
                 </p>`
             : A}
             ${queued.length
             ? b `<p>
-                  <strong>${t(this.hass, "panel.status_queued_zones")}</strong>
+                  <strong>${t(this.hass, "config_panel.status_queued_zones")}</strong>
                   ${this._zoneList(queued)}
                 </p>`
             : A}
             ${lastErr
             ? b `<p>
-                  <strong>${t(this.hass, "panel.status_last_error")}</strong>
+                  <strong>${t(this.hass, "config_panel.status_last_error")}</strong>
                   ${lastErr}
                 </p>`
             : A}
             <p class="muted" style="margin-top:12px">
-              ${t(this.hass, "panel.status_error_clear_hint")}
+              ${t(this.hass, "config_panel.status_error_clear_hint")}
             </p>
           </div>
           <button
@@ -2362,8 +2362,8 @@ class ViewStatus extends i {
         }}
           >
             ${this._showRaw
-            ? t(this.hass, "panel.status_hide_raw")
-            : t(this.hass, "panel.status_show_raw")}
+            ? t(this.hass, "config_panel.status_hide_raw")
+            : t(this.hass, "config_panel.status_show_raw")}
           </button>
           ${this._showRaw
             ? b `<pre>${JSON.stringify(this.runState, null, 2)}</pre>`
@@ -2584,11 +2584,11 @@ class ViewZones extends i {
     _renderZoneFields(z) {
         return b `
       <div class="field-block">
-        <span class="field-title">${t(this.hass, "panel.zones_field_name_title")}</span>
-        <p class="field-desc">${t(this.hass, "panel.zones_field_name_desc")}</p>
+        <span class="field-title">${t(this.hass, "config_panel.zones_field_name_title")}</span>
+        <p class="field-desc">${t(this.hass, "config_panel.zones_field_name_desc")}</p>
         <div class="field-row">
           <ha-textfield
-            .label=${t(this.hass, "panel.zones_field_zone_name")}
+            .label=${t(this.hass, "config_panel.zones_field_zone_name")}
             .value=${z.name}
             @input=${(e) => {
             z.name = e.target.value;
@@ -2598,15 +2598,15 @@ class ViewZones extends i {
         </div>
       </div>
       <div class="field-block">
-        <span class="field-title">${t(this.hass, "panel.zones_outputs_title")}</span>
-        <p class="field-desc">${t(this.hass, "panel.zones_outputs_desc")}</p>
+        <span class="field-title">${t(this.hass, "config_panel.zones_outputs_title")}</span>
+        <p class="field-desc">${t(this.hass, "config_panel.zones_outputs_desc")}</p>
         <div class="field-row">
           <div class="entity-picker-rows">
             ${z.switch_entity_ids.map((eid, i) => b `
                 <div class="entity-picker-row">
                   ${renderNativeEntityField(this.hass, this._zonesEntityListId(), i === 0
-            ? t(this.hass, "panel.zones_output_first")
-            : t(this.hass, "panel.zones_output_n", { n: i + 1 }), eid, (v) => {
+            ? t(this.hass, "config_panel.zones_output_first")
+            : t(this.hass, "config_panel.zones_output_n", { n: i + 1 }), eid, (v) => {
             const next = [...z.switch_entity_ids];
             next[i] = v;
             z.switch_entity_ids = next;
@@ -2625,7 +2625,7 @@ class ViewZones extends i {
                 this.requestUpdate();
             }}
                         >
-                          ${t(this.hass, "panel.general_remove")}
+                          ${t(this.hass, "config_panel.general_remove")}
                         </button>
                       `
             : A}
@@ -2639,18 +2639,18 @@ class ViewZones extends i {
             this.requestUpdate();
         }}
             >
-              ${t(this.hass, "panel.zones_add_output")}
+              ${t(this.hass, "config_panel.zones_add_output")}
             </button>
           </div>
         </div>
       </div>
       <div class="field-block">
-        <span class="field-title">${t(this.hass, "panel.zones_runtime_title")}</span>
-        <p class="field-desc">${t(this.hass, "panel.zones_runtime_desc")}</p>
+        <span class="field-title">${t(this.hass, "config_panel.zones_runtime_title")}</span>
+        <p class="field-desc">${t(this.hass, "config_panel.zones_runtime_desc")}</p>
         <div class="duration-row">
           <ha-textfield
             type="number"
-            .label=${t(this.hass, "panel.zones_duration_eco")}
+            .label=${t(this.hass, "config_panel.zones_duration_eco")}
             .value=${String(z.duration_eco_min)}
             min="0"
             max="240"
@@ -2660,7 +2660,7 @@ class ViewZones extends i {
           ></ha-textfield>
           <ha-textfield
             type="number"
-            .label=${t(this.hass, "panel.zones_duration_normal")}
+            .label=${t(this.hass, "config_panel.zones_duration_normal")}
             .value=${String(z.duration_normal_min)}
             min="0"
             max="240"
@@ -2670,7 +2670,7 @@ class ViewZones extends i {
           ></ha-textfield>
           <ha-textfield
             type="number"
-            .label=${t(this.hass, "panel.zones_duration_extra")}
+            .label=${t(this.hass, "config_panel.zones_duration_extra")}
             .value=${String(z.duration_extra_min)}
             min="0"
             max="240"
@@ -2681,8 +2681,8 @@ class ViewZones extends i {
         </div>
       </div>
       <div class="field-block">
-        <span class="field-title">${t(this.hass, "panel.zones_behavior_title")}</span>
-        <p class="field-desc">${t(this.hass, "panel.zones_behavior_desc")}</p>
+        <span class="field-title">${t(this.hass, "config_panel.zones_behavior_title")}</span>
+        <p class="field-desc">${t(this.hass, "config_panel.zones_behavior_desc")}</p>
         <div class="checkboxes">
           <label
             ><input
@@ -2692,7 +2692,7 @@ class ViewZones extends i {
             z.enabled = e.target.checked;
         }}
             />
-            ${t(this.hass, "panel.zones_enabled")}</label
+            ${t(this.hass, "config_panel.zones_enabled")}</label
           >
           <label
             ><input
@@ -2702,7 +2702,7 @@ class ViewZones extends i {
             z.exclusive = e.target.checked;
         }}
             />
-            ${t(this.hass, "panel.zones_exclusive")}</label
+            ${t(this.hass, "config_panel.zones_exclusive")}</label
           >
         </div>
       </div>
@@ -2713,10 +2713,10 @@ class ViewZones extends i {
         const edit = this._editDraft;
         return b `
       ${renderEntityDatalist(this.hass, this._zonesEntityListId(), domains)}
-      <ha-card .header=${t(this.hass, "panel.zones_card_title")}>
+      <ha-card .header=${t(this.hass, "config_panel.zones_card_title")}>
         <div class="card-content">
           ${this._msg ? b `<div class="error">${this._msg}</div>` : A}
-          <p class="intro">${t(this.hass, "panel.zones_intro")}</p>
+          <p class="intro">${t(this.hass, "config_panel.zones_intro")}</p>
           <div class="field-block toolbar">
             <button
               type="button"
@@ -2725,7 +2725,7 @@ class ViewZones extends i {
             this._addDialogOpen = true;
         }}
             >
-              ${t(this.hass, "panel.zones_add_zone")}
+              ${t(this.hass, "config_panel.zones_add_zone")}
             </button>
           </div>
           ${zones.map((z) => {
@@ -2735,17 +2735,17 @@ class ViewZones extends i {
                 <div class="zone-list-main">
                   <p class="zone-list-name">${z.name || z.zone_id.slice(0, 8)}</p>
                   <p class="zone-list-detail">
-                    ${z.enabled ? "" : t(this.hass, "panel.zones_detail_disabled")}
-                    ${z.exclusive ? t(this.hass, "panel.zones_detail_exclusive") : ""}
-                    ${t(this.hass, "panel.zones_detail_durations", {
+                    ${z.enabled ? "" : t(this.hass, "config_panel.zones_detail_disabled")}
+                    ${z.exclusive ? t(this.hass, "config_panel.zones_detail_exclusive") : ""}
+                    ${t(this.hass, "config_panel.zones_detail_durations", {
                 eco: z.duration_eco_min,
                 normal: z.duration_normal_min,
                 extra: z.duration_extra_min,
             })}
                     ${outs === 1
-                ? t(this.hass, "panel.zones_detail_outputs_one")
+                ? t(this.hass, "config_panel.zones_detail_outputs_one")
                 : outs > 1
-                    ? t(this.hass, "panel.zones_detail_outputs_many", { n: outs })
+                    ? t(this.hass, "config_panel.zones_detail_outputs_many", { n: outs })
                     : A}
                   </p>
                 </div>
@@ -2758,7 +2758,7 @@ class ViewZones extends i {
                 this._editDraft = this._cloneZone(z);
             }}
                   >
-                    ${t(this.hass, "panel.zones_edit")}
+                    ${t(this.hass, "config_panel.zones_edit")}
                   </button>
                 </div>
               </div>
@@ -2769,7 +2769,7 @@ class ViewZones extends i {
 
       <ha-dialog
         .open=${this._addDialogOpen}
-        header-title=${t(this.hass, "panel.zones_dialog_new_title")}
+        header-title=${t(this.hass, "config_panel.zones_dialog_new_title")}
         @closed=${() => this._closeAddDialog()}
       >
         ${this._renderZoneFields(this._new)}
@@ -2778,7 +2778,7 @@ class ViewZones extends i {
             <div class="dialog-footer-lead"></div>
             <div class="dialog-footer-actions">
               <button type="button" class="btn-outline" @click=${() => this._closeAddDialog()} ?disabled=${this._busy}>
-                ${t(this.hass, "panel.zones_cancel")}
+                ${t(this.hass, "config_panel.zones_cancel")}
               </button>
               <button
                 type="button"
@@ -2787,8 +2787,8 @@ class ViewZones extends i {
                 @click=${() => this._saveZone("add", undefined, { ...this._new, zone_id: "" })}
               >
                 ${this._busy
-            ? t(this.hass, "panel.zones_adding")
-            : t(this.hass, "panel.zones_add_zone_btn")}
+            ? t(this.hass, "config_panel.zones_adding")
+            : t(this.hass, "config_panel.zones_add_zone_btn")}
               </button>
             </div>
           </div>
@@ -2798,7 +2798,7 @@ class ViewZones extends i {
       <ha-dialog
         .open=${edit !== null}
         header-title=${edit
-            ? t(this.hass, "panel.zones_dialog_edit_title", {
+            ? t(this.hass, "config_panel.zones_dialog_edit_title", {
                 name: edit.name || edit.zone_id.slice(0, 8),
             })
             : ""}
@@ -2817,12 +2817,12 @@ class ViewZones extends i {
                       @click=${() => {
                 if (!edit)
                     return;
-                if (confirm(t(this.hass, "panel.zones_confirm_delete"))) {
+                if (confirm(t(this.hass, "config_panel.zones_confirm_delete"))) {
                     void this._saveZone("delete", edit.zone_id);
                 }
             }}
                     >
-                      ${t(this.hass, "panel.zones_delete_zone")}
+                      ${t(this.hass, "config_panel.zones_delete_zone")}
                     </button>
                   `
             : A}
@@ -2834,7 +2834,7 @@ class ViewZones extends i {
                 @click=${() => this._closeEditDialog()}
                 ?disabled=${this._busy}
               >
-                ${t(this.hass, "panel.zones_cancel")}
+                ${t(this.hass, "config_panel.zones_cancel")}
               </button>
               <button
                 type="button"
@@ -2843,8 +2843,8 @@ class ViewZones extends i {
                 @click=${() => edit && this._saveZone("update", edit.zone_id, edit)}
               >
                 ${this._busy
-            ? t(this.hass, "panel.zones_saving_changes")
-            : t(this.hass, "panel.zones_save_changes")}
+            ? t(this.hass, "config_panel.zones_saving_changes")
+            : t(this.hass, "config_panel.zones_save_changes")}
               </button>
             </div>
           </div>
@@ -2928,7 +2928,7 @@ class SimpleIrrigationPanel extends i {
             return;
         }
         try {
-            await this.hass.loadBackendTranslation("panel", TRANSLATION_DOMAIN);
+            await this.hass.loadBackendTranslation("config_panel", TRANSLATION_DOMAIN);
         }
         catch {
             /* localize may keep returning missing keys */
@@ -3139,11 +3139,11 @@ class SimpleIrrigationPanel extends i {
         if (!path.entryId) {
             return b `
         <div class="entry-picker">
-          <h2>${t(this.hass, "panel.entry_picker_title")}</h2>
-          <p class="lead">${t(this.hass, "panel.entry_picker_lead")}</p>
+          <h2>${t(this.hass, "config_panel.entry_picker_title")}</h2>
+          <p class="lead">${t(this.hass, "config_panel.entry_picker_lead")}</p>
           ${this._error ? b `<p class="error">${this._error}</p>` : A}
           ${this._entriesLoading
-                ? b `<p class="muted">${t(this.hass, "panel.entry_picker_loading")}</p>`
+                ? b `<p class="muted">${t(this.hass, "config_panel.entry_picker_loading")}</p>`
                 : A}
           <div class="entry-cards">
             ${this._entries.map((e) => b `
@@ -3155,25 +3155,25 @@ class SimpleIrrigationPanel extends i {
                     <div class="entry-card-head">
                       <div class="entry-card-title">${e.title}</div>
                       ${e.disabled_by
-                ? b `<span class="entry-badge entry-badge-ha">${t(this.hass, "panel.entry_badge_ha")}</span>`
+                ? b `<span class="entry-badge entry-badge-ha">${t(this.hass, "config_panel.entry_badge_ha")}</span>`
                 : !e.plan_enabled
-                    ? b `<span class="entry-badge entry-badge-off">${t(this.hass, "panel.entry_badge_plan_off")}</span>`
-                    : b `<span class="entry-badge entry-badge-on">${t(this.hass, "panel.entry_badge_active")}</span>`}
+                    ? b `<span class="entry-badge entry-badge-off">${t(this.hass, "config_panel.entry_badge_plan_off")}</span>`
+                    : b `<span class="entry-badge entry-badge-on">${t(this.hass, "config_panel.entry_badge_active")}</span>`}
                     </div>
-                    <p class="entry-card-desc">${t(this.hass, "panel.entry_card_desc")}</p>
+                    <p class="entry-card-desc">${t(this.hass, "config_panel.entry_card_desc")}</p>
                   </button>
                 `)}
           </div>
           ${!this._entries.length && !this._entriesLoading
-                ? b `<p class="muted">${t(this.hass, "panel.entry_picker_empty")}</p>`
+                ? b `<p class="muted">${t(this.hass, "config_panel.entry_picker_empty")}</p>`
                 : A}
-          <div class="howto-add">${t(this.hass, "panel.entry_picker_howto")}</div>
+          <div class="howto-add">${t(this.hass, "config_panel.entry_picker_howto")}</div>
         </div>
       `;
         }
         if (this._loading || !this._state) {
             return b `<div class="view"><div class="view-inner">${this._error ||
-                t(this.hass, "panel.loading")}</div></div>`;
+                t(this.hass, "config_panel.loading")}</div></div>`;
         }
         const inst = this._state.installation;
         const rs = this._state.run_state;
@@ -3182,19 +3182,19 @@ class SimpleIrrigationPanel extends i {
       <div class="header">
         <div class="toolbar">
           <ha-menu-button .hass=${this.hass} .narrow=${this.narrow}></ha-menu-button>
-          <div class="main-title">${t(this.hass, "panel.main_title")}</div>
+          <div class="main-title">${t(this.hass, "config_panel.main_title")}</div>
           <div class="version">v${VERSION}</div>
         </div>
         <ha-tab-group @wa-tab-show=${this._onTab}>
           ${["general", "zones", "schedule", "status"].map((p) => b `
               <ha-tab-group-tab slot="nav" panel=${p} .active=${page === p}>
                 ${p === "general"
-            ? t(this.hass, "panel.tab_general")
+            ? t(this.hass, "config_panel.tab_general")
             : p === "zones"
-                ? t(this.hass, "panel.tab_zones")
+                ? t(this.hass, "config_panel.tab_zones")
                 : p === "schedule"
-                    ? t(this.hass, "panel.tab_schedule")
-                    : t(this.hass, "panel.tab_status")}
+                    ? t(this.hass, "config_panel.tab_schedule")
+                    : t(this.hass, "config_panel.tab_status")}
               </ha-tab-group-tab>
             `)}
         </ha-tab-group>

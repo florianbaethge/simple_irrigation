@@ -44,7 +44,7 @@ export class SimpleIrrigationPanel extends LitElement {
   private _watchedRunningEntity?: string;
   private _watchedEntryId?: string;
 
-  /** Language we last loaded `panel` category for (HA does not auto-load it for `panel_custom`). */
+  /** Language we last loaded `config_panel` category for (HA does not auto-load it for `panel_custom`). */
   private _panelI18nLang?: string;
   /** After first successful panel translation fetch (or no loader API). */
   private _initialPanelI18nDone = false;
@@ -84,7 +84,7 @@ export class SimpleIrrigationPanel extends LitElement {
       return;
     }
     try {
-      await this.hass.loadBackendTranslation("panel", TRANSLATION_DOMAIN);
+      await this.hass.loadBackendTranslation("config_panel", TRANSLATION_DOMAIN);
     } catch {
       /* localize may keep returning missing keys */
     }
@@ -314,11 +314,11 @@ export class SimpleIrrigationPanel extends LitElement {
     if (!path.entryId) {
       return html`
         <div class="entry-picker">
-          <h2>${t(this.hass, "panel.entry_picker_title")}</h2>
-          <p class="lead">${t(this.hass, "panel.entry_picker_lead")}</p>
+          <h2>${t(this.hass, "config_panel.entry_picker_title")}</h2>
+          <p class="lead">${t(this.hass, "config_panel.entry_picker_lead")}</p>
           ${this._error ? html`<p class="error">${this._error}</p>` : nothing}
           ${this._entriesLoading
-            ? html`<p class="muted">${t(this.hass, "panel.entry_picker_loading")}</p>`
+            ? html`<p class="muted">${t(this.hass, "config_panel.entry_picker_loading")}</p>`
             : nothing}
           <div class="entry-cards">
             ${this._entries.map(
@@ -334,34 +334,34 @@ export class SimpleIrrigationPanel extends LitElement {
                       ${e.disabled_by
                         ? html`<span class="entry-badge entry-badge-ha">${t(
                             this.hass,
-                            "panel.entry_badge_ha"
+                            "config_panel.entry_badge_ha"
                           )}</span>`
                         : !e.plan_enabled
                           ? html`<span class="entry-badge entry-badge-off">${t(
                               this.hass,
-                              "panel.entry_badge_plan_off"
+                              "config_panel.entry_badge_plan_off"
                             )}</span>`
                           : html`<span class="entry-badge entry-badge-on">${t(
                               this.hass,
-                              "panel.entry_badge_active"
+                              "config_panel.entry_badge_active"
                             )}</span>`}
                     </div>
-                    <p class="entry-card-desc">${t(this.hass, "panel.entry_card_desc")}</p>
+                    <p class="entry-card-desc">${t(this.hass, "config_panel.entry_card_desc")}</p>
                   </button>
                 `
             )}
           </div>
           ${!this._entries.length && !this._entriesLoading
-            ? html`<p class="muted">${t(this.hass, "panel.entry_picker_empty")}</p>`
+            ? html`<p class="muted">${t(this.hass, "config_panel.entry_picker_empty")}</p>`
             : nothing}
-          <div class="howto-add">${t(this.hass, "panel.entry_picker_howto")}</div>
+          <div class="howto-add">${t(this.hass, "config_panel.entry_picker_howto")}</div>
         </div>
       `;
     }
 
     if (this._loading || !this._state) {
       return html`<div class="view"><div class="view-inner">${this._error ||
-        t(this.hass, "panel.loading")}</div></div>`;
+        t(this.hass, "config_panel.loading")}</div></div>`;
     }
 
     const inst = this._state.installation as Record<string, unknown>;
@@ -372,7 +372,7 @@ export class SimpleIrrigationPanel extends LitElement {
       <div class="header">
         <div class="toolbar">
           <ha-menu-button .hass=${this.hass} .narrow=${this.narrow}></ha-menu-button>
-          <div class="main-title">${t(this.hass, "panel.main_title")}</div>
+          <div class="main-title">${t(this.hass, "config_panel.main_title")}</div>
           <div class="version">v${VERSION}</div>
         </div>
         <ha-tab-group @wa-tab-show=${this._onTab}>
@@ -380,12 +380,12 @@ export class SimpleIrrigationPanel extends LitElement {
             (p) => html`
               <ha-tab-group-tab slot="nav" panel=${p} .active=${page === p}>
                 ${p === "general"
-                  ? t(this.hass, "panel.tab_general")
+                  ? t(this.hass, "config_panel.tab_general")
                   : p === "zones"
-                    ? t(this.hass, "panel.tab_zones")
+                    ? t(this.hass, "config_panel.tab_zones")
                     : p === "schedule"
-                      ? t(this.hass, "panel.tab_schedule")
-                      : t(this.hass, "panel.tab_status")}
+                      ? t(this.hass, "config_panel.tab_schedule")
+                      : t(this.hass, "config_panel.tab_status")}
               </ha-tab-group-tab>
             `
           )}

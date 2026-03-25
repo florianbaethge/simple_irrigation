@@ -252,13 +252,13 @@ export class ViewSchedule extends LitElement {
         const err = res.error ?? "run_failed";
         this._msg =
           err === "busy"
-            ? t(this.hass, "panel.schedule_err_busy")
+            ? t(this.hass, "config_panel.schedule_err_busy")
             : err === "empty_slot"
-              ? t(this.hass, "panel.schedule_err_empty_slot")
+              ? t(this.hass, "config_panel.schedule_err_empty_slot")
               : err === "no_runnable_zones"
-                ? t(this.hass, "panel.schedule_err_no_runnable")
+                ? t(this.hass, "config_panel.schedule_err_no_runnable")
                 : err === "unknown_slot"
-                  ? t(this.hass, "panel.schedule_err_unknown_slot")
+                  ? t(this.hass, "config_panel.schedule_err_unknown_slot")
                   : String(err);
       } else {
         this.onSaved?.();
@@ -337,7 +337,7 @@ export class ViewSchedule extends LitElement {
   private async _deleteSlotDraft(): Promise<void> {
     const d = this._slotEditDraft;
     if (!d) return;
-    if (!confirm(t(this.hass, "panel.schedule_confirm_delete_slot"))) return;
+    if (!confirm(t(this.hass, "config_panel.schedule_confirm_delete_slot"))) return;
     const ok = await this._call({ action: "delete", slot_id: d.slot_id });
     if (ok) {
       this._closeEditDialog();
@@ -351,7 +351,7 @@ export class ViewSchedule extends LitElement {
     const addZoneOpts = draft ? this._addZoneOptionsForDraft(draft) : [];
     const editSlotTitle =
       draft != null
-        ? t(this.hass, "panel.schedule_edit_dialog_title", {
+        ? t(this.hass, "config_panel.schedule_edit_dialog_title", {
             summary: draft.name.trim()
               ? `${draft.name.trim()} · ${this._wd(draft.weekday)} ${this._fmtSlotTime(
                   draft.time_local
@@ -361,10 +361,10 @@ export class ViewSchedule extends LitElement {
         : "";
 
     return html`
-      <ha-card .header=${t(this.hass, "panel.schedule_card_title")}>
+      <ha-card .header=${t(this.hass, "config_panel.schedule_card_title")}>
         <div class="card-content">
           ${this._msg ? html`<div class="error">${this._msg}</div>` : nothing}
-          <p class="intro">${t(this.hass, "panel.schedule_intro")}</p>
+          <p class="intro">${t(this.hass, "config_panel.schedule_intro")}</p>
           <div class="toolbar">
             <button
               type="button"
@@ -374,7 +374,7 @@ export class ViewSchedule extends LitElement {
                 this._addSlotDialogOpen = true;
               }}
             >
-              ${t(this.hass, "panel.schedule_add_slot")}
+              ${t(this.hass, "config_panel.schedule_add_slot")}
             </button>
           </div>
           ${slots.map((slot) => {
@@ -389,12 +389,12 @@ export class ViewSchedule extends LitElement {
                         )}
                         ${this._fmtSlotTime(slot.time_local)}`
                       : html`${this._wd(slot.weekday)} ${this._fmtSlotTime(slot.time_local)}`}
-                    ${slot.enabled ? "" : t(this.hass, "panel.schedule_disabled_suffix")}
+                    ${slot.enabled ? "" : t(this.hass, "config_panel.schedule_disabled_suffix")}
                   </p>
                   <p class="slot-row-meta">
                     ${n === 1
-                      ? t(this.hass, "panel.schedule_zones_in_order_one")
-                      : t(this.hass, "panel.schedule_zones_in_order_many", { n })}
+                      ? t(this.hass, "config_panel.schedule_zones_in_order_one")
+                      : t(this.hass, "config_panel.schedule_zones_in_order_many", { n })}
                   </p>
                 </div>
                 <div class="slot-row-actions">
@@ -406,7 +406,7 @@ export class ViewSchedule extends LitElement {
                     slot.zone_ids_ordered.length === 0}
                     @click=${() => this._runSlotNow(slot.slot_id)}
                   >
-                    ${t(this.hass, "panel.schedule_run_slot_now")}
+                    ${t(this.hass, "config_panel.schedule_run_slot_now")}
                   </button>
                   <button
                     type="button"
@@ -417,7 +417,7 @@ export class ViewSchedule extends LitElement {
                       this._slotEditDraft = this._cloneSlot(slot);
                     }}
                   >
-                    ${t(this.hass, "panel.schedule_edit")}
+                    ${t(this.hass, "config_panel.schedule_edit")}
                   </button>
                 </div>
               </div>
@@ -428,16 +428,16 @@ export class ViewSchedule extends LitElement {
 
       <ha-dialog
         .open=${this._addSlotDialogOpen}
-        header-title=${t(this.hass, "panel.schedule_dialog_new_title")}
+        header-title=${t(this.hass, "config_panel.schedule_dialog_new_title")}
         @closed=${() => this._closeAddSlotDialog()}
       >
-        <p class="field-desc">${t(this.hass, "panel.schedule_dialog_new_hint")}</p>
+        <p class="field-desc">${t(this.hass, "config_panel.schedule_dialog_new_hint")}</p>
         <div class="field-block">
-          <span class="field-title">${t(this.hass, "panel.schedule_name_optional_title")}</span>
-          <p class="field-desc">${t(this.hass, "panel.schedule_name_optional_desc")}</p>
+          <span class="field-title">${t(this.hass, "config_panel.schedule_name_optional_title")}</span>
+          <p class="field-desc">${t(this.hass, "config_panel.schedule_name_optional_desc")}</p>
           <div class="field-row">
             <ha-textfield
-              .label=${t(this.hass, "panel.schedule_slot_name")}
+              .label=${t(this.hass, "config_panel.schedule_slot_name")}
               .value=${this._newSlotName}
               @input=${(e: Event) => {
                 this._newSlotName = (e.target as HTMLInputElement).value;
@@ -446,8 +446,8 @@ export class ViewSchedule extends LitElement {
           </div>
         </div>
         <div class="field-block">
-          <span class="field-title">${t(this.hass, "panel.schedule_weekday_title")}</span>
-          <p class="field-desc">${t(this.hass, "panel.schedule_weekday_desc")}</p>
+          <span class="field-title">${t(this.hass, "config_panel.schedule_weekday_title")}</span>
+          <p class="field-desc">${t(this.hass, "config_panel.schedule_weekday_desc")}</p>
           <select
             class="field-select"
             @change=${(e: Event) => {
@@ -463,11 +463,11 @@ export class ViewSchedule extends LitElement {
           </select>
         </div>
         <div class="field-block">
-          <span class="field-title">${t(this.hass, "panel.schedule_local_time_title")}</span>
-          <p class="field-desc">${t(this.hass, "panel.schedule_local_time_desc")}</p>
+          <span class="field-title">${t(this.hass, "config_panel.schedule_local_time_title")}</span>
+          <p class="field-desc">${t(this.hass, "config_panel.schedule_local_time_desc")}</p>
           <div class="field-row">
             <ha-textfield
-              .label=${t(this.hass, "panel.schedule_time_hhmm")}
+              .label=${t(this.hass, "config_panel.schedule_time_hhmm")}
               .value=${this._newTime}
               @input=${(e: Event) => {
                 this._newTime = (e.target as HTMLInputElement).value;
@@ -485,7 +485,7 @@ export class ViewSchedule extends LitElement {
                   this._newEnabled = (e.target as HTMLInputElement).checked;
                 }}
               />
-              ${t(this.hass, "panel.schedule_slot_enabled")}</label
+              ${t(this.hass, "config_panel.schedule_slot_enabled")}</label
             >
           </div>
         </div>
@@ -499,7 +499,7 @@ export class ViewSchedule extends LitElement {
                 @click=${() => this._closeAddSlotDialog()}
                 ?disabled=${this._busy}
               >
-                ${t(this.hass, "panel.zones_cancel")}
+                ${t(this.hass, "config_panel.zones_cancel")}
               </button>
               <button
                 type="button"
@@ -519,8 +519,8 @@ export class ViewSchedule extends LitElement {
                 }}
               >
                 ${this._busy
-                  ? t(this.hass, "panel.schedule_adding")
-                  : t(this.hass, "panel.schedule_add_slot_btn")}
+                  ? t(this.hass, "config_panel.schedule_adding")
+                  : t(this.hass, "config_panel.schedule_add_slot_btn")}
               </button>
             </div>
           </div>
@@ -535,10 +535,10 @@ export class ViewSchedule extends LitElement {
         ${draft
           ? html`
               <div class="field-block">
-                <span class="field-title">${t(this.hass, "panel.schedule_name_optional_title")}</span>
+                <span class="field-title">${t(this.hass, "config_panel.schedule_name_optional_title")}</span>
                 <div class="field-row">
                   <ha-textfield
-                    .label=${t(this.hass, "panel.schedule_slot_name")}
+                    .label=${t(this.hass, "config_panel.schedule_slot_name")}
                     .value=${draft.name}
                     @input=${(e: Event) => {
                       draft.name = (e.target as HTMLInputElement).value;
@@ -547,7 +547,7 @@ export class ViewSchedule extends LitElement {
                 </div>
               </div>
               <div class="field-block">
-                <span class="field-title">${t(this.hass, "panel.schedule_weekday_title")}</span>
+                <span class="field-title">${t(this.hass, "config_panel.schedule_weekday_title")}</span>
                 <select
                   class="field-select"
                   .value=${String(draft.weekday)}
@@ -565,10 +565,10 @@ export class ViewSchedule extends LitElement {
                 </select>
               </div>
               <div class="field-block">
-                <span class="field-title">${t(this.hass, "panel.schedule_start_time_title")}</span>
+                <span class="field-title">${t(this.hass, "config_panel.schedule_start_time_title")}</span>
                 <div class="field-row">
                   <ha-textfield
-                    .label=${t(this.hass, "panel.schedule_time_hhmm")}
+                    .label=${t(this.hass, "config_panel.schedule_time_hhmm")}
                     .value=${draft.time_local}
                     @input=${(e: Event) => {
                       draft.time_local = (e.target as HTMLInputElement).value;
@@ -586,13 +586,13 @@ export class ViewSchedule extends LitElement {
                         draft.enabled = (e.target as HTMLInputElement).checked;
                       }}
                     />
-                    ${t(this.hass, "panel.schedule_slot_enabled")}</label
+                    ${t(this.hass, "config_panel.schedule_slot_enabled")}</label
                   >
                 </div>
               </div>
               <div class="field-block" style="margin-top:8px">
-                <span class="field-title">${t(this.hass, "panel.schedule_run_order_title")}</span>
-                <p class="field-desc">${t(this.hass, "panel.schedule_run_order_desc")}</p>
+                <span class="field-title">${t(this.hass, "config_panel.schedule_run_order_title")}</span>
+                <p class="field-desc">${t(this.hass, "config_panel.schedule_run_order_desc")}</p>
                 <ul class="zones">
                   ${(() => {
                     const pmap = phaseIndexByZoneId(
@@ -609,7 +609,7 @@ export class ViewSchedule extends LitElement {
                         ${showPhase
                           ? html`<li class="phase-sep"><span>${t(
                               this.hass,
-                              "panel.schedule_phase_n",
+                              "config_panel.schedule_phase_n",
                               { n: pnum ?? 0 }
                             )}</span></li>`
                           : nothing}
@@ -627,7 +627,7 @@ export class ViewSchedule extends LitElement {
                               }
                             }}
                           >
-                            ${t(this.hass, "panel.schedule_up")}
+                            ${t(this.hass, "config_panel.schedule_up")}
                           </button>
                           <button
                             type="button"
@@ -640,7 +640,7 @@ export class ViewSchedule extends LitElement {
                               }
                             }}
                           >
-                            ${t(this.hass, "panel.schedule_down")}
+                            ${t(this.hass, "config_panel.schedule_down")}
                           </button>
                           <button
                             type="button"
@@ -652,7 +652,7 @@ export class ViewSchedule extends LitElement {
                               this.requestUpdate();
                             }}
                           >
-                            ${t(this.hass, "panel.schedule_remove")}
+                            ${t(this.hass, "config_panel.schedule_remove")}
                           </button>
                         </span>
                       </li>
@@ -663,7 +663,7 @@ export class ViewSchedule extends LitElement {
                 ${addZoneOpts.length
                   ? html`
                       <div class="field-block" style="margin-top:12px">
-                        <span class="field-title">${t(this.hass, "panel.schedule_add_zone_title")}</span>
+                        <span class="field-title">${t(this.hass, "config_panel.schedule_add_zone_title")}</span>
                         <select
                           class="field-select"
                           .value=${this._addZonePick}
@@ -671,7 +671,7 @@ export class ViewSchedule extends LitElement {
                             this._addZonePick = (e.target as HTMLSelectElement).value;
                           }}
                         >
-                          <option value="">${t(this.hass, "panel.schedule_choose_zone")}</option>
+                          <option value="">${t(this.hass, "config_panel.schedule_choose_zone")}</option>
                           ${addZoneOpts.map(
                             (id) => html`<option value=${id}>${this._zoneName(id)}</option>`
                           )}
@@ -695,7 +695,7 @@ export class ViewSchedule extends LitElement {
                               }
                             }}
                           >
-                            ${t(this.hass, "panel.schedule_add_to_list")}
+                            ${t(this.hass, "config_panel.schedule_add_to_list")}
                           </button>
                         </div>
                       </div>
@@ -703,11 +703,11 @@ export class ViewSchedule extends LitElement {
                   : zones && Object.keys(zones).length > 0
                     ? html`<p class="field-desc">${t(
                         this.hass,
-                        "panel.schedule_all_zones_in_slot"
+                        "config_panel.schedule_all_zones_in_slot"
                       )}</p>`
                     : html`<p class="field-desc">${t(
                         this.hass,
-                        "panel.schedule_create_zones_first"
+                        "config_panel.schedule_create_zones_first"
                       )}</p>`}
               </div>
             `
@@ -723,7 +723,7 @@ export class ViewSchedule extends LitElement {
                       ?disabled=${this._busy}
                       @click=${() => this._deleteSlotDraft()}
                     >
-                      ${t(this.hass, "panel.schedule_delete_slot")}
+                      ${t(this.hass, "config_panel.schedule_delete_slot")}
                     </button>
                   `
                 : nothing}
@@ -735,7 +735,7 @@ export class ViewSchedule extends LitElement {
                 @click=${() => this._closeEditDialog()}
                 ?disabled=${this._busy}
               >
-                ${t(this.hass, "panel.zones_cancel")}
+                ${t(this.hass, "config_panel.zones_cancel")}
               </button>
               <button
                 type="button"
@@ -744,8 +744,8 @@ export class ViewSchedule extends LitElement {
                 @click=${() => this._saveSlotDraft()}
               >
                 ${this._busy
-                  ? t(this.hass, "panel.schedule_saving")
-                  : t(this.hass, "panel.schedule_save_slot")}
+                  ? t(this.hass, "config_panel.schedule_saving")
+                  : t(this.hass, "config_panel.schedule_save_slot")}
               </button>
             </div>
           </div>

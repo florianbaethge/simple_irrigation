@@ -3,7 +3,7 @@ import type { HomeAssistant } from "./types";
 /** Must match `DOMAIN` in the Python integration. */
 export const TRANSLATION_DOMAIN = "simple_irrigation";
 
-/** Flat key under `component.simple_irrigation.*` (e.g. `panel.tab_general`). */
+/** Flat key under `component.simple_irrigation.*` (e.g. `config_panel.tab_general`). */
 export function t(
   hass: HomeAssistant | undefined,
   path: string,

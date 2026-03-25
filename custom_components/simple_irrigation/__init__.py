@@ -6,6 +6,8 @@ import logging
 import uuid
 from typing import TYPE_CHECKING
 
+from homeassistant.helpers import config_validation as cv
+
 from .const import (
     DOMAIN,
     MODE_NORMAL,
@@ -20,6 +22,8 @@ if TYPE_CHECKING:
     from homeassistant.helpers.typing import ConfigType
 
 _LOGGER = logging.getLogger(__name__)
+
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:

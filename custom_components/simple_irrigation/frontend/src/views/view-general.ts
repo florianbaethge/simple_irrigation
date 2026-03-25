@@ -288,7 +288,7 @@ export class ViewGeneral extends LitElement {
   }
 
   private _fmtWhen(iso: string | null | undefined): string {
-    if (!iso) return t(this.hass, "panel.general_none_scheduled");
+    if (!iso) return t(this.hass, "config_panel.general_none_scheduled");
     try {
       const d = new Date(iso);
       return formatDateTimeForDisplay(this.hass, d);
@@ -427,7 +427,7 @@ export class ViewGeneral extends LitElement {
         const err = res.error ?? "request_failed";
         this._msg =
           err === "not_running" && action === "skip_phase"
-            ? t(this.hass, "panel.errors_not_running_skip")
+            ? t(this.hass, "config_panel.errors_not_running_skip")
             : String(err);
       } else {
         this.onSaved?.();
@@ -464,26 +464,26 @@ export class ViewGeneral extends LitElement {
 
     return html`
       ${renderEntityDatalist(this.hass, this._generalEntityListId(), domains)}
-      <ha-card .header=${t(this.hass, "panel.general_card_current_run")}>
+      <ha-card .header=${t(this.hass, "config_panel.general_card_current_run")}>
         <div class="card-content">
           <div class="run-hero">
             <ha-icon class="run-hero-icon" icon="mdi:sprinkler-variant"></ha-icon>
             <div class="run-hero-body">
-              <p class="run-hero-label">${t(this.hass, "panel.general_label_irrigation_state")}</p>
+              <p class="run-hero-label">${t(this.hass, "config_panel.general_label_irrigation_state")}</p>
               <p class="run-hero-state">
                 ${runBusy
                   ? runStateStr === "preparing"
-                    ? t(this.hass, "panel.general_state_preparing")
+                    ? t(this.hass, "config_panel.general_state_preparing")
                     : runStateStr === "stopping"
-                      ? t(this.hass, "panel.general_state_stopping")
-                      : t(this.hass, "panel.general_state_running")
+                      ? t(this.hass, "config_panel.general_state_stopping")
+                      : t(this.hass, "config_panel.general_state_running")
                   : runStateStr === "error"
-                    ? t(this.hass, "panel.general_state_error_idle")
-                    : t(this.hass, "panel.general_state_idle")}
+                    ? t(this.hass, "config_panel.general_state_error_idle")
+                    : t(this.hass, "config_panel.general_state_idle")}
               </p>
               ${runBusy && runStateStr === "preparing"
                 ? html`<p class="muted-box" style="margin:0">
-                    ${t(this.hass, "panel.general_preparing_hint")}
+                    ${t(this.hass, "config_panel.general_preparing_hint")}
                   </p>`
                 : nothing}
             </div>
@@ -496,7 +496,7 @@ export class ViewGeneral extends LitElement {
                         <li class="run-detail-pill">
                           <ha-icon icon="mdi:water"></ha-icon>
                           <span
-                            ><strong>${t(this.hass, "panel.general_active_zones")}</strong>
+                            ><strong>${t(this.hass, "config_panel.general_active_zones")}</strong>
                             ${activeIds.map((id) => this._zoneName(id)).join(", ")}</span
                           >
                         </li>
@@ -507,7 +507,7 @@ export class ViewGeneral extends LitElement {
                         <li class="run-detail-pill">
                           <ha-icon icon="mdi:playlist-play"></ha-icon>
                           <span
-                            ><strong>${t(this.hass, "panel.general_next_zones")}</strong>
+                            ><strong>${t(this.hass, "config_panel.general_next_zones")}</strong>
                             ${nextZonesLine}</span
                           >
                         </li>
@@ -518,7 +518,7 @@ export class ViewGeneral extends LitElement {
                         <li class="run-detail-pill">
                           <ha-icon icon="mdi:alert-circle-outline"></ha-icon>
                           <span
-                            ><strong>${t(this.hass, "panel.general_last_error")}</strong>
+                            ><strong>${t(this.hass, "config_panel.general_last_error")}</strong>
                             ${lastErr}</span
                           >
                         </li>
@@ -529,7 +529,7 @@ export class ViewGeneral extends LitElement {
             : nothing}
           ${showStop
             ? html`<p class="muted-box" style="margin-top:0">
-                ${t(this.hass, "panel.general_scheduled_pause_hint")}
+                ${t(this.hass, "config_panel.general_scheduled_pause_hint")}
               </p>`
             : nothing}
           ${showStop || showSkip || showClearErr
@@ -542,7 +542,7 @@ export class ViewGeneral extends LitElement {
                         ?disabled=${this._runCtrlBusy || !runBusy}
                         @click=${() => this._panelControlAction("stop")}
                       >
-                        ${t(this.hass, "panel.general_stop_irrigation")}
+                        ${t(this.hass, "config_panel.general_stop_irrigation")}
                       </button>
                     `
                   : nothing}
@@ -554,7 +554,7 @@ export class ViewGeneral extends LitElement {
                         ?disabled=${this._runCtrlBusy || !runBusy || runStateStr === "stopping"}
                         @click=${() => this._panelControlAction("skip_phase")}
                       >
-                        ${t(this.hass, "panel.general_skip_phase")}
+                        ${t(this.hass, "config_panel.general_skip_phase")}
                       </button>
                     `
                   : nothing}
@@ -566,7 +566,7 @@ export class ViewGeneral extends LitElement {
                         ?disabled=${this._runCtrlBusy}
                         @click=${() => this._panelControlAction("clear_error")}
                       >
-                        ${t(this.hass, "panel.general_clear_error")}
+                        ${t(this.hass, "config_panel.general_clear_error")}
                       </button>
                     `
                   : nothing}
@@ -575,16 +575,16 @@ export class ViewGeneral extends LitElement {
         </div>
       </ha-card>
 
-      <ha-card .header=${t(this.hass, "panel.general_card_schedule_overview")}>
+      <ha-card .header=${t(this.hass, "config_panel.general_card_schedule_overview")}>
         <div class="card-content">
           ${!this._planEnabled
-            ? html`<p class="muted-box">${t(this.hass, "panel.general_plan_off_hint")}</p>`
+            ? html`<p class="muted-box">${t(this.hass, "config_panel.general_plan_off_hint")}</p>`
             : nothing}
           <div class="schedule-overview-inner">
             <div class="schedule-hero">
               <ha-icon class="schedule-hero-icon" icon="mdi:calendar-clock"></ha-icon>
               <div class="schedule-hero-text">
-                <p class="schedule-hero-label">${t(this.hass, "panel.general_next_scheduled_run")}</p>
+                <p class="schedule-hero-label">${t(this.hass, "config_panel.general_next_scheduled_run")}</p>
                 <p class="schedule-next-big">${this._fmtWhen(nextGlobal)}</p>
               </div>
             </div>
@@ -616,12 +616,12 @@ export class ViewGeneral extends LitElement {
                     )}
                   </ul>
                 `
-              : html`<p class="muted-box">${t(this.hass, "panel.general_no_slots")}</p>`}
+              : html`<p class="muted-box">${t(this.hass, "config_panel.general_no_slots")}</p>`}
           </div>
         </div>
       </ha-card>
 
-      <ha-card .header=${t(this.hass, "panel.general_card_plan_control")}>
+      <ha-card .header=${t(this.hass, "config_panel.general_card_plan_control")}>
         <div class="card-content">
           ${this._msg ? html`<div class="error">${this._msg}</div>` : nothing}
           <div class="plan-row">
@@ -634,12 +634,12 @@ export class ViewGeneral extends LitElement {
                   void this._setPlanEnabled(Boolean(tgt.checked));
                 }}
               ></ha-switch>
-              ${t(this.hass, "panel.general_enable_plan")}
+              ${t(this.hass, "config_panel.general_enable_plan")}
             </label>
           </div>
           ${pauseOn
             ? html`<p class="muted-box">
-                ${t(this.hass, "panel.general_pause_active_hint", {
+                ${t(this.hass, "config_panel.general_pause_active_hint", {
                   when: this._fmtPauseUntil(),
                 })}
               </p>`
@@ -651,7 +651,7 @@ export class ViewGeneral extends LitElement {
               ?disabled=${this._busy || !this._planEnabled}
               @click=${() => this._skipToday()}
             >
-              ${t(this.hass, "panel.general_skip_today")}
+              ${t(this.hass, "config_panel.general_skip_today")}
             </button>
             <button
               type="button"
@@ -659,20 +659,20 @@ export class ViewGeneral extends LitElement {
               ?disabled=${this._busy || !pauseOn}
               @click=${() => this._clearPause()}
             >
-              ${t(this.hass, "panel.general_clear_pause")}
+              ${t(this.hass, "config_panel.general_clear_pause")}
             </button>
           </div>
         </div>
       </ha-card>
 
-      <ha-card .header=${t(this.hass, "panel.general_card_settings")}>
+      <ha-card .header=${t(this.hass, "config_panel.general_card_settings")}>
         <div class="card-content">
           <div class="field-block">
-            <span class="field-title">${t(this.hass, "panel.general_installation_name")}</span>
-            <p class="field-desc">${t(this.hass, "panel.general_installation_name_desc")}</p>
+            <span class="field-title">${t(this.hass, "config_panel.general_installation_name")}</span>
+            <p class="field-desc">${t(this.hass, "config_panel.general_installation_name_desc")}</p>
             <div class="field-row">
               <ha-textfield
-                .label=${t(this.hass, "panel.general_field_name")}
+                .label=${t(this.hass, "config_panel.general_field_name")}
                 .value=${this._name}
                 @input=${(e: Event) => {
                   this._name = (e.target as HTMLInputElement).value;
@@ -681,8 +681,8 @@ export class ViewGeneral extends LitElement {
             </div>
           </div>
           <div class="field-block">
-            <span class="field-title">${t(this.hass, "panel.general_pre_start_title")}</span>
-            <p class="field-desc">${t(this.hass, "panel.general_pre_start_desc")}</p>
+            <span class="field-title">${t(this.hass, "config_panel.general_pre_start_title")}</span>
+            <p class="field-desc">${t(this.hass, "config_panel.general_pre_start_desc")}</p>
             <div class="field-row">
               <div class="entity-picker-rows">
                 ${this._preStart.map(
@@ -692,8 +692,8 @@ export class ViewGeneral extends LitElement {
                         this.hass,
                         this._generalEntityListId(),
                         i === 0
-                          ? t(this.hass, "panel.general_pre_start_output_n")
-                          : t(this.hass, "panel.general_pre_start_output_i", { n: i + 1 }),
+                          ? t(this.hass, "config_panel.general_pre_start_output_n")
+                          : t(this.hass, "config_panel.general_pre_start_output_i", { n: i + 1 }),
                         eid,
                         (v) => {
                           const next = [...this._preStart];
@@ -715,7 +715,7 @@ export class ViewGeneral extends LitElement {
                                 this.requestUpdate();
                               }}
                             >
-                              ${t(this.hass, "panel.general_remove")}
+                              ${t(this.hass, "config_panel.general_remove")}
                             </button>
                           `
                         : nothing}
@@ -730,14 +730,14 @@ export class ViewGeneral extends LitElement {
                     this.requestUpdate();
                   }}
                 >
-                  ${t(this.hass, "panel.general_add_pre_start")}
+                  ${t(this.hass, "config_panel.general_add_pre_start")}
                 </button>
               </div>
             </div>
           </div>
           <div class="field-block">
-            <span class="field-title">${t(this.hass, "panel.general_watering_mode")}</span>
-            <p class="field-desc">${t(this.hass, "panel.general_watering_mode_desc")}</p>
+            <span class="field-title">${t(this.hass, "config_panel.general_watering_mode")}</span>
+            <p class="field-desc">${t(this.hass, "config_panel.general_watering_mode_desc")}</p>
             <div class="field-row">
               <select
                 class="field-select"
@@ -746,24 +746,24 @@ export class ViewGeneral extends LitElement {
                 }}
               >
                 <option value="eco" ?selected=${this._mode === "eco"}>
-                  ${t(this.hass, "panel.general_mode_eco")}
+                  ${t(this.hass, "config_panel.general_mode_eco")}
                 </option>
                 <option value="normal" ?selected=${this._mode === "normal"}>
-                  ${t(this.hass, "panel.general_mode_normal")}
+                  ${t(this.hass, "config_panel.general_mode_normal")}
                 </option>
                 <option value="extra" ?selected=${this._mode === "extra"}>
-                  ${t(this.hass, "panel.general_mode_extra")}
+                  ${t(this.hass, "config_panel.general_mode_extra")}
                 </option>
               </select>
             </div>
           </div>
           <div class="field-block">
-            <span class="field-title">${t(this.hass, "panel.general_max_parallel")}</span>
-            <p class="field-desc">${t(this.hass, "panel.general_max_parallel_desc")}</p>
+            <span class="field-title">${t(this.hass, "config_panel.general_max_parallel")}</span>
+            <p class="field-desc">${t(this.hass, "config_panel.general_max_parallel_desc")}</p>
             <div class="field-row">
               <ha-textfield
                 type="number"
-                .label=${t(this.hass, "panel.general_max_parallel_field")}
+                .label=${t(this.hass, "config_panel.general_max_parallel_field")}
                 .value=${String(this._maxParallel)}
                 min="1"
                 max="16"
@@ -779,8 +779,8 @@ export class ViewGeneral extends LitElement {
           <div class="action-row">
             <button type="button" class="save" @click=${() => this._save()} ?disabled=${this._busy}>
               ${this._busy
-                ? t(this.hass, "panel.general_saving")
-                : t(this.hass, "panel.general_save")}
+                ? t(this.hass, "config_panel.general_saving")
+                : t(this.hass, "config_panel.general_save")}
             </button>
           </div>
         </div>

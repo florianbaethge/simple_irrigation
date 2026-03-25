@@ -1,7 +1,6 @@
 {
   "domain": "simple_irrigation",
   "name": "Simple Irrigation",
-  "description": "Orchestrates one irrigation system in Home Assistant: weekly time slots, on/off outputs (switches, helpers, groups), global mode and pause, pre-start outputs, and parallel runs with exclusive zones.",
   "version": "0.1.0",
   "documentation": "https://github.com/florianbaethge/simple_irrigation",
   "issue_tracker": "https://github.com/florianbaethge/simple_irrigation/issues",

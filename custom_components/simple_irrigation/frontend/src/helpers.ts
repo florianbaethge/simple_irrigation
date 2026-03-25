@@ -6,7 +6,7 @@ import type { HomeAssistant } from "./types";
 export function formatApiError(value: unknown, hass?: HomeAssistant): string {
   const fallback =
     hass?.localize != null
-      ? t(hass, "panel.errors_request_failed")
+      ? t(hass, "config_panel.errors_request_failed")
       : "Request failed";
   if (value == null || value === "") {
     return fallback;

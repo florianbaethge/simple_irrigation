@@ -10,6 +10,7 @@ from homeassistant.helpers import config_validation as cv
 
 from .const import (
     DOMAIN,
+    HASS_CONFIG_KEY,
     MODE_NORMAL,
     PANEL_API_REGISTERED_KEY,
     PANEL_REGISTERED_KEY,
@@ -30,7 +31,8 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Set up integration (YAML not used)."""
     from .services import async_setup_services
 
-    hass.data.setdefault(DOMAIN, {})
+    domain_data = hass.data.setdefault(DOMAIN, {})
+    domain_data[HASS_CONFIG_KEY] = config
     await async_setup_services(hass)
     return True
 
@@ -92,6 +94,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await async_register_panel_api(hass)
 
     if not hass.data.get(PANEL_REGISTERED_KEY):
+        from homeassistant.setup import async_setup_component
+
+        if "panel_custom" not in hass.config.components:
+            hass_config: ConfigType = hass.data.get(DOMAIN, {}).get(HASS_CONFIG_KEY) or {}
+            await async_setup_component(hass, "panel_custom", hass_config)
+
         from .panel import async_register_panel
 
         await async_register_panel(hass)

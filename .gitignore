@@ -24,9 +24,26 @@ custom_components/simple_irrigation/frontend/node_modules/
 *.swp
 *.swo
 
-# OS
+# macOS
 .DS_Store
+.AppleDB
+.AppleDesktop
+.AppleDouble
+.LSOverride
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.apdisk
+
+# Windows
 Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
 
 # Home Assistant / local
 .python-version

@@ -4,7 +4,7 @@ from typing import Final
 
 DOMAIN: Final = "simple_irrigation"
 
-INTEGRATION_VERSION: Final = "0.1.0"
+INTEGRATION_VERSION: Final = "0.1.1"
 
 CUSTOM_COMPONENTS: Final = "custom_components"
 INTEGRATION_FOLDER: Final = DOMAIN

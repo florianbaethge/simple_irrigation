@@ -2876,7 +2876,7 @@ __decorate([
 ], ViewZones.prototype, "_editDraft", void 0);
 defineCustomElementOnce("si-view-zones", ViewZones);
 
-const VERSION = "0.1.0";
+const VERSION = "0.1.1";
 class SimpleIrrigationPanel extends i {
     constructor() {
         super(...arguments);

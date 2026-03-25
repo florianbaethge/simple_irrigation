@@ -54,19 +54,25 @@ function fireEvent(node, type, detail) {
     node.dispatchEvent(event);
 }
 
+/** Must match `DOMAIN` in the Python integration. */
+const TRANSLATION_DOMAIN = "simple_irrigation";
 /** Flat key under `component.simple_irrigation.*` (e.g. `panel.tab_general`). */
 function t(hass, path, placeholders) {
     if (!hass?.localize) {
         return path;
     }
-    const fullKey = `component.simple_irrigation.${path}`;
-    let s = hass.localize(fullKey);
+    const fullKey = `component.${TRANSLATION_DOMAIN}.${path}`;
+    const hasValues = Boolean(placeholders && Object.keys(placeholders).length);
+    // HA uses IntlMessageFormat; placeholders must be passed here, not substituted afterward.
+    let s = hasValues
+        ? hass.localize(fullKey, placeholders)
+        : hass.localize(fullKey);
     if (!s || s === fullKey) {
         s = path;
-    }
-    if (placeholders) {
-        for (const [k, v] of Object.entries(placeholders)) {
-            s = s.split(`{${k}}`).join(String(v));
+        if (placeholders) {
+            for (const [k, v] of Object.entries(placeholders)) {
+                s = s.split(`{${k}}`).join(String(v));
+            }
         }
     }
     return s;
@@ -2870,6 +2876,8 @@ class SimpleIrrigationPanel extends i {
         this._loading = true;
         this._entries = [];
         this._entriesLoading = false;
+        /** After first successful panel translation fetch (or no loader API). */
+        this._initialPanelI18nDone = false;
         this._locChanged = () => {
             if (!window.location.pathname.includes("simple-irrigation"))
                 return;
@@ -2884,14 +2892,51 @@ class SimpleIrrigationPanel extends i {
     }; }
     static { this.styles = panelStyles; }
     setProperties(props) {
-        if (props.hass !== undefined)
-            this.hass = props.hass;
+        if (props.hass !== undefined) {
+            const next = props.hass;
+            if (this.hass?.language !== next?.language) {
+                this._panelI18nLang = undefined;
+            }
+            this.hass = next;
+            void this._ensurePanelI18n();
+        }
         if (props.narrow !== undefined)
             this.narrow = Boolean(props.narrow);
         if (props.route !== undefined)
             this.route = props.route;
         if (props.panel !== undefined)
             this.panel = props.panel;
+        this.requestUpdate();
+    }
+    async _ensurePanelI18n() {
+        if (!this.hass) {
+            return;
+        }
+        if (!this.hass.loadBackendTranslation) {
+            if (!this._initialPanelI18nDone) {
+                this._initialPanelI18nDone = true;
+                this.requestUpdate();
+            }
+            return;
+        }
+        const lang = this.hass.language ?? "en";
+        if (this._panelI18nLang === lang) {
+            if (!this._initialPanelI18nDone) {
+                this._initialPanelI18nDone = true;
+                this.requestUpdate();
+            }
+            return;
+        }
+        try {
+            await this.hass.loadBackendTranslation("panel", TRANSLATION_DOMAIN);
+        }
+        catch {
+            /* localize may keep returning missing keys */
+        }
+        this._panelI18nLang = lang;
+        if (!this._initialPanelI18nDone) {
+            this._initialPanelI18nDone = true;
+        }
         this.requestUpdate();
     }
     connectedCallback() {
@@ -3057,6 +3102,7 @@ class SimpleIrrigationPanel extends i {
     }
     async firstUpdated() {
         await loadHaPanelElements();
+        await this._ensurePanelI18n();
         if (this.hass) {
             await this._reloadPath();
         }
@@ -3083,6 +3129,9 @@ class SimpleIrrigationPanel extends i {
     }
     render() {
         if (!this.hass) {
+            return b `<div class="view"><div class="view-inner">Loading…</div></div>`;
+        }
+        if (!this._initialPanelI18nDone) {
             return b `<div class="view"><div class="view-inner">Loading…</div></div>`;
         }
         const path = getPath();

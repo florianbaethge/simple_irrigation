@@ -22,7 +22,16 @@ export interface HomeAssistant {
     serviceData?: Record<string, unknown>
   ): Promise<unknown>;
   /** Integration and UI strings (`component.simple_irrigation.*`). */
-  localize?(key: string): string;
+  localize?: (
+    key: string,
+    values?: Record<string, string | number | null | undefined>
+  ) => string;
+  /** Fetch backend translation category for an integration (required for custom panel strings). */
+  loadBackendTranslation?(
+    category: string,
+    integration?: string | string[],
+    configFlow?: boolean
+  ): Promise<(key: string) => string>;
   connection?: {
     subscribeEvents<EventType>(
       callback: (ev: EventType) => void,

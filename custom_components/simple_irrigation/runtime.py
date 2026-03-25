@@ -120,7 +120,8 @@ class IrrigationRuntime:
             rs.manual_run = not scheduled
             rs.current_slot_id = slot_ids[0] if slot_ids else None
             rs.current_run_started_at = dt_util.utcnow()
-            rs.upcoming_phases = _upcoming_phases_slice(phases, 1)
+            # active_zone_ids empty until first phase; include first phase in upcoming for the panel.
+            rs.upcoming_phases = _upcoming_phases_slice(phases, 0)
             await self.coordinator.async_update_run_state(rs)
 
             self.hass.bus.async_fire(

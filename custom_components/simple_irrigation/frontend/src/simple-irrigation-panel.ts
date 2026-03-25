@@ -5,7 +5,7 @@ import {
   type ConfigEntryRow,
 } from "./data/api";
 import { defineCustomElementOnce, navigate } from "./helpers";
-import { t } from "./i18n";
+import { t, TRANSLATION_DOMAIN } from "./i18n";
 import { loadHaPanelElements } from "./load-ha-elements";
 import { exportPath, getPath } from "./navigation";
 import { panelStyles } from "./styles";
@@ -44,11 +44,54 @@ export class SimpleIrrigationPanel extends LitElement {
   private _watchedRunningEntity?: string;
   private _watchedEntryId?: string;
 
+  /** Language we last loaded `panel` category for (HA does not auto-load it for `panel_custom`). */
+  private _panelI18nLang?: string;
+  /** After first successful panel translation fetch (or no loader API). */
+  private _initialPanelI18nDone = false;
+
   setProperties(props: Record<string, unknown>): void {
-    if (props.hass !== undefined) this.hass = props.hass as HomeAssistant;
+    if (props.hass !== undefined) {
+      const next = props.hass as HomeAssistant;
+      if (this.hass?.language !== next?.language) {
+        this._panelI18nLang = undefined;
+      }
+      this.hass = next;
+      void this._ensurePanelI18n();
+    }
     if (props.narrow !== undefined) this.narrow = Boolean(props.narrow);
     if (props.route !== undefined) this.route = props.route;
     if (props.panel !== undefined) this.panel = props.panel;
+    this.requestUpdate();
+  }
+
+  private async _ensurePanelI18n(): Promise<void> {
+    if (!this.hass) {
+      return;
+    }
+    if (!this.hass.loadBackendTranslation) {
+      if (!this._initialPanelI18nDone) {
+        this._initialPanelI18nDone = true;
+        this.requestUpdate();
+      }
+      return;
+    }
+    const lang = this.hass.language ?? "en";
+    if (this._panelI18nLang === lang) {
+      if (!this._initialPanelI18nDone) {
+        this._initialPanelI18nDone = true;
+        this.requestUpdate();
+      }
+      return;
+    }
+    try {
+      await this.hass.loadBackendTranslation("panel", TRANSLATION_DOMAIN);
+    } catch {
+      /* localize may keep returning missing keys */
+    }
+    this._panelI18nLang = lang;
+    if (!this._initialPanelI18nDone) {
+      this._initialPanelI18nDone = true;
+    }
     this.requestUpdate();
   }
 
@@ -229,6 +272,7 @@ export class SimpleIrrigationPanel extends LitElement {
 
   async firstUpdated(): Promise<void> {
     await loadHaPanelElements();
+    await this._ensurePanelI18n();
     if (this.hass) {
       await this._reloadPath();
     }
@@ -258,6 +302,9 @@ export class SimpleIrrigationPanel extends LitElement {
 
   protected render() {
     if (!this.hass) {
+      return html`<div class="view"><div class="view-inner">Loading…</div></div>`;
+    }
+    if (!this._initialPanelI18nDone) {
       return html`<div class="view"><div class="view-inner">Loading…</div></div>`;
     }
 

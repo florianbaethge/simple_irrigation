@@ -389,7 +389,7 @@ export class ViewSchedule extends LitElement {
                         )}
                         ${this._fmtSlotTime(slot.time_local)}`
                       : html`${this._wd(slot.weekday)} ${this._fmtSlotTime(slot.time_local)}`}
-                    ${slot.enabled ? "" : t(this.hass, "config_panel.schedule_disabled_suffix")}
+                    ${slot.enabled ? "" : ` ${t(this.hass, "config_panel.schedule_disabled_suffix")}`}
                   </p>
                   <p class="slot-row-meta">
                     ${n === 1

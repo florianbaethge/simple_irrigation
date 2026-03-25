@@ -1883,7 +1883,7 @@ class ViewSchedule extends i {
                 ? b `<span class="slot-name">${slot.name}</span> · ${this._wd(slot.weekday)}
                         ${this._fmtSlotTime(slot.time_local)}`
                 : b `${this._wd(slot.weekday)} ${this._fmtSlotTime(slot.time_local)}`}
-                    ${slot.enabled ? "" : t(this.hass, "config_panel.schedule_disabled_suffix")}
+                    ${slot.enabled ? "" : ` ${t(this.hass, "config_panel.schedule_disabled_suffix")}`}
                   </p>
                   <p class="slot-row-meta">
                     ${n === 1
@@ -2735,18 +2735,27 @@ class ViewZones extends i {
                 <div class="zone-list-main">
                   <p class="zone-list-name">${z.name || z.zone_id.slice(0, 8)}</p>
                   <p class="zone-list-detail">
-                    ${z.enabled ? "" : t(this.hass, "config_panel.zones_detail_disabled")}
-                    ${z.exclusive ? t(this.hass, "config_panel.zones_detail_exclusive") : ""}
-                    ${t(this.hass, "config_panel.zones_detail_durations", {
-                eco: z.duration_eco_min,
-                normal: z.duration_normal_min,
-                extra: z.duration_extra_min,
-            })}
-                    ${outs === 1
-                ? t(this.hass, "config_panel.zones_detail_outputs_one")
-                : outs > 1
-                    ? t(this.hass, "config_panel.zones_detail_outputs_many", { n: outs })
-                    : A}
+                    ${(() => {
+                const parts = [];
+                if (!z.enabled) {
+                    parts.push(t(this.hass, "config_panel.zones_detail_disabled"));
+                }
+                if (z.exclusive) {
+                    parts.push(t(this.hass, "config_panel.zones_detail_exclusive"));
+                }
+                parts.push(t(this.hass, "config_panel.zones_detail_durations", {
+                    eco: z.duration_eco_min,
+                    normal: z.duration_normal_min,
+                    extra: z.duration_extra_min,
+                }));
+                if (outs === 1) {
+                    parts.push(t(this.hass, "config_panel.zones_detail_outputs_one"));
+                }
+                else if (outs > 1) {
+                    parts.push(t(this.hass, "config_panel.zones_detail_outputs_many", { n: outs }));
+                }
+                return parts.join(" · ");
+            })()}
                   </p>
                 </div>
                 <div class="zone-list-actions">

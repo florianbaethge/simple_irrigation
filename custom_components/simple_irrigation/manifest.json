@@ -1,14 +1,13 @@
 {
   "domain": "simple_irrigation",
   "name": "Simple Irrigation",
-  "version": "0.1.0",
-  "documentation": "https://github.com/florianbaethge/simple_irrigation",
-  "issue_tracker": "https://github.com/florianbaethge/simple_irrigation/issues",
   "codeowners": ["@florianbaethge"],
   "config_flow": true,
   "dependencies": ["http", "panel_custom", "websocket_api"],
+  "documentation": "https://github.com/florianbaethge/simple_irrigation",
   "integration_type": "device",
   "iot_class": "local_polling",
+  "issue_tracker": "https://github.com/florianbaethge/simple_irrigation/issues",
   "requirements": [],
-  "diagnostics": true
+  "version": "0.1.0"
 }

@@ -7,7 +7,7 @@ DOMAIN: Final = "simple_irrigation"
 # Full HA configuration dict from async_setup; needed for async_setup_component(..., config).
 HASS_CONFIG_KEY: Final = "_hass_config"
 
-INTEGRATION_VERSION: Final = "0.1.2"
+INTEGRATION_VERSION: Final = "0.1.3"
 
 CUSTOM_COMPONENTS: Final = "custom_components"
 INTEGRATION_FOLDER: Final = DOMAIN

@@ -50,7 +50,9 @@ class SimpleIrrigationConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     data={
                         "installation_id": inst_id,
                         "name": user_input["name"],
-                        "pre_start_switches": user_input["pre_start_switches"],
+                        "pre_start_switches": list(
+                            user_input.get("pre_start_switches") or []
+                        ),
                         "default_mode": user_input["default_mode"],
                         "max_parallel_zones": max_p,
                     },
@@ -59,12 +61,12 @@ class SimpleIrrigationConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         schema = vol.Schema(
             {
                 vol.Required("name", default="Simple Irrigation"): str,
-                vol.Optional("pre_start_switches", default=[]): _output_entity_selector(
+                vol.Optional("pre_start_switches"): _output_entity_selector(
                     multiple=True
                 ),
                 vol.Required("default_mode", default=MODES[1]): SelectSelector(
                     SelectSelectorConfig(
-                        options=[{"value": m} for m in MODES],
+                        options=list(MODES),
                         translation_key="default_mode",
                         mode=SelectSelectorMode.DROPDOWN,
                     )

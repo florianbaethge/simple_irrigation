@@ -15,8 +15,6 @@
 | **Zones** | Named zones, one or more output entities per zone, Eco/Normal/Extra runtimes (minutes), enabled flag, **exclusive** (never parallel with others) |
 | **Schedule** | Weekly slots (weekday + local time), optional slot name, ordered zone list, **phase** preview from parallel rules, “run this slot now” |
 | **Status** | Human-readable runtime summary and optional **raw JSON** for debugging |
-| **Entities** | Mode select, sensors (next run, active zones, pause, per-zone helpers), binary sensors, buttons — usable in dashboards and automations |
-| **Services** | Run zone, run with fixed duration, run due, stop all, set mode, pause until, clear pause |
 
 Languages: **English** and **German** (UI strings, config flow, entities, services, panel). The panel follows the Home Assistant user language when translations are loaded.
 
@@ -78,7 +76,7 @@ You can add **multiple** config entries for separate gardens or seasonal plans (
 
 - **Watering mode (Eco / Normal / Extra):** Each zone has three duration columns. The active mode chooses which column is used for scheduled and default service runs. Change it in the panel or with the `simple_irrigation.set_mode` service (ideal for automations driven by weather, tank level, etc.).
 - **Max parallel zones:** Caps how many zones may run at once. **Exclusive** zones still run alone.
-- **Pre-start outputs:** Turned on before zones (e.g. pump / master valve); delay is defined in code (`PRE_START_DELAY_SEC` in `const.py`).
+- **Pre-start outputs:** Turned on before zones (e.g. pump / master valve). The delay before zones start defaults to **10 seconds** (`PRE_START_DELAY_SEC` in `const.py`) and is stored per installation; the General tab edits the pre-start entity list only, not the delay.
 - **Plan off:** Disables automatic starts for that entry; manual runs may still be possible depending on your use of services.
 - **Pause / skip today:** Pause respects **scheduled** starts only; an **already running** cycle is stopped from **General** with **Stop irrigation**.
 
@@ -94,7 +92,7 @@ You can add **multiple** config entries for separate gardens or seasonal plans (
 
 ### Schedule slots
 
-- Each slot is a **weekday** and **local time** (Home Assistant timezone).
+- Each slot is a **weekday** and **local time** (Home Assistant timezone), with an **enabled** toggle (disabled slots are ignored by the scheduler).
 - **Run order** is the ordered list of zone IDs. **Phases** group zones that may start together according to **max parallel** and **exclusive** rules.
 - **Edit** a slot to reorder (**Up** / **Down**), **Remove** from list, or **Add zone** from the dropdown.
 - **Run this slot now** starts that slot’s sequence immediately (shown as a manual run on **Status**).
@@ -129,7 +127,7 @@ All services accept optional `config_entry_id` when you have more than one Simpl
 | `simple_irrigation.run_due_zones` | Trigger “what’s due now” |
 | `simple_irrigation.stop_all` | Stop the active cycle |
 | `simple_irrigation.set_mode` | Set `eco` / `normal` / `extra` |
-| `simple_irrigation.pause_until` | Pause automatic runs until a datetime |
+| `simple_irrigation.pause_until` | Pause automatic runs until a datetime (`until` field) |
 | `simple_irrigation.clear_pause` | Clear pause |
 
 Example — set mode from an automation:

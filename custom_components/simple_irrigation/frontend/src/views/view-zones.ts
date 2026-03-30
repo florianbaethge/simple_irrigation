@@ -1,6 +1,6 @@
 import { LitElement, html, css, nothing, type TemplateResult } from "lit";
 import { state } from "lit/decorators.js";
-import { saveZone } from "../data/api";
+import { runZoneNow, saveZone } from "../data/api";
 import { renderEntityDatalist, renderNativeEntityField } from "../entity-input";
 import { defineCustomElementOnce, formatApiError } from "../helpers";
 import { t } from "../i18n";
@@ -25,12 +25,14 @@ export class ViewZones extends LitElement {
     hass: { attribute: false },
     entryId: { type: String },
     installation: { type: Object },
+    runState: { type: Object },
     onSaved: { attribute: false },
   };
 
   hass!: HomeAssistant;
   entryId!: string;
   installation!: Record<string, unknown>;
+  runState?: Record<string, unknown>;
   onSaved?: () => void;
 
   static styles = [
@@ -88,6 +90,10 @@ export class ViewZones extends LitElement {
         gap: 8px;
       }
       .zone-list-actions .btn-outline {
+        margin-top: 0;
+      }
+      .zone-list-actions button {
+        align-self: center;
         margin-top: 0;
       }
       button {
@@ -188,6 +194,45 @@ export class ViewZones extends LitElement {
 
   private _canSaveZone(zone: ZoneRow): boolean {
     return Boolean(zone.name.trim() && zone.switch_entity_ids.some((id) => id.trim()));
+  }
+
+  private _runtimeBusy(): boolean {
+    const rs = this.runState ?? {};
+    const s = String(rs.run_state ?? "idle");
+    return ["preparing", "running", "stopping"].includes(s);
+  }
+
+  private async _runZoneNow(zoneId: string): Promise<void> {
+    if (this._runtimeBusy()) return;
+    this._busy = true;
+    this._msg = undefined;
+    this.requestUpdate();
+    try {
+      const res = (await runZoneNow(this.hass, this.entryId, zoneId)) as {
+        success: boolean;
+        error?: string;
+      };
+      if (!res.success) {
+        const err = res.error ?? "run_failed";
+        this._msg =
+          err === "busy"
+            ? t(this.hass, "config_panel.zones_err_busy")
+            : err === "unknown_zone"
+              ? t(this.hass, "config_panel.zones_err_unknown_zone")
+              : err === "zone_disabled"
+                ? t(this.hass, "config_panel.zones_err_zone_disabled")
+                : err === "zone_no_outputs"
+                  ? t(this.hass, "config_panel.zones_err_zone_no_outputs")
+                  : String(err);
+      } else {
+        this.onSaved?.();
+      }
+    } catch (e) {
+      this._msg = formatApiError(e, this.hass);
+    } finally {
+      this._busy = false;
+      this.requestUpdate();
+    }
   }
 
   private _zonesEntityListId(): string {
@@ -393,6 +438,11 @@ export class ViewZones extends LitElement {
           </div>
           ${zones.map((z) => {
             const outs = z.switch_entity_ids.filter(Boolean).length;
+            const runDisabled =
+              this._busy ||
+              this._runtimeBusy() ||
+              !z.enabled ||
+              outs === 0;
             return html`
               <div class="zone-list-row">
                 <div class="zone-list-main">
@@ -425,6 +475,14 @@ export class ViewZones extends LitElement {
                   </p>
                 </div>
                 <div class="zone-list-actions">
+                  <button
+                    type="button"
+                    class="btn-outline"
+                    ?disabled=${runDisabled}
+                    @click=${() => this._runZoneNow(z.zone_id)}
+                  >
+                    ${t(this.hass, "config_panel.zones_run_zone_now")}
+                  </button>
                   <button
                     type="button"
                     class="btn-outline"

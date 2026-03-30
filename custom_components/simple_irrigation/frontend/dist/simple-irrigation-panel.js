@@ -35,6 +35,10 @@ const runSlotNow = (hass, entryId, slotId) => hass.callApi("POST", "simple_irrig
     entry_id: entryId,
     slot_id: slotId,
 });
+const runZoneNow = (hass, entryId, zoneId) => hass.callApi("POST", "simple_irrigation/panel/run_zone", {
+    entry_id: entryId,
+    zone_id: zoneId,
+});
 const skipIrrigationToday = (hass, entryId) => hass.callApi("POST", "simple_irrigation/panel/skip_today", { entry_id: entryId });
 const panelControl = (hass, entryId, action) => hass.callApi("POST", "simple_irrigation/panel/control", {
     entry_id: entryId,
@@ -2400,6 +2404,7 @@ class ViewZones extends i {
         hass: { attribute: false },
         entryId: { type: String },
         installation: { type: Object },
+        runState: { type: Object },
         onSaved: { attribute: false },
     }; }
     static { this.styles = [
@@ -2457,6 +2462,10 @@ class ViewZones extends i {
         gap: 8px;
       }
       .zone-list-actions .btn-outline {
+        margin-top: 0;
+      }
+      .zone-list-actions button {
+        align-self: center;
         margin-top: 0;
       }
       button {
@@ -2538,6 +2547,44 @@ class ViewZones extends i {
     }
     _canSaveZone(zone) {
         return Boolean(zone.name.trim() && zone.switch_entity_ids.some((id) => id.trim()));
+    }
+    _runtimeBusy() {
+        const rs = this.runState ?? {};
+        const s = String(rs.run_state ?? "idle");
+        return ["preparing", "running", "stopping"].includes(s);
+    }
+    async _runZoneNow(zoneId) {
+        if (this._runtimeBusy())
+            return;
+        this._busy = true;
+        this._msg = undefined;
+        this.requestUpdate();
+        try {
+            const res = (await runZoneNow(this.hass, this.entryId, zoneId));
+            if (!res.success) {
+                const err = res.error ?? "run_failed";
+                this._msg =
+                    err === "busy"
+                        ? t(this.hass, "config_panel.zones_err_busy")
+                        : err === "unknown_zone"
+                            ? t(this.hass, "config_panel.zones_err_unknown_zone")
+                            : err === "zone_disabled"
+                                ? t(this.hass, "config_panel.zones_err_zone_disabled")
+                                : err === "zone_no_outputs"
+                                    ? t(this.hass, "config_panel.zones_err_zone_no_outputs")
+                                    : String(err);
+            }
+            else {
+                this.onSaved?.();
+            }
+        }
+        catch (e) {
+            this._msg = formatApiError(e, this.hass);
+        }
+        finally {
+            this._busy = false;
+            this.requestUpdate();
+        }
     }
     _zonesEntityListId() {
         return `si-ent-z-${this.entryId}`;
@@ -2730,6 +2777,10 @@ class ViewZones extends i {
           </div>
           ${zones.map((z) => {
             const outs = z.switch_entity_ids.filter(Boolean).length;
+            const runDisabled = this._busy ||
+                this._runtimeBusy() ||
+                !z.enabled ||
+                outs === 0;
             return b `
               <div class="zone-list-row">
                 <div class="zone-list-main">
@@ -2759,6 +2810,14 @@ class ViewZones extends i {
                   </p>
                 </div>
                 <div class="zone-list-actions">
+                  <button
+                    type="button"
+                    class="btn-outline"
+                    ?disabled=${runDisabled}
+                    @click=${() => this._runZoneNow(z.zone_id)}
+                  >
+                    ${t(this.hass, "config_panel.zones_run_zone_now")}
+                  </button>
                   <button
                     type="button"
                     class="btn-outline"
@@ -2887,6 +2946,25 @@ class SimpleIrrigationPanel extends i {
         this._entriesLoading = false;
         /** After first successful panel translation fetch (or no loader API). */
         this._initialPanelI18nDone = false;
+        /** Serializes panel fetches so overlapping requests cannot clear `_state` out of order. */
+        this._loadTail = Promise.resolve();
+        this._onVisibility = () => {
+            if (document.visibilityState !== "visible")
+                return;
+            if (!window.location.pathname.includes("simple-irrigation"))
+                return;
+            if (!this.hass)
+                return;
+            const { entryId } = getPath();
+            if (!entryId)
+                return;
+            if (this._state) {
+                void this._loadState(entryId, { silent: true });
+            }
+            else {
+                void this._reloadPath();
+            }
+        };
         this._locChanged = () => {
             if (!window.location.pathname.includes("simple-irrigation"))
                 return;
@@ -2951,10 +3029,12 @@ class SimpleIrrigationPanel extends i {
     connectedCallback() {
         super.connectedCallback();
         window.addEventListener("location-changed", this._locChanged);
+        document.addEventListener("visibilitychange", this._onVisibility);
     }
     disconnectedCallback() {
         super.disconnectedCallback();
         window.removeEventListener("location-changed", this._locChanged);
+        document.removeEventListener("visibilitychange", this._onVisibility);
         void this._teardownRunStateListeners();
     }
     _clearRunStateDebounce() {
@@ -3075,7 +3155,13 @@ class SimpleIrrigationPanel extends i {
             this._entriesLoading = false;
         }
     }
-    async _loadState(entryId, opts) {
+    /** Enqueue a panel state fetch so concurrent calls cannot apply in the wrong order. */
+    _loadState(entryId, opts) {
+        const run = this._loadTail.then(() => this._executeLoadState(entryId, opts));
+        this._loadTail = run.then(() => undefined, () => undefined);
+        return run;
+    }
+    async _executeLoadState(entryId, opts) {
         if (!this.hass)
             return;
         const silent = Boolean(opts?.silent);
@@ -3117,7 +3203,15 @@ class SimpleIrrigationPanel extends i {
         }
     }
     updated(changed) {
-        if (changed.has("hass") && this.hass && changed.get("hass") === undefined) {
+        if (!changed.has("hass") || !this.hass) {
+            return;
+        }
+        const prev = changed.get("hass");
+        if (prev === undefined) {
+            void this._reloadPath();
+            return;
+        }
+        if (prev.connection !== this.hass.connection) {
             void this._reloadPath();
         }
     }
@@ -3134,7 +3228,7 @@ class SimpleIrrigationPanel extends i {
     }
     _pickEntry(entryId) {
         navigate(this, exportPath(entryId, "general"));
-        this._loadState(entryId);
+        /* `location-changed` runs `_reloadPath` → `_loadState`; avoid a second concurrent fetch. */
     }
     render() {
         if (!this.hass) {
@@ -3225,6 +3319,7 @@ class SimpleIrrigationPanel extends i {
                 .hass=${this.hass}
                 .entryId=${path.entryId}
                 .installation=${inst}
+                .runState=${rs}
                 .onSaved=${() => this._loadState(path.entryId, { silent: true })}
               ></si-view-zones>`
             : A}

@@ -16,6 +16,7 @@ from .const import (
     ATTR_CONFIG_ENTRY_ID,
     ATTR_DURATION_MIN,
     ATTR_MODE,
+    ATTR_SLOT_ID,
     ATTR_UNTIL,
     ATTR_ZONE_ID,
     DOMAIN,
@@ -23,6 +24,7 @@ from .const import (
     SERVICE_CLEAR_PAUSE,
     SERVICE_PAUSE_UNTIL,
     SERVICE_RUN_DUE_ZONES,
+    SERVICE_RUN_SCHEDULE_SLOT,
     SERVICE_RUN_ZONE,
     SERVICE_RUN_ZONE_WITH_DURATION,
     SERVICE_SET_MODE,
@@ -69,6 +71,11 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         data = _get_domain_data(hass, call)
         runtime = data["runtime"]
         await runtime.async_run_due_now()
+
+    async def handle_run_schedule_slot(call: ServiceCall) -> None:
+        data = _get_domain_data(hass, call)
+        runtime = data["runtime"]
+        await runtime.async_run_schedule_slot(call.data[ATTR_SLOT_ID])
 
     async def handle_stop_all(call: ServiceCall) -> None:
         data = _get_domain_data(hass, call)
@@ -133,6 +140,17 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         SERVICE_RUN_DUE_ZONES,
         handle_run_due,
         schema=vol.Schema({vol.Optional(ATTR_CONFIG_ENTRY_ID): cv.string}),
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_RUN_SCHEDULE_SLOT,
+        handle_run_schedule_slot,
+        schema=vol.Schema(
+            {
+                vol.Required(ATTR_SLOT_ID): cv.string,
+                vol.Optional(ATTR_CONFIG_ENTRY_ID): cv.string,
+            }
+        ),
     )
     hass.services.async_register(
         DOMAIN,

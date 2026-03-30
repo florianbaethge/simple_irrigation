@@ -28,6 +28,7 @@ from .const import (
 )
 from .grouping import compute_phases
 from .models import Installation, ScheduleSlot, Zone
+from .runtime import ScheduleSlotRunError, ZoneManualRunError
 from .scheduler import compute_next_runs, phases_for_slot
 from .time_util import next_slot_fire_local, parse_hh_mm
 from .validation import (
@@ -540,23 +541,44 @@ class SimpleIrrigationPanelRunSlotView(HomeAssistantView):
         runtime = _get_runtime(hass, data["entry_id"])
         if coord is None or runtime is None:
             return self.json({"success": False, "error": "not_found"}, status=404)
-        inst = coord.installation
         sid = data["slot_id"]
-        slot = next((s for s in inst.schedule_slots if s.slot_id == sid), None)
-        if slot is None:
-            return self.json({"success": False, "error": "unknown_slot"}, status=400)
-        if not slot.zone_ids_ordered:
-            return self.json({"success": False, "error": "empty_slot"}, status=400)
-        phases = phases_for_slot(slot, inst.zones, inst.max_parallel_zones)
-        if not phases:
-            return self.json({"success": False, "error": "no_runnable_zones"}, status=400)
-        if runtime.is_busy():
-            return self.json({"success": False, "error": "busy"}, status=409)
-        await runtime.async_run_phases(
-            phases,
-            scheduled=False,
-            slot_ids=[slot.slot_id],
+        try:
+            await runtime.async_run_schedule_slot(sid)
+        except ScheduleSlotRunError as err:
+            status = 409 if err.code == "busy" else 400
+            return self.json({"success": False, "error": err.code}, status=status)
+        return self.json({"success": True})
+
+
+class SimpleIrrigationPanelRunZoneView(HomeAssistantView):
+    """POST: run one zone immediately (manual run, full pre-start pipeline)."""
+
+    url = "/api/simple_irrigation/panel/run_zone"
+    name = "api:simple_irrigation:panel_run_zone"
+
+    @RequestDataValidator(
+        vol.Schema(
+            {
+                vol.Required("entry_id"): cv.string,
+                vol.Required("zone_id"): cv.string,
+            }
         )
+    )
+    async def post(self, request, data: dict[str, Any]) -> web.Response:
+        """Start runtime for a single zone."""
+        _require_admin(request)
+        hass = request.app["hass"]
+        _get_entry(hass, data["entry_id"])
+        coord = _get_coordinator(hass, data["entry_id"])
+        runtime = _get_runtime(hass, data["entry_id"])
+        if coord is None or runtime is None:
+            return self.json({"success": False, "error": "not_found"}, status=404)
+        zid = data["zone_id"]
+        try:
+            await runtime.async_run_zone(zid, duration_min=None)
+        except ZoneManualRunError as err:
+            status = 409 if err.code == "busy" else 400
+            return self.json({"success": False, "error": err.code}, status=status)
         return self.json({"success": True})
 
 
@@ -652,6 +674,7 @@ async def async_register_panel_api(hass: HomeAssistant) -> None:
     hass.http.register_view(SimpleIrrigationPanelZoneView())
     hass.http.register_view(SimpleIrrigationPanelSlotView())
     hass.http.register_view(SimpleIrrigationPanelRunSlotView())
+    hass.http.register_view(SimpleIrrigationPanelRunZoneView())
     hass.http.register_view(SimpleIrrigationPanelControlView())
     hass.http.register_view(SimpleIrrigationPanelSkipTodayView())
 

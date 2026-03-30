@@ -56,6 +56,10 @@ async def async_register_panel(hass) -> None:
         sidebar_title=sidebar_title,
         sidebar_icon=PANEL_ICON,
         require_admin=True,
+        # Do not use embed_iframe=True: the iframe document does not inherit HA theme CSS
+        # (--primary-*-color, fonts), so the panel looks broken. If the UI goes blank after
+        # the tab was hidden for a long time, disable Profile → "Suspend when hidden" or
+        # refresh once (HA disconnects non-iframe custom panels after ~5 min hidden).
         config={},
         config_panel_domain=DOMAIN,
     )

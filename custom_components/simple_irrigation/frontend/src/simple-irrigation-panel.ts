@@ -49,6 +49,9 @@ export class SimpleIrrigationPanel extends LitElement {
   /** After first successful panel translation fetch (or no loader API). */
   private _initialPanelI18nDone = false;
 
+  /** Serializes panel fetches so overlapping requests cannot clear `_state` out of order. */
+  private _loadTail: Promise<void> = Promise.resolve();
+
   setProperties(props: Record<string, unknown>): void {
     if (props.hass !== undefined) {
       const next = props.hass as HomeAssistant;
@@ -98,13 +101,28 @@ export class SimpleIrrigationPanel extends LitElement {
   connectedCallback(): void {
     super.connectedCallback();
     window.addEventListener("location-changed", this._locChanged);
+    document.addEventListener("visibilitychange", this._onVisibility);
   }
 
   disconnectedCallback(): void {
     super.disconnectedCallback();
     window.removeEventListener("location-changed", this._locChanged);
+    document.removeEventListener("visibilitychange", this._onVisibility);
     void this._teardownRunStateListeners();
   }
+
+  private _onVisibility = (): void => {
+    if (document.visibilityState !== "visible") return;
+    if (!window.location.pathname.includes("simple-irrigation")) return;
+    if (!this.hass) return;
+    const { entryId } = getPath();
+    if (!entryId) return;
+    if (this._state) {
+      void this._loadState(entryId, { silent: true });
+    } else {
+      void this._reloadPath();
+    }
+  };
 
   private _locChanged = (): void => {
     if (!window.location.pathname.includes("simple-irrigation")) return;
@@ -236,7 +254,17 @@ export class SimpleIrrigationPanel extends LitElement {
     }
   }
 
-  private async _loadState(
+  /** Enqueue a panel state fetch so concurrent calls cannot apply in the wrong order. */
+  private _loadState(entryId: string, opts?: { silent?: boolean }): Promise<void> {
+    const run = this._loadTail.then(() => this._executeLoadState(entryId, opts));
+    this._loadTail = run.then(
+      () => undefined,
+      () => undefined
+    );
+    return run;
+  }
+
+  private async _executeLoadState(
     entryId: string,
     opts?: { silent?: boolean }
   ): Promise<void> {
@@ -279,7 +307,15 @@ export class SimpleIrrigationPanel extends LitElement {
   }
 
   updated(changed: Map<PropertyKey, unknown>): void {
-    if (changed.has("hass") && this.hass && changed.get("hass") === undefined) {
+    if (!changed.has("hass") || !this.hass) {
+      return;
+    }
+    const prev = changed.get("hass") as HomeAssistant | undefined;
+    if (prev === undefined) {
+      void this._reloadPath();
+      return;
+    }
+    if (prev.connection !== this.hass.connection) {
       void this._reloadPath();
     }
   }
@@ -297,7 +333,7 @@ export class SimpleIrrigationPanel extends LitElement {
 
   private _pickEntry(entryId: string): void {
     navigate(this, exportPath(entryId, "general"));
-    this._loadState(entryId);
+    /* `location-changed` runs `_reloadPath` → `_loadState`; avoid a second concurrent fetch. */
   }
 
   protected render() {
@@ -408,6 +444,7 @@ export class SimpleIrrigationPanel extends LitElement {
                 .hass=${this.hass}
                 .entryId=${path.entryId!}
                 .installation=${inst}
+                .runState=${rs}
                 .onSaved=${() => this._loadState(path.entryId!, { silent: true })}
               ></si-view-zones>`
             : nothing}

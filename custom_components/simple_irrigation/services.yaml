@@ -36,6 +36,17 @@ run_due_zones:
       selector:
         text: {}
 
+run_schedule_slot:
+  fields:
+    slot_id:
+      required: true
+      selector:
+        text: {}
+    config_entry_id:
+      required: false
+      selector:
+        text: {}
+
 stop_all:
   fields:
     config_entry_id:

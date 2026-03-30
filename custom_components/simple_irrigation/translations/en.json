@@ -83,7 +83,7 @@
   "services": {
     "run_zone": {
       "name": "Run zone",
-      "description": "Starts a scheduled-style run for one zone using its configured duration for the current mode.",
+      "description": "Starts a full manual run for one zone: pre-start outputs (if configured), then the zone for its Eco/Normal/Extra duration matching the current mode, then all outputs off.",
       "fields": {
         "zone_id": {
           "name": "Zone ID",
@@ -117,6 +117,20 @@
       "name": "Run due zones",
       "description": "Runs whatever is due now according to schedule (same idea as the Run due zones button).",
       "fields": {
+        "config_entry_id": {
+          "name": "Config entry ID",
+          "description": "Optional. Target installation when multiple entries exist."
+        }
+      }
+    },
+    "run_schedule_slot": {
+      "name": "Run schedule slot",
+      "description": "Starts the full sequence for one schedule slot immediately (pre-start, phases, then off)—same as “Run this slot now” in the panel.",
+      "fields": {
+        "slot_id": {
+          "name": "Slot ID",
+          "description": "Internal slot identifier from the installation (shown in diagnostics / panel)."
+        },
         "config_entry_id": {
           "name": "Config entry ID",
           "description": "Optional. Target installation when multiple entries exist."
@@ -246,6 +260,11 @@
     "zones_detail_outputs_one": "1 output",
     "zones_detail_outputs_many": "{n} outputs",
     "zones_edit": "Edit",
+    "zones_run_zone_now": "Run zone now",
+    "zones_err_busy": "Irrigation is already running.",
+    "zones_err_unknown_zone": "Unknown zone.",
+    "zones_err_zone_disabled": "This zone is disabled.",
+    "zones_err_zone_no_outputs": "Add at least one output before running this zone.",
     "zones_field_name_title": "Name",
     "zones_field_name_desc": "Label for this zone in the UI and schedules.",
     "zones_field_zone_name": "Zone name",

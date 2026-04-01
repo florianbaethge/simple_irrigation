@@ -61,7 +61,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         installation_id=inst_id,
         name=entry.data.get("name", "Simple Irrigation"),
         pre_start_switches=list(entry.data.get("pre_start_switches", [])),
-        pre_start_delay_sec=PRE_START_DELAY_SEC,
+        pre_start_delay_sec=int(
+            entry.data.get("pre_start_delay_sec", PRE_START_DELAY_SEC)
+        ),
         mode=entry.data.get("default_mode", MODE_NORMAL),
         max_parallel_zones=int(entry.data.get("max_parallel_zones", 2)),
     )

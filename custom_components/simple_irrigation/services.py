@@ -15,6 +15,7 @@ from homeassistant.util import dt as dt_util
 from .const import (
     ATTR_CONFIG_ENTRY_ID,
     ATTR_DURATION_MIN,
+    ATTR_ENABLED,
     ATTR_MODE,
     ATTR_SLOT_ID,
     ATTR_UNTIL,
@@ -28,6 +29,7 @@ from .const import (
     SERVICE_RUN_ZONE,
     SERVICE_RUN_ZONE_WITH_DURATION,
     SERVICE_SET_MODE,
+    SERVICE_SET_ZONE_ENABLED,
     SERVICE_STOP_ALL,
 )
 from .models import Installation
@@ -88,6 +90,17 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         mode = call.data[ATTR_MODE]
         inst: Installation = coordinator.installation
         inst.mode = mode
+        await coordinator.async_update_installation(inst)
+
+    async def handle_set_zone_enabled(call: ServiceCall) -> None:
+        data = _get_domain_data(hass, call)
+        coordinator = data["coordinator"]
+        inst: Installation = coordinator.installation
+        zid = call.data[ATTR_ZONE_ID]
+        if zid not in inst.zones:
+            msg = f"Unknown Simple Irrigation zone: {zid}"
+            raise HomeAssistantError(msg)
+        inst.zones[zid].enabled = bool(call.data[ATTR_ENABLED])
         await coordinator.async_update_installation(inst)
 
     async def handle_pause_until(call: ServiceCall) -> None:
@@ -165,6 +178,18 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         schema=vol.Schema(
             {
                 vol.Required(ATTR_MODE): vol.In(MODES),
+                vol.Optional(ATTR_CONFIG_ENTRY_ID): cv.string,
+            }
+        ),
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_SET_ZONE_ENABLED,
+        handle_set_zone_enabled,
+        schema=vol.Schema(
+            {
+                vol.Required(ATTR_ZONE_ID): cv.string,
+                vol.Required(ATTR_ENABLED): cv.boolean,
                 vol.Optional(ATTR_CONFIG_ENTRY_ID): cv.string,
             }
         ),

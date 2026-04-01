@@ -7,7 +7,7 @@ DOMAIN: Final = "simple_irrigation"
 # Full HA configuration dict from async_setup; needed for async_setup_component(..., config).
 HASS_CONFIG_KEY: Final = "_hass_config"
 
-INTEGRATION_VERSION: Final = "0.1.3"
+INTEGRATION_VERSION: Final = "0.1.4"
 
 CUSTOM_COMPONENTS: Final = "custom_components"
 INTEGRATION_FOLDER: Final = DOMAIN
@@ -52,6 +52,7 @@ ATTR_CONFIG_ENTRY_ID: Final = "config_entry_id"
 ATTR_DURATION_MIN: Final = "duration_min"
 ATTR_UNTIL: Final = "until"
 ATTR_MODE: Final = "mode"
+ATTR_ENABLED: Final = "enabled"
 ATTR_SCHEDULED: Final = "scheduled"
 
 EVENT_RUN_STARTED: Final = f"{DOMAIN}_run_started"
@@ -68,6 +69,7 @@ SERVICE_RUN_DUE_ZONES: Final = "run_due_zones"
 SERVICE_RUN_SCHEDULE_SLOT: Final = "run_schedule_slot"
 SERVICE_STOP_ALL: Final = "stop_all"
 SERVICE_SET_MODE: Final = "set_mode"
+SERVICE_SET_ZONE_ENABLED: Final = "set_zone_enabled"
 SERVICE_PAUSE_UNTIL: Final = "pause_until"
 SERVICE_CLEAR_PAUSE: Final = "clear_pause"
 

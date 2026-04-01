@@ -69,6 +69,21 @@ set_mode:
       selector:
         text: {}
 
+set_zone_enabled:
+  fields:
+    zone_id:
+      required: true
+      selector:
+        text: {}
+    enabled:
+      required: true
+      selector:
+        boolean: {}
+    config_entry_id:
+      required: false
+      selector:
+        text: {}
+
 pause_until:
   fields:
     until:

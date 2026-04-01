@@ -51,16 +51,40 @@ export class ViewSchedule extends LitElement {
         line-height: 1.45;
         margin: 0 0 16px;
       }
+      .slot-row-wrap {
+        display: flex;
+        align-items: stretch;
+        margin-bottom: 12px;
+        border-radius: 8px;
+        overflow: hidden;
+        border: 1px solid var(--divider-color);
+        background: var(--secondary-background-color, rgba(0, 0, 0, 0.02));
+      }
+      .slot-row-accent {
+        width: 8px;
+        flex-shrink: 0;
+        background: var(--primary-color);
+        transition: background 0.15s ease;
+      }
+      .slot-row-accent.inactive {
+        background: var(--disabled-text-color, rgba(158, 158, 158, 0.45));
+      }
       .slot-row {
         display: flex;
         flex-wrap: wrap;
         align-items: center;
         gap: 10px 12px;
+        flex: 1;
+        min-width: 0;
         padding: 14px 16px;
-        border: 1px solid var(--divider-color);
-        border-radius: 8px;
-        margin-bottom: 12px;
-        background: var(--secondary-background-color, rgba(0, 0, 0, 0.02));
+      }
+      .slot-row-toggle {
+        display: flex;
+        align-items: center;
+        flex-shrink: 0;
+      }
+      .slot-row-toggle ha-switch {
+        --switch-padding: 4px;
       }
       .slot-row-summary {
         flex: 1;
@@ -344,6 +368,22 @@ export class ViewSchedule extends LitElement {
     }
   }
 
+  private async _toggleSlotEnabled(slot: SlotRow, enabled: boolean): Promise<void> {
+    if (this._busy) return;
+    const ok = await this._call({
+      action: "update",
+      slot_id: slot.slot_id,
+      weekday: slot.weekday,
+      time_local: slot.time_local,
+      enabled,
+      zone_ids_ordered: slot.zone_ids_ordered,
+      name: slot.name.trim(),
+    });
+    if (!ok) {
+      this.requestUpdate();
+    }
+  }
+
   protected render() {
     const slots = this._slots();
     const zones = this._zonesMap();
@@ -380,45 +420,70 @@ export class ViewSchedule extends LitElement {
           ${slots.map((slot) => {
             const n = slot.zone_ids_ordered.length;
             return html`
-              <div class="slot-row">
-                <div class="slot-row-summary">
-                  <p class="slot-row-title">
-                    ${slot.name
-                      ? html`<span class="slot-name">${slot.name}</span> · ${this._wd(
-                          slot.weekday
-                        )}
-                        ${this._fmtSlotTime(slot.time_local)}`
-                      : html`${this._wd(slot.weekday)} ${this._fmtSlotTime(slot.time_local)}`}
-                    ${slot.enabled ? "" : ` ${t(this.hass, "config_panel.schedule_disabled_suffix")}`}
-                  </p>
-                  <p class="slot-row-meta">
-                    ${n === 1
-                      ? t(this.hass, "config_panel.schedule_zones_in_order_one")
-                      : t(this.hass, "config_panel.schedule_zones_in_order_many", { n })}
-                  </p>
-                </div>
-                <div class="slot-row-actions">
-                  <button
-                    type="button"
-                    class="btn-outline"
-                    ?disabled=${this._busy ||
-                    this._runtimeBusy() ||
-                    slot.zone_ids_ordered.length === 0}
-                    @click=${() => this._runSlotNow(slot.slot_id)}
-                  >
-                    ${t(this.hass, "config_panel.schedule_run_slot_now")}
-                  </button>
-                  <button
-                    type="button"
-                    class="btn-outline"
-                    @click=${() => {
-                      this._msg = undefined;
-                      this._addZonePick = "";
-                      this._slotEditDraft = this._cloneSlot(slot);
-                    }}
-                  >
-                    ${t(this.hass, "config_panel.schedule_edit")}
-                  </button>
+              <div class="slot-row-wrap">
+                <div
+                  class="slot-row-accent ${slot.enabled ? "" : "inactive"}"
+                  aria-hidden="true"
+                ></div>
+                <div class="slot-row">
+                  <div class="slot-row-toggle">
+                    <ha-switch
+                      .disabled=${this._busy}
+                      .checked=${slot.enabled}
+                      @change=${(e: Event) => {
+                        const tgt = e.target as HTMLInputElement & { checked: boolean };
+                        void this._toggleSlotEnabled(slot, Boolean(tgt.checked));
+                      }}
+                    ></ha-switch>
+                  </div>
+                  <div class="slot-row-summary">
+                    <p class="slot-row-title">
+                      ${slot.name
+                        ? html`<span class="slot-name">${slot.name}</span> · ${this._wd(
+                            slot.weekday
+                          )}
+                          ${this._fmtSlotTime(slot.time_local)}`
+                        : html`${this._wd(slot.weekday)} ${this._fmtSlotTime(slot.time_local)}`}
+                    </p>
+                    <p class="slot-row-meta">
+                      ${(() => {
+                        const parts: string[] = [];
+                        if (!slot.enabled) {
+                          parts.push(t(this.hass, "config_panel.zones_detail_disabled"));
+                        }
+                        parts.push(
+                          n === 1
+                            ? t(this.hass, "config_panel.schedule_zones_in_order_one")
+                            : t(this.hass, "config_panel.schedule_zones_in_order_many", { n })
+                        );
+                        return parts.join(" · ");
+                      })()}
+                    </p>
+                  </div>
+                  <div class="slot-row-actions">
+                    <button
+                      type="button"
+                      class="btn-outline"
+                      ?disabled=${this._busy ||
+                      this._runtimeBusy() ||
+                      !slot.enabled ||
+                      slot.zone_ids_ordered.length === 0}
+                      @click=${() => this._runSlotNow(slot.slot_id)}
+                    >
+                      ${t(this.hass, "config_panel.schedule_run_slot_now")}
+                    </button>
+                    <button
+                      type="button"
+                      class="btn-outline"
+                      @click=${() => {
+                        this._msg = undefined;
+                        this._addZonePick = "";
+                        this._slotEditDraft = this._cloneSlot(slot);
+                      }}
+                    >
+                      ${t(this.hass, "config_panel.schedule_edit")}
+                    </button>
+                  </div>
                 </div>
               </div>
             `;
@@ -476,17 +541,20 @@ export class ViewSchedule extends LitElement {
           </div>
         </div>
         <div class="field-block">
-          <div class="checkboxes">
-            <label
-              ><input
-                type="checkbox"
+          <div class="switch-rows">
+            <div class="switch-row">
+              <ha-switch
+                .disabled=${this._busy}
                 .checked=${this._newEnabled}
                 @change=${(e: Event) => {
-                  this._newEnabled = (e.target as HTMLInputElement).checked;
+                  const tgt = e.target as HTMLInputElement & { checked: boolean };
+                  this._newEnabled = Boolean(tgt.checked);
                 }}
-              />
-              ${t(this.hass, "config_panel.schedule_slot_enabled")}</label
-            >
+              ></ha-switch>
+              <span class="switch-row-label"
+                >${t(this.hass, "config_panel.schedule_slot_enabled")}</span
+              >
+            </div>
           </div>
         </div>
         <div slot="footer" class="dialog-footer">
@@ -577,17 +645,21 @@ export class ViewSchedule extends LitElement {
                 </div>
               </div>
               <div class="field-block">
-                <div class="checkboxes">
-                  <label
-                    ><input
-                      type="checkbox"
+                <div class="switch-rows">
+                  <div class="switch-row">
+                    <ha-switch
+                      .disabled=${this._busy}
                       .checked=${draft.enabled}
                       @change=${(e: Event) => {
-                        draft.enabled = (e.target as HTMLInputElement).checked;
+                        const tgt = e.target as HTMLInputElement & { checked: boolean };
+                        draft.enabled = Boolean(tgt.checked);
+                        this.requestUpdate();
                       }}
-                    />
-                    ${t(this.hass, "config_panel.schedule_slot_enabled")}</label
-                  >
+                    ></ha-switch>
+                    <span class="switch-row-label"
+                      >${t(this.hass, "config_panel.schedule_slot_enabled")}</span
+                    >
+                  </div>
                 </div>
               </div>
               <div class="field-block" style="margin-top:8px">

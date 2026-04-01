@@ -8,6 +8,7 @@
         "data": {
           "name": "Name der Installation",
           "pre_start_switches": "Vorlauf-Ausgänge (Ein/Aus)",
+          "pre_start_delay_sec": "Vorlauf-Verzögerung (Sekunden)",
           "default_mode": "Standardmodus",
           "max_parallel_zones": "Max. parallele Zonen"
         }
@@ -161,6 +162,24 @@
         }
       }
     },
+    "set_zone_enabled": {
+      "name": "Zone aktivieren/deaktivieren",
+      "description": "Aktiviert oder deaktiviert eine Zone. Deaktivierte Zonen werden in jedem Zeitplan-Slot übersprungen, der sie enthält.",
+      "fields": {
+        "zone_id": {
+          "name": "Zonen-ID",
+          "description": "Interne Zonen-UUID (Schlüssel unter zones in „Diagnose herunterladen“ für diese Integration)."
+        },
+        "enabled": {
+          "name": "Aktiv",
+          "description": "Wenn aus, wird die Zone bei Zeitplan- und Slot-Läufen übersprungen, bis sie wieder aktiviert wird."
+        },
+        "config_entry_id": {
+          "name": "Konfigurationseintrags-ID",
+          "description": "Optional. Ziel-Installation bei mehreren Einträgen."
+        }
+      }
+    },
     "pause_until": {
       "name": "Pause bis",
       "description": "Pausiert automatische Zeitplan-Läufe bis zum angegebenen Datum und Uhrzeit.",
@@ -241,6 +260,9 @@
     "general_pre_start_output_i": "Vorlauf {n}",
     "general_remove": "Entfernen",
     "general_add_pre_start": "Vorlauf-Ausgang hinzufügen",
+    "general_pre_start_delay_title": "Vorlauf-Verzögerung",
+    "general_pre_start_delay_desc": "Wartezeit nach dem Einschalten der Vorlauf-Ausgänge, bevor die Zonen starten. Gibt der Pumpe Zeit zum Druckaufbau, füllt Hauptleitungen und kann Geräusche durch Luft in den Leitungen verringern.",
+    "general_pre_start_delay_field": "Verzögerung (Sekunden)",
     "general_watering_mode": "Bewässerungsmodus",
     "general_watering_mode_desc": "Legt fest, welche Dauerspalte pro Zone gilt: Eco (kürzer), Normal oder Extra (länger). Sie können den Modus auch per Automatisierung setzen — z. B. bei Tankfüllstand oder Außentemperatur — mit dem Dienst simple_irrigation.set_mode und mode eco, normal oder extra (und config_entry_id bei mehreren Plänen).",
     "general_mode_eco": "Eco",
@@ -252,7 +274,8 @@
     "general_saving": "Wird gespeichert…",
     "general_save": "Speichern",
     "zones_card_title": "Zonen",
-    "zones_intro": "Jede Zone hat einen oder mehrere Ausgänge und Laufzeiten für Eco / Normal / Extra. Ordnen Sie Zonen auf dem Tab „Zeitplan“ Slots zu. Mit Bearbeiten ändern Sie jeweils eine Zone.",
+    "zones_intro": "Jede Zone hat einen oder mehrere Ausgänge und Laufzeiten für Eco / Normal / Extra. Ordnen Sie Zonen auf dem Tab „Zeitplan“ Slots zu. Mit Bearbeiten ändern Sie jeweils eine Zone. Wenn Sie eine Zone deaktivieren, wird sie in jedem Zeitplan-Slot übersprungen, der sie enthält—praktisch, um eine Zone vorübergehend auszulassen, wenn der Boden noch feucht ist.",
+    "zones_intro_automation": "In Automatisierungen oder Skripten rufen Sie den Dienst simple_irrigation.set_zone_enabled mit zone_id (interne UUID je Zone—als Schlüssel unter zones in „Diagnose herunterladen“ für diese Integration) und enabled true oder false auf. Bei mehreren Simple-Irrigation-Installationen setzen Sie config_entry_id.",
     "zones_add_zone": "Zone hinzufügen",
     "zones_detail_disabled": "Deaktiviert",
     "zones_detail_exclusive": "Exklusiv",
@@ -294,7 +317,6 @@
     "schedule_card_title": "Zeitplan",
     "schedule_intro": "Slots sind wöchentliche Startzeiten mit einer geordneten Zonenliste. Mit Bearbeiten in der Zeile Zonen, Reihenfolge und Optionen ändern. Zonen zuerst unter „Zonen“ anlegen.",
     "schedule_add_slot": "Slot hinzufügen",
-    "schedule_disabled_suffix": "· deaktiviert",
     "schedule_zones_in_order_one": "1 Zone in Lauffolge",
     "schedule_zones_in_order_many": "{n} Zonen in Lauffolge",
     "schedule_run_slot_now": "Diesen Slot jetzt starten",

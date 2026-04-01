@@ -15,7 +15,7 @@ import "./views/view-schedule";
 import "./views/view-status";
 import "./views/view-zones";
 
-const VERSION = "0.1.3";
+const VERSION = "0.1.4";
 
 export class SimpleIrrigationPanel extends LitElement {
   static properties = {

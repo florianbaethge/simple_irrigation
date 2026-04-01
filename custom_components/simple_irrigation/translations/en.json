@@ -8,6 +8,7 @@
         "data": {
           "name": "Installation name",
           "pre_start_switches": "Pre-start outputs (on/off)",
+          "pre_start_delay_sec": "Pre-start delay (seconds)",
           "default_mode": "Default mode",
           "max_parallel_zones": "Maximum parallel zones"
         }
@@ -161,6 +162,24 @@
         }
       }
     },
+    "set_zone_enabled": {
+      "name": "Set zone enabled",
+      "description": "Enables or disables a zone. Disabled zones are skipped in every schedule slot that lists them.",
+      "fields": {
+        "zone_id": {
+          "name": "Zone ID",
+          "description": "Internal zone UUID (keys under zones in Download diagnostics for this integration)."
+        },
+        "enabled": {
+          "name": "Enabled",
+          "description": "When off, the zone is skipped for scheduled and slot runs until enabled again."
+        },
+        "config_entry_id": {
+          "name": "Config entry ID",
+          "description": "Optional. Target installation when multiple entries exist."
+        }
+      }
+    },
     "pause_until": {
       "name": "Pause until",
       "description": "Pauses automatic scheduled runs until the given date and time.",
@@ -241,6 +260,9 @@
     "general_pre_start_output_i": "Pre-start {n}",
     "general_remove": "Remove",
     "general_add_pre_start": "Add pre-start output",
+    "general_pre_start_delay_title": "Pre-start delay",
+    "general_pre_start_delay_desc": "How long to wait after turning on pre-start outputs before zone irrigation begins. Gives the pump time to build pressure, fills main lines, and can reduce noise from air in the pipes.",
+    "general_pre_start_delay_field": "Delay (seconds)",
     "general_watering_mode": "Watering mode",
     "general_watering_mode_desc": "Sets which per-zone duration column is used: Eco (shorter), Normal, or Extra (longer). You can also drive this from automations—for example when water tank level or outdoor temperature should pick Eco vs Extra—by calling the simple_irrigation.set_mode service with mode set to eco, normal, or extra (and config_entry_id if you have several plans).",
     "general_mode_eco": "Eco",
@@ -252,7 +274,8 @@
     "general_saving": "Saving…",
     "general_save": "Save",
     "zones_card_title": "Zones",
-    "zones_intro": "Each zone has one or more outputs and run times for Eco / Normal / Extra mode. Attach zones to schedule slots on the Schedule tab. Use Edit to change one zone at a time.",
+    "zones_intro": "Each zone has one or more outputs and run times for Eco / Normal / Extra mode. Attach zones to schedule slots on the Schedule tab. Use Edit to change one zone at a time. If you disable a zone, it is skipped in every schedule slot that includes it—handy to temporarily skip a zone when the soil is still moist.",
+    "zones_intro_automation": "From automations or scripts, call the simple_irrigation.set_zone_enabled service with zone_id (each zone’s internal UUID—the keys under zones in Download diagnostics for this integration) and enabled true or false. Pass config_entry_id when you have more than one Simple Irrigation installation.",
     "zones_add_zone": "Add zone",
     "zones_detail_disabled": "Disabled",
     "zones_detail_exclusive": "Exclusive",
@@ -294,7 +317,6 @@
     "schedule_card_title": "Schedule",
     "schedule_intro": "Slots are weekly start times with an ordered list of zones. Use Edit on a row to change zones, order, and options. Link zones on the Zones tab first.",
     "schedule_add_slot": "Add slot",
-    "schedule_disabled_suffix": "· disabled",
     "schedule_zones_in_order_one": "1 zone in run order",
     "schedule_zones_in_order_many": "{n} zones in run order",
     "schedule_run_slot_now": "Run this slot now",

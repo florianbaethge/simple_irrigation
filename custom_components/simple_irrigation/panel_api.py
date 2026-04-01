@@ -155,6 +155,7 @@ def _sync_config_entry_from_installation(
             **entry.data,
             "name": inst.name,
             "pre_start_switches": list(inst.pre_start_switches),
+            "pre_start_delay_sec": inst.pre_start_delay_sec,
             "default_mode": inst.mode,
             "max_parallel_zones": inst.max_parallel_zones,
         },

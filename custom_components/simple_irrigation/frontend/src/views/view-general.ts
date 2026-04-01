@@ -264,6 +264,7 @@ export class ViewGeneral extends LitElement {
   private _mode = "normal";
   private _maxParallel = 2;
   private _preStart: string[] = [];
+  private _preStartDelaySec = 10;
   private _planEnabled = true;
 
   protected willUpdate(changed: Map<PropertyKey, unknown>): void {
@@ -277,6 +278,10 @@ export class ViewGeneral extends LitElement {
         ? (inst.pre_start_switches as string[]).filter(Boolean)
         : [];
       this._preStart = ps.length ? [...ps] : [""];
+      const d = Number(inst.pre_start_delay_sec ?? 10);
+      this._preStartDelaySec = Number.isFinite(d)
+        ? Math.max(1, Math.min(3600, Math.round(d)))
+        : 10;
     }
   }
 
@@ -315,6 +320,7 @@ export class ViewGeneral extends LitElement {
       const res = await saveGlobal(this.hass, this.entryId, {
         name: this._name,
         pre_start_switches: this._preStart.filter(Boolean),
+        pre_start_delay_sec: this._preStartDelaySec,
         mode: this._mode,
         max_parallel_zones: this._maxParallel,
       });
@@ -733,6 +739,25 @@ export class ViewGeneral extends LitElement {
                   ${t(this.hass, "config_panel.general_add_pre_start")}
                 </button>
               </div>
+            </div>
+          </div>
+          <div class="field-block">
+            <span class="field-title">${t(this.hass, "config_panel.general_pre_start_delay_title")}</span>
+            <p class="field-desc">${t(this.hass, "config_panel.general_pre_start_delay_desc")}</p>
+            <div class="field-row">
+              <ha-textfield
+                type="number"
+                .label=${t(this.hass, "config_panel.general_pre_start_delay_field")}
+                .value=${String(this._preStartDelaySec)}
+                min="1"
+                max="3600"
+                @input=${(e: Event) => {
+                  this._preStartDelaySec = Math.max(
+                    1,
+                    Math.min(3600, parseInt((e.target as HTMLInputElement).value, 10) || 1)
+                  );
+                }}
+              ></ha-textfield>
             </div>
           </div>
           <div class="field-block">

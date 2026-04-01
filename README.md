@@ -95,7 +95,8 @@ You can add **multiple** config entries for separate gardens or seasonal plans (
 - Each slot is a **weekday** and **local time** (Home Assistant timezone), with an **enabled** toggle (disabled slots are ignored by the scheduler).
 - **Run order** is the ordered list of zone IDs. **Phases** group zones that may start together according to **max parallel** and **exclusive** rules.
 - **Edit** a slot to reorder (**Up** / **Down**), **Remove** from list, or **Add zone** from the dropdown.
-- **Run this slot now** starts that slot’s sequence immediately (shown as a manual run on **Status**).
+- **Run this slot now** starts that slot’s sequence immediately (shown as a manual run on **Status**). The same behavior is available to automations as `simple_irrigation.run_schedule_slot` with `slot_id`.
+- On the **Zones** tab, **Run zone now** starts a single zone with the same pre-start and shutdown behavior as a scheduled run; automations can use `simple_irrigation.run_zone` (or `run_zone_with_duration`) with `zone_id`.
 
 Tuning **phases:** Reorder zones or adjust **max parallel** / **exclusive** flags until the phase breakdown matches how you want water to overlap.
 
@@ -122,8 +123,9 @@ All services accept optional `config_entry_id` when you have more than one Simpl
 
 | Service | Typical use |
 |---------|-------------|
-| `simple_irrigation.run_zone` | Start one zone (scheduled-style duration from current mode) |
-| `simple_irrigation.run_zone_with_duration` | Start one zone for N minutes |
+| `simple_irrigation.run_zone` | Start one zone with pre-start outputs, duration from current mode, then off |
+| `simple_irrigation.run_zone_with_duration` | Same pipeline with a fixed duration (minutes) |
+| `simple_irrigation.run_schedule_slot` | Run one slot’s full sequence now (same as **Run this slot now** in the panel) |
 | `simple_irrigation.run_due_zones` | Trigger “what’s due now” |
 | `simple_irrigation.stop_all` | Stop the active cycle |
 | `simple_irrigation.set_mode` | Set `eco` / `normal` / `extra` |

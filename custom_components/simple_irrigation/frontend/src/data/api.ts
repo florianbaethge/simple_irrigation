@@ -40,6 +40,16 @@ export const runSlotNow = (
     slot_id: slotId,
   });
 
+export const runZoneNow = (
+  hass: HomeAssistant,
+  entryId: string,
+  zoneId: string
+): Promise<{ success: boolean; error?: string }> =>
+  hass.callApi("POST", "simple_irrigation/panel/run_zone", {
+    entry_id: entryId,
+    zone_id: zoneId,
+  });
+
 export const skipIrrigationToday = (
   hass: HomeAssistant,
   entryId: string

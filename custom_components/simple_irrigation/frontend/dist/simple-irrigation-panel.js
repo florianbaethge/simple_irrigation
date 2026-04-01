@@ -35,6 +35,10 @@ const runSlotNow = (hass, entryId, slotId) => hass.callApi("POST", "simple_irrig
     entry_id: entryId,
     slot_id: slotId,
 });
+const runZoneNow = (hass, entryId, zoneId) => hass.callApi("POST", "simple_irrigation/panel/run_zone", {
+    entry_id: entryId,
+    zone_id: zoneId,
+});
 const skipIrrigationToday = (hass, entryId) => hass.callApi("POST", "simple_irrigation/panel/skip_today", { entry_id: entryId });
 const panelControl = (hass, entryId, action) => hass.callApi("POST", "simple_irrigation/panel/control", {
     entry_id: entryId,
@@ -550,6 +554,24 @@ const formLayoutStyles = i$3 `
     cursor: pointer;
     font-size: 1rem;
   }
+  .switch-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .switch-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .switch-row ha-switch {
+    flex-shrink: 0;
+  }
+  .switch-row .switch-row-label {
+    font-size: 1rem;
+    color: var(--primary-text-color);
+    line-height: 1.3;
+  }
   .action-row {
     display: flex;
     flex-wrap: wrap;
@@ -734,6 +756,7 @@ class ViewGeneral extends i {
         this._mode = "normal";
         this._maxParallel = 2;
         this._preStart = [];
+        this._preStartDelaySec = 10;
         this._planEnabled = true;
     }
     static { this.properties = {
@@ -985,6 +1008,10 @@ class ViewGeneral extends i {
                 ? inst.pre_start_switches.filter(Boolean)
                 : [];
             this._preStart = ps.length ? [...ps] : [""];
+            const d = Number(inst.pre_start_delay_sec ?? 10);
+            this._preStartDelaySec = Number.isFinite(d)
+                ? Math.max(1, Math.min(3600, Math.round(d)))
+                : 10;
         }
     }
     _pauseIsActive() {
@@ -1022,6 +1049,7 @@ class ViewGeneral extends i {
             const res = await saveGlobal(this.hass, this.entryId, {
                 name: this._name,
                 pre_start_switches: this._preStart.filter(Boolean),
+                pre_start_delay_sec: this._preStartDelaySec,
                 mode: this._mode,
                 max_parallel_zones: this._maxParallel,
             });
@@ -1433,6 +1461,22 @@ class ViewGeneral extends i {
             </div>
           </div>
           <div class="field-block">
+            <span class="field-title">${t(this.hass, "config_panel.general_pre_start_delay_title")}</span>
+            <p class="field-desc">${t(this.hass, "config_panel.general_pre_start_delay_desc")}</p>
+            <div class="field-row">
+              <ha-textfield
+                type="number"
+                .label=${t(this.hass, "config_panel.general_pre_start_delay_field")}
+                .value=${String(this._preStartDelaySec)}
+                min="1"
+                max="3600"
+                @input=${(e) => {
+            this._preStartDelaySec = Math.max(1, Math.min(3600, parseInt(e.target.value, 10) || 1));
+        }}
+              ></ha-textfield>
+            </div>
+          </div>
+          <div class="field-block">
             <span class="field-title">${t(this.hass, "config_panel.general_watering_mode")}</span>
             <p class="field-desc">${t(this.hass, "config_panel.general_watering_mode_desc")}</p>
             <div class="field-row">
@@ -1573,16 +1617,40 @@ class ViewSchedule extends i {
         line-height: 1.45;
         margin: 0 0 16px;
       }
+      .slot-row-wrap {
+        display: flex;
+        align-items: stretch;
+        margin-bottom: 12px;
+        border-radius: 8px;
+        overflow: hidden;
+        border: 1px solid var(--divider-color);
+        background: var(--secondary-background-color, rgba(0, 0, 0, 0.02));
+      }
+      .slot-row-accent {
+        width: 8px;
+        flex-shrink: 0;
+        background: var(--primary-color);
+        transition: background 0.15s ease;
+      }
+      .slot-row-accent.inactive {
+        background: var(--disabled-text-color, rgba(158, 158, 158, 0.45));
+      }
       .slot-row {
         display: flex;
         flex-wrap: wrap;
         align-items: center;
         gap: 10px 12px;
+        flex: 1;
+        min-width: 0;
         padding: 14px 16px;
-        border: 1px solid var(--divider-color);
-        border-radius: 8px;
-        margin-bottom: 12px;
-        background: var(--secondary-background-color, rgba(0, 0, 0, 0.02));
+      }
+      .slot-row-toggle {
+        display: flex;
+        align-items: center;
+        flex-shrink: 0;
+      }
+      .slot-row-toggle ha-switch {
+        --switch-padding: 4px;
       }
       .slot-row-summary {
         flex: 1;
@@ -1844,6 +1912,22 @@ class ViewSchedule extends i {
             this._closeEditDialog();
         }
     }
+    async _toggleSlotEnabled(slot, enabled) {
+        if (this._busy)
+            return;
+        const ok = await this._call({
+            action: "update",
+            slot_id: slot.slot_id,
+            weekday: slot.weekday,
+            time_local: slot.time_local,
+            enabled,
+            zone_ids_ordered: slot.zone_ids_ordered,
+            name: slot.name.trim(),
+        });
+        if (!ok) {
+            this.requestUpdate();
+        }
+    }
     render() {
         const slots = this._slots();
         const zones = this._zonesMap();
@@ -1876,43 +1960,66 @@ class ViewSchedule extends i {
           ${slots.map((slot) => {
             const n = slot.zone_ids_ordered.length;
             return b `
-              <div class="slot-row">
-                <div class="slot-row-summary">
-                  <p class="slot-row-title">
-                    ${slot.name
+              <div class="slot-row-wrap">
+                <div
+                  class="slot-row-accent ${slot.enabled ? "" : "inactive"}"
+                  aria-hidden="true"
+                ></div>
+                <div class="slot-row">
+                  <div class="slot-row-toggle">
+                    <ha-switch
+                      .disabled=${this._busy}
+                      .checked=${slot.enabled}
+                      @change=${(e) => {
+                const tgt = e.target;
+                void this._toggleSlotEnabled(slot, Boolean(tgt.checked));
+            }}
+                    ></ha-switch>
+                  </div>
+                  <div class="slot-row-summary">
+                    <p class="slot-row-title">
+                      ${slot.name
                 ? b `<span class="slot-name">${slot.name}</span> · ${this._wd(slot.weekday)}
-                        ${this._fmtSlotTime(slot.time_local)}`
+                          ${this._fmtSlotTime(slot.time_local)}`
                 : b `${this._wd(slot.weekday)} ${this._fmtSlotTime(slot.time_local)}`}
-                    ${slot.enabled ? "" : ` ${t(this.hass, "config_panel.schedule_disabled_suffix")}`}
-                  </p>
-                  <p class="slot-row-meta">
-                    ${n === 1
-                ? t(this.hass, "config_panel.schedule_zones_in_order_one")
-                : t(this.hass, "config_panel.schedule_zones_in_order_many", { n })}
-                  </p>
-                </div>
-                <div class="slot-row-actions">
-                  <button
-                    type="button"
-                    class="btn-outline"
-                    ?disabled=${this._busy ||
+                    </p>
+                    <p class="slot-row-meta">
+                      ${(() => {
+                const parts = [];
+                if (!slot.enabled) {
+                    parts.push(t(this.hass, "config_panel.zones_detail_disabled"));
+                }
+                parts.push(n === 1
+                    ? t(this.hass, "config_panel.schedule_zones_in_order_one")
+                    : t(this.hass, "config_panel.schedule_zones_in_order_many", { n }));
+                return parts.join(" · ");
+            })()}
+                    </p>
+                  </div>
+                  <div class="slot-row-actions">
+                    <button
+                      type="button"
+                      class="btn-outline"
+                      ?disabled=${this._busy ||
                 this._runtimeBusy() ||
+                !slot.enabled ||
                 slot.zone_ids_ordered.length === 0}
-                    @click=${() => this._runSlotNow(slot.slot_id)}
-                  >
-                    ${t(this.hass, "config_panel.schedule_run_slot_now")}
-                  </button>
-                  <button
-                    type="button"
-                    class="btn-outline"
-                    @click=${() => {
+                      @click=${() => this._runSlotNow(slot.slot_id)}
+                    >
+                      ${t(this.hass, "config_panel.schedule_run_slot_now")}
+                    </button>
+                    <button
+                      type="button"
+                      class="btn-outline"
+                      @click=${() => {
                 this._msg = undefined;
                 this._addZonePick = "";
                 this._slotEditDraft = this._cloneSlot(slot);
             }}
-                  >
-                    ${t(this.hass, "config_panel.schedule_edit")}
-                  </button>
+                    >
+                      ${t(this.hass, "config_panel.schedule_edit")}
+                    </button>
+                  </div>
                 </div>
               </div>
             `;
@@ -1967,17 +2074,20 @@ class ViewSchedule extends i {
           </div>
         </div>
         <div class="field-block">
-          <div class="checkboxes">
-            <label
-              ><input
-                type="checkbox"
+          <div class="switch-rows">
+            <div class="switch-row">
+              <ha-switch
+                .disabled=${this._busy}
                 .checked=${this._newEnabled}
                 @change=${(e) => {
-            this._newEnabled = e.target.checked;
+            const tgt = e.target;
+            this._newEnabled = Boolean(tgt.checked);
         }}
-              />
-              ${t(this.hass, "config_panel.schedule_slot_enabled")}</label
-            >
+              ></ha-switch>
+              <span class="switch-row-label"
+                >${t(this.hass, "config_panel.schedule_slot_enabled")}</span
+              >
+            </div>
           </div>
         </div>
         <div slot="footer" class="dialog-footer">
@@ -2065,17 +2175,21 @@ class ViewSchedule extends i {
                 </div>
               </div>
               <div class="field-block">
-                <div class="checkboxes">
-                  <label
-                    ><input
-                      type="checkbox"
+                <div class="switch-rows">
+                  <div class="switch-row">
+                    <ha-switch
+                      .disabled=${this._busy}
                       .checked=${draft.enabled}
                       @change=${(e) => {
-                draft.enabled = e.target.checked;
+                const tgt = e.target;
+                draft.enabled = Boolean(tgt.checked);
+                this.requestUpdate();
             }}
-                    />
-                    ${t(this.hass, "config_panel.schedule_slot_enabled")}</label
-                  >
+                    ></ha-switch>
+                    <span class="switch-row-label"
+                      >${t(this.hass, "config_panel.schedule_slot_enabled")}</span
+                    >
+                  </div>
                 </div>
               </div>
               <div class="field-block" style="margin-top:8px">
@@ -2400,6 +2514,7 @@ class ViewZones extends i {
         hass: { attribute: false },
         entryId: { type: String },
         installation: { type: Object },
+        runState: { type: Object },
         onSaved: { attribute: false },
     }; }
     static { this.styles = [
@@ -2424,16 +2539,40 @@ class ViewZones extends i {
       .toolbar {
         margin-bottom: 16px;
       }
+      .zone-list-row-wrap {
+        display: flex;
+        align-items: stretch;
+        margin-bottom: 12px;
+        border-radius: 8px;
+        overflow: hidden;
+        border: 1px solid var(--divider-color);
+        background: var(--secondary-background-color, rgba(0, 0, 0, 0.02));
+      }
+      .zone-list-row-accent {
+        width: 8px;
+        flex-shrink: 0;
+        background: var(--primary-color);
+        transition: background 0.15s ease;
+      }
+      .zone-list-row-accent.inactive {
+        background: var(--disabled-text-color, rgba(158, 158, 158, 0.45));
+      }
       .zone-list-row {
         display: flex;
         flex-wrap: wrap;
         align-items: center;
         gap: 10px 16px;
+        flex: 1;
+        min-width: 0;
         padding: 14px 16px;
-        border: 1px solid var(--divider-color);
-        border-radius: 8px;
-        margin-bottom: 12px;
-        background: var(--secondary-background-color, rgba(0, 0, 0, 0.02));
+      }
+      .zone-list-row-toggle {
+        display: flex;
+        align-items: center;
+        flex-shrink: 0;
+      }
+      .zone-list-row-toggle ha-switch {
+        --switch-padding: 4px;
       }
       .zone-list-main {
         flex: 1;
@@ -2457,6 +2596,10 @@ class ViewZones extends i {
         gap: 8px;
       }
       .zone-list-actions .btn-outline {
+        margin-top: 0;
+      }
+      .zone-list-actions button {
+        align-self: center;
         margin-top: 0;
       }
       button {
@@ -2539,8 +2682,81 @@ class ViewZones extends i {
     _canSaveZone(zone) {
         return Boolean(zone.name.trim() && zone.switch_entity_ids.some((id) => id.trim()));
     }
+    _runtimeBusy() {
+        const rs = this.runState ?? {};
+        const s = String(rs.run_state ?? "idle");
+        return ["preparing", "running", "stopping"].includes(s);
+    }
+    async _runZoneNow(zoneId) {
+        if (this._runtimeBusy())
+            return;
+        this._busy = true;
+        this._msg = undefined;
+        this.requestUpdate();
+        try {
+            const res = (await runZoneNow(this.hass, this.entryId, zoneId));
+            if (!res.success) {
+                const err = res.error ?? "run_failed";
+                this._msg =
+                    err === "busy"
+                        ? t(this.hass, "config_panel.zones_err_busy")
+                        : err === "unknown_zone"
+                            ? t(this.hass, "config_panel.zones_err_unknown_zone")
+                            : err === "zone_disabled"
+                                ? t(this.hass, "config_panel.zones_err_zone_disabled")
+                                : err === "zone_no_outputs"
+                                    ? t(this.hass, "config_panel.zones_err_zone_no_outputs")
+                                    : String(err);
+            }
+            else {
+                this.onSaved?.();
+            }
+        }
+        catch (e) {
+            this._msg = formatApiError(e, this.hass);
+        }
+        finally {
+            this._busy = false;
+            this.requestUpdate();
+        }
+    }
     _zonesEntityListId() {
         return `si-ent-z-${this.entryId}`;
+    }
+    async _toggleZoneEnabled(z, enabled) {
+        if (this._busy)
+            return;
+        this._busy = true;
+        this._msg = undefined;
+        try {
+            const body = {
+                action: "update",
+                zone_id: z.zone_id,
+                zone: {
+                    name: z.name,
+                    switch_entity_ids: z.switch_entity_ids.filter(Boolean),
+                    enabled,
+                    duration_eco_min: z.duration_eco_min,
+                    duration_normal_min: z.duration_normal_min,
+                    duration_extra_min: z.duration_extra_min,
+                    exclusive: z.exclusive,
+                },
+            };
+            const res = await saveZone(this.hass, this.entryId, body);
+            if (!res.success) {
+                this._msg = formatApiError(res.error, this.hass);
+            }
+            else {
+                this.onSaved?.();
+            }
+        }
+        catch (e) {
+            this._msg = formatApiError(e, this.hass);
+        }
+        finally {
+            this._busy = false;
+            this.requestUpdate();
+        }
     }
     async _saveZone(action, zoneId, zone) {
         this._busy = true;
@@ -2683,27 +2899,31 @@ class ViewZones extends i {
       <div class="field-block">
         <span class="field-title">${t(this.hass, "config_panel.zones_behavior_title")}</span>
         <p class="field-desc">${t(this.hass, "config_panel.zones_behavior_desc")}</p>
-        <div class="checkboxes">
-          <label
-            ><input
-              type="checkbox"
+        <div class="switch-rows">
+          <div class="switch-row">
+            <ha-switch
+              .disabled=${this._busy}
               .checked=${z.enabled}
               @change=${(e) => {
-            z.enabled = e.target.checked;
+            const tgt = e.target;
+            z.enabled = Boolean(tgt.checked);
+            this.requestUpdate();
         }}
-            />
-            ${t(this.hass, "config_panel.zones_enabled")}</label
-          >
-          <label
-            ><input
-              type="checkbox"
+            ></ha-switch>
+            <span class="switch-row-label">${t(this.hass, "config_panel.zones_enabled")}</span>
+          </div>
+          <div class="switch-row">
+            <ha-switch
+              .disabled=${this._busy}
               .checked=${z.exclusive}
               @change=${(e) => {
-            z.exclusive = e.target.checked;
+            const tgt = e.target;
+            z.exclusive = Boolean(tgt.checked);
+            this.requestUpdate();
         }}
-            />
-            ${t(this.hass, "config_panel.zones_exclusive")}</label
-          >
+            ></ha-switch>
+            <span class="switch-row-label">${t(this.hass, "config_panel.zones_exclusive")}</span>
+          </div>
         </div>
       </div>
     `;
@@ -2717,6 +2937,7 @@ class ViewZones extends i {
         <div class="card-content">
           ${this._msg ? b `<div class="error">${this._msg}</div>` : A}
           <p class="intro">${t(this.hass, "config_panel.zones_intro")}</p>
+          <p class="intro">${t(this.hass, "config_panel.zones_intro_automation")}</p>
           <div class="field-block toolbar">
             <button
               type="button"
@@ -2730,12 +2951,31 @@ class ViewZones extends i {
           </div>
           ${zones.map((z) => {
             const outs = z.switch_entity_ids.filter(Boolean).length;
+            const runDisabled = this._busy ||
+                this._runtimeBusy() ||
+                !z.enabled ||
+                outs === 0;
             return b `
-              <div class="zone-list-row">
-                <div class="zone-list-main">
-                  <p class="zone-list-name">${z.name || z.zone_id.slice(0, 8)}</p>
-                  <p class="zone-list-detail">
-                    ${(() => {
+              <div class="zone-list-row-wrap">
+                <div
+                  class="zone-list-row-accent ${z.enabled ? "" : "inactive"}"
+                  aria-hidden="true"
+                ></div>
+                <div class="zone-list-row">
+                  <div class="zone-list-row-toggle">
+                    <ha-switch
+                      .disabled=${this._busy}
+                      .checked=${z.enabled}
+                      @change=${(e) => {
+                const tgt = e.target;
+                void this._toggleZoneEnabled(z, Boolean(tgt.checked));
+            }}
+                    ></ha-switch>
+                  </div>
+                  <div class="zone-list-main">
+                    <p class="zone-list-name">${z.name || z.zone_id.slice(0, 8)}</p>
+                    <p class="zone-list-detail">
+                      ${(() => {
                 const parts = [];
                 if (!z.enabled) {
                     parts.push(t(this.hass, "config_panel.zones_detail_disabled"));
@@ -2756,19 +2996,28 @@ class ViewZones extends i {
                 }
                 return parts.join(" · ");
             })()}
-                  </p>
-                </div>
-                <div class="zone-list-actions">
-                  <button
-                    type="button"
-                    class="btn-outline"
-                    @click=${() => {
+                    </p>
+                  </div>
+                  <div class="zone-list-actions">
+                    <button
+                      type="button"
+                      class="btn-outline"
+                      ?disabled=${runDisabled}
+                      @click=${() => this._runZoneNow(z.zone_id)}
+                    >
+                      ${t(this.hass, "config_panel.zones_run_zone_now")}
+                    </button>
+                    <button
+                      type="button"
+                      class="btn-outline"
+                      @click=${() => {
                 this._msg = undefined;
                 this._editDraft = this._cloneZone(z);
             }}
-                  >
-                    ${t(this.hass, "config_panel.zones_edit")}
-                  </button>
+                    >
+                      ${t(this.hass, "config_panel.zones_edit")}
+                    </button>
+                  </div>
                 </div>
               </div>
             `;
@@ -2876,7 +3125,12 @@ __decorate([
 ], ViewZones.prototype, "_editDraft", void 0);
 defineCustomElementOnce("si-view-zones", ViewZones);
 
-const VERSION = "0.1.3";
+const VERSION = "0.1.4";
+const PANEL_PAGES = ["general", "zones", "schedule", "status"];
+function normalizePanelPage(raw) {
+    const p = raw || "general";
+    return PANEL_PAGES.includes(p) ? p : "general";
+}
 class SimpleIrrigationPanel extends i {
     constructor() {
         super(...arguments);
@@ -2887,6 +3141,25 @@ class SimpleIrrigationPanel extends i {
         this._entriesLoading = false;
         /** After first successful panel translation fetch (or no loader API). */
         this._initialPanelI18nDone = false;
+        /** Serializes panel fetches so overlapping requests cannot clear `_state` out of order. */
+        this._loadTail = Promise.resolve();
+        this._onVisibility = () => {
+            if (document.visibilityState !== "visible")
+                return;
+            if (!window.location.pathname.includes("simple-irrigation"))
+                return;
+            if (!this.hass)
+                return;
+            const { entryId } = getPath();
+            if (!entryId)
+                return;
+            if (this._state) {
+                void this._loadState(entryId, { silent: true });
+            }
+            else {
+                void this._reloadPath();
+            }
+        };
         this._locChanged = () => {
             if (!window.location.pathname.includes("simple-irrigation"))
                 return;
@@ -2951,10 +3224,12 @@ class SimpleIrrigationPanel extends i {
     connectedCallback() {
         super.connectedCallback();
         window.addEventListener("location-changed", this._locChanged);
+        document.addEventListener("visibilitychange", this._onVisibility);
     }
     disconnectedCallback() {
         super.disconnectedCallback();
         window.removeEventListener("location-changed", this._locChanged);
+        document.removeEventListener("visibilitychange", this._onVisibility);
         void this._teardownRunStateListeners();
     }
     _clearRunStateDebounce() {
@@ -3036,13 +3311,18 @@ class SimpleIrrigationPanel extends i {
         if (!entryId) {
             await this._teardownRunStateListeners();
             await this._loadEntryList();
+            /* Another `_reloadPath` may have navigated to an entry while we awaited the list. */
+            if (getPath().entryId) {
+                this.requestUpdate();
+                return;
+            }
             this._loading = false;
             this._state = null;
             this.requestUpdate();
             return;
         }
         await this._loadState(entryId);
-        if (page && !["general", "zones", "schedule", "status"].includes(page)) {
+        if (page && !PANEL_PAGES.includes(page)) {
             navigate(this, exportPath(entryId, "general"));
         }
     }
@@ -3075,7 +3355,13 @@ class SimpleIrrigationPanel extends i {
             this._entriesLoading = false;
         }
     }
-    async _loadState(entryId, opts) {
+    /** Enqueue a panel state fetch so concurrent calls cannot apply in the wrong order. */
+    _loadState(entryId, opts) {
+        const run = this._loadTail.then(() => this._executeLoadState(entryId, opts));
+        this._loadTail = run.then(() => undefined, () => undefined);
+        return run;
+    }
+    async _executeLoadState(entryId, opts) {
         if (!this.hass)
             return;
         const silent = Boolean(opts?.silent);
@@ -3117,7 +3403,15 @@ class SimpleIrrigationPanel extends i {
         }
     }
     updated(changed) {
-        if (changed.has("hass") && this.hass && changed.get("hass") === undefined) {
+        if (!changed.has("hass") || !this.hass) {
+            return;
+        }
+        const prev = changed.get("hass");
+        if (prev === undefined) {
+            void this._reloadPath();
+            return;
+        }
+        if (prev.connection !== this.hass.connection) {
             void this._reloadPath();
         }
     }
@@ -3134,7 +3428,7 @@ class SimpleIrrigationPanel extends i {
     }
     _pickEntry(entryId) {
         navigate(this, exportPath(entryId, "general"));
-        this._loadState(entryId);
+        /* `location-changed` runs `_reloadPath` → `_loadState`; avoid a second concurrent fetch. */
     }
     render() {
         if (!this.hass) {
@@ -3144,7 +3438,7 @@ class SimpleIrrigationPanel extends i {
             return b `<div class="view"><div class="view-inner">Loading…</div></div>`;
         }
         const path = getPath();
-        const page = path.page || "general";
+        const page = normalizePanelPage(path.page);
         if (!path.entryId) {
             return b `
         <div class="entry-picker">
@@ -3195,7 +3489,7 @@ class SimpleIrrigationPanel extends i {
           <div class="version">v${VERSION}</div>
         </div>
         <ha-tab-group @wa-tab-show=${this._onTab}>
-          ${["general", "zones", "schedule", "status"].map((p) => b `
+          ${PANEL_PAGES.map((p) => b `
               <ha-tab-group-tab slot="nav" panel=${p} .active=${page === p}>
                 ${p === "general"
             ? t(this.hass, "config_panel.tab_general")
@@ -3225,6 +3519,7 @@ class SimpleIrrigationPanel extends i {
                 .hass=${this.hass}
                 .entryId=${path.entryId}
                 .installation=${inst}
+                .runState=${rs}
                 .onSaved=${() => this._loadState(path.entryId, { silent: true })}
               ></si-view-zones>`
             : A}

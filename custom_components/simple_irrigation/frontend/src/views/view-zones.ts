@@ -1,6 +1,6 @@
 import { LitElement, html, css, nothing, type TemplateResult } from "lit";
 import { state } from "lit/decorators.js";
-import { saveZone } from "../data/api";
+import { runZoneNow, saveZone } from "../data/api";
 import { renderEntityDatalist, renderNativeEntityField } from "../entity-input";
 import { defineCustomElementOnce, formatApiError } from "../helpers";
 import { t } from "../i18n";
@@ -25,12 +25,14 @@ export class ViewZones extends LitElement {
     hass: { attribute: false },
     entryId: { type: String },
     installation: { type: Object },
+    runState: { type: Object },
     onSaved: { attribute: false },
   };
 
   hass!: HomeAssistant;
   entryId!: string;
   installation!: Record<string, unknown>;
+  runState?: Record<string, unknown>;
   onSaved?: () => void;
 
   static styles = [
@@ -55,16 +57,40 @@ export class ViewZones extends LitElement {
       .toolbar {
         margin-bottom: 16px;
       }
+      .zone-list-row-wrap {
+        display: flex;
+        align-items: stretch;
+        margin-bottom: 12px;
+        border-radius: 8px;
+        overflow: hidden;
+        border: 1px solid var(--divider-color);
+        background: var(--secondary-background-color, rgba(0, 0, 0, 0.02));
+      }
+      .zone-list-row-accent {
+        width: 8px;
+        flex-shrink: 0;
+        background: var(--primary-color);
+        transition: background 0.15s ease;
+      }
+      .zone-list-row-accent.inactive {
+        background: var(--disabled-text-color, rgba(158, 158, 158, 0.45));
+      }
       .zone-list-row {
         display: flex;
         flex-wrap: wrap;
         align-items: center;
         gap: 10px 16px;
+        flex: 1;
+        min-width: 0;
         padding: 14px 16px;
-        border: 1px solid var(--divider-color);
-        border-radius: 8px;
-        margin-bottom: 12px;
-        background: var(--secondary-background-color, rgba(0, 0, 0, 0.02));
+      }
+      .zone-list-row-toggle {
+        display: flex;
+        align-items: center;
+        flex-shrink: 0;
+      }
+      .zone-list-row-toggle ha-switch {
+        --switch-padding: 4px;
       }
       .zone-list-main {
         flex: 1;
@@ -88,6 +114,10 @@ export class ViewZones extends LitElement {
         gap: 8px;
       }
       .zone-list-actions .btn-outline {
+        margin-top: 0;
+      }
+      .zone-list-actions button {
+        align-self: center;
         margin-top: 0;
       }
       button {
@@ -190,8 +220,79 @@ export class ViewZones extends LitElement {
     return Boolean(zone.name.trim() && zone.switch_entity_ids.some((id) => id.trim()));
   }
 
+  private _runtimeBusy(): boolean {
+    const rs = this.runState ?? {};
+    const s = String(rs.run_state ?? "idle");
+    return ["preparing", "running", "stopping"].includes(s);
+  }
+
+  private async _runZoneNow(zoneId: string): Promise<void> {
+    if (this._runtimeBusy()) return;
+    this._busy = true;
+    this._msg = undefined;
+    this.requestUpdate();
+    try {
+      const res = (await runZoneNow(this.hass, this.entryId, zoneId)) as {
+        success: boolean;
+        error?: string;
+      };
+      if (!res.success) {
+        const err = res.error ?? "run_failed";
+        this._msg =
+          err === "busy"
+            ? t(this.hass, "config_panel.zones_err_busy")
+            : err === "unknown_zone"
+              ? t(this.hass, "config_panel.zones_err_unknown_zone")
+              : err === "zone_disabled"
+                ? t(this.hass, "config_panel.zones_err_zone_disabled")
+                : err === "zone_no_outputs"
+                  ? t(this.hass, "config_panel.zones_err_zone_no_outputs")
+                  : String(err);
+      } else {
+        this.onSaved?.();
+      }
+    } catch (e) {
+      this._msg = formatApiError(e, this.hass);
+    } finally {
+      this._busy = false;
+      this.requestUpdate();
+    }
+  }
+
   private _zonesEntityListId(): string {
     return `si-ent-z-${this.entryId}`;
+  }
+
+  private async _toggleZoneEnabled(z: ZoneRow, enabled: boolean): Promise<void> {
+    if (this._busy) return;
+    this._busy = true;
+    this._msg = undefined;
+    try {
+      const body: Record<string, unknown> = {
+        action: "update",
+        zone_id: z.zone_id,
+        zone: {
+          name: z.name,
+          switch_entity_ids: z.switch_entity_ids.filter(Boolean),
+          enabled,
+          duration_eco_min: z.duration_eco_min,
+          duration_normal_min: z.duration_normal_min,
+          duration_extra_min: z.duration_extra_min,
+          exclusive: z.exclusive,
+        },
+      };
+      const res = await saveZone(this.hass, this.entryId, body);
+      if (!res.success) {
+        this._msg = formatApiError(res.error, this.hass);
+      } else {
+        this.onSaved?.();
+      }
+    } catch (e) {
+      this._msg = formatApiError(e, this.hass);
+    } finally {
+      this._busy = false;
+      this.requestUpdate();
+    }
   }
 
   private async _saveZone(
@@ -344,27 +445,31 @@ export class ViewZones extends LitElement {
       <div class="field-block">
         <span class="field-title">${t(this.hass, "config_panel.zones_behavior_title")}</span>
         <p class="field-desc">${t(this.hass, "config_panel.zones_behavior_desc")}</p>
-        <div class="checkboxes">
-          <label
-            ><input
-              type="checkbox"
+        <div class="switch-rows">
+          <div class="switch-row">
+            <ha-switch
+              .disabled=${this._busy}
               .checked=${z.enabled}
               @change=${(e: Event) => {
-                z.enabled = (e.target as HTMLInputElement).checked;
+                const tgt = e.target as HTMLInputElement & { checked: boolean };
+                z.enabled = Boolean(tgt.checked);
+                this.requestUpdate();
               }}
-            />
-            ${t(this.hass, "config_panel.zones_enabled")}</label
-          >
-          <label
-            ><input
-              type="checkbox"
+            ></ha-switch>
+            <span class="switch-row-label">${t(this.hass, "config_panel.zones_enabled")}</span>
+          </div>
+          <div class="switch-row">
+            <ha-switch
+              .disabled=${this._busy}
               .checked=${z.exclusive}
               @change=${(e: Event) => {
-                z.exclusive = (e.target as HTMLInputElement).checked;
+                const tgt = e.target as HTMLInputElement & { checked: boolean };
+                z.exclusive = Boolean(tgt.checked);
+                this.requestUpdate();
               }}
-            />
-            ${t(this.hass, "config_panel.zones_exclusive")}</label
-          >
+            ></ha-switch>
+            <span class="switch-row-label">${t(this.hass, "config_panel.zones_exclusive")}</span>
+          </div>
         </div>
       </div>
     `;
@@ -380,6 +485,7 @@ export class ViewZones extends LitElement {
         <div class="card-content">
           ${this._msg ? html`<div class="error">${this._msg}</div>` : nothing}
           <p class="intro">${t(this.hass, "config_panel.zones_intro")}</p>
+          <p class="intro">${t(this.hass, "config_panel.zones_intro_automation")}</p>
           <div class="field-block toolbar">
             <button
               type="button"
@@ -393,48 +499,77 @@ export class ViewZones extends LitElement {
           </div>
           ${zones.map((z) => {
             const outs = z.switch_entity_ids.filter(Boolean).length;
+            const runDisabled =
+              this._busy ||
+              this._runtimeBusy() ||
+              !z.enabled ||
+              outs === 0;
             return html`
-              <div class="zone-list-row">
-                <div class="zone-list-main">
-                  <p class="zone-list-name">${z.name || z.zone_id.slice(0, 8)}</p>
-                  <p class="zone-list-detail">
-                    ${(() => {
-                      const parts: string[] = [];
-                      if (!z.enabled) {
-                        parts.push(t(this.hass, "config_panel.zones_detail_disabled"));
-                      }
-                      if (z.exclusive) {
-                        parts.push(t(this.hass, "config_panel.zones_detail_exclusive"));
-                      }
-                      parts.push(
-                        t(this.hass, "config_panel.zones_detail_durations", {
-                          eco: z.duration_eco_min,
-                          normal: z.duration_normal_min,
-                          extra: z.duration_extra_min,
-                        })
-                      );
-                      if (outs === 1) {
-                        parts.push(t(this.hass, "config_panel.zones_detail_outputs_one"));
-                      } else if (outs > 1) {
+              <div class="zone-list-row-wrap">
+                <div
+                  class="zone-list-row-accent ${z.enabled ? "" : "inactive"}"
+                  aria-hidden="true"
+                ></div>
+                <div class="zone-list-row">
+                  <div class="zone-list-row-toggle">
+                    <ha-switch
+                      .disabled=${this._busy}
+                      .checked=${z.enabled}
+                      @change=${(e: Event) => {
+                        const tgt = e.target as HTMLInputElement & { checked: boolean };
+                        void this._toggleZoneEnabled(z, Boolean(tgt.checked));
+                      }}
+                    ></ha-switch>
+                  </div>
+                  <div class="zone-list-main">
+                    <p class="zone-list-name">${z.name || z.zone_id.slice(0, 8)}</p>
+                    <p class="zone-list-detail">
+                      ${(() => {
+                        const parts: string[] = [];
+                        if (!z.enabled) {
+                          parts.push(t(this.hass, "config_panel.zones_detail_disabled"));
+                        }
+                        if (z.exclusive) {
+                          parts.push(t(this.hass, "config_panel.zones_detail_exclusive"));
+                        }
                         parts.push(
-                          t(this.hass, "config_panel.zones_detail_outputs_many", { n: outs })
+                          t(this.hass, "config_panel.zones_detail_durations", {
+                            eco: z.duration_eco_min,
+                            normal: z.duration_normal_min,
+                            extra: z.duration_extra_min,
+                          })
                         );
-                      }
-                      return parts.join(" · ");
-                    })()}
-                  </p>
-                </div>
-                <div class="zone-list-actions">
-                  <button
-                    type="button"
-                    class="btn-outline"
-                    @click=${() => {
-                      this._msg = undefined;
-                      this._editDraft = this._cloneZone(z);
-                    }}
-                  >
-                    ${t(this.hass, "config_panel.zones_edit")}
-                  </button>
+                        if (outs === 1) {
+                          parts.push(t(this.hass, "config_panel.zones_detail_outputs_one"));
+                        } else if (outs > 1) {
+                          parts.push(
+                            t(this.hass, "config_panel.zones_detail_outputs_many", { n: outs })
+                          );
+                        }
+                        return parts.join(" · ");
+                      })()}
+                    </p>
+                  </div>
+                  <div class="zone-list-actions">
+                    <button
+                      type="button"
+                      class="btn-outline"
+                      ?disabled=${runDisabled}
+                      @click=${() => this._runZoneNow(z.zone_id)}
+                    >
+                      ${t(this.hass, "config_panel.zones_run_zone_now")}
+                    </button>
+                    <button
+                      type="button"
+                      class="btn-outline"
+                      @click=${() => {
+                        this._msg = undefined;
+                        this._editDraft = this._cloneZone(z);
+                      }}
+                    >
+                      ${t(this.hass, "config_panel.zones_edit")}
+                    </button>
+                  </div>
                 </div>
               </div>
             `;

@@ -24,11 +24,28 @@ from .const import (
     RUN_STATE_STOPPING,
 )
 from .models import Zone
+from .scheduler import phases_for_slot
 
 if TYPE_CHECKING:
     from .coordinator import SimpleIrrigationCoordinator
 
 _LOGGER = logging.getLogger(__name__)
+
+
+class ZoneManualRunError(HomeAssistantError):
+    """Manual zone run cannot start; ``code`` is used by the panel HTTP API."""
+
+    def __init__(self, code: str, message: str) -> None:
+        self.code = code
+        super().__init__(message)
+
+
+class ScheduleSlotRunError(HomeAssistantError):
+    """Manual schedule slot run cannot start; ``code`` is used by the panel HTTP API."""
+
+    def __init__(self, code: str, message: str) -> None:
+        self.code = code
+        super().__init__(message)
 
 
 def _upcoming_phases_slice(phases: list[list[str]], start_index: int) -> list[list[str]]:
@@ -290,16 +307,18 @@ class IrrigationRuntime:
         )
 
     async def async_run_zone(self, zone_id: str, duration_min: int | None = None) -> None:
-        """Manual run for one zone."""
+        """Manual run for one zone (pre-start delay, current mode duration, then all outputs off)."""
         inst = self.coordinator.installation
         zone = inst.zones.get(zone_id)
         if zone is None:
-            msg = f"Unknown zone {zone_id}"
-            raise ValueError(msg)
+            raise ZoneManualRunError("unknown_zone", f"Unknown zone {zone_id}")
+        if not zone.enabled:
+            raise ZoneManualRunError("zone_disabled", "Zone is disabled")
+        if not zone.switch_entity_ids:
+            raise ZoneManualRunError("zone_no_outputs", "Zone has no outputs configured")
 
         if self.is_busy():
-            msg = "Irrigation is already running"
-            raise HomeAssistantError(msg)
+            raise ZoneManualRunError("busy", "Irrigation is already running")
 
         mode = inst.mode
         dur = duration_min if duration_min is not None else zone.duration_for_mode(mode)
@@ -307,8 +326,7 @@ class IrrigationRuntime:
 
         async with self._run_lock:
             if self.is_busy():
-                msg = "Irrigation is already running"
-                raise HomeAssistantError(msg)
+                raise ZoneManualRunError("busy", "Irrigation is already running")
             self._duration_overrides = overrides
             self._stop_event.clear()
             self._skip_phase_event.clear()
@@ -317,9 +335,27 @@ class IrrigationRuntime:
                 self._async_run_pipeline([[zone_id]], scheduled=False, slot_ids=[]),
             )
 
+    async def async_run_schedule_slot(self, slot_id: str) -> None:
+        """Run one schedule slot now (same pipeline as “Run this slot now” in the panel)."""
+        inst = self.coordinator.installation
+        slot = next((s for s in inst.schedule_slots if s.slot_id == slot_id), None)
+        if slot is None:
+            raise ScheduleSlotRunError("unknown_slot", f"Unknown schedule slot {slot_id}")
+        if not slot.zone_ids_ordered:
+            raise ScheduleSlotRunError("empty_slot", "Schedule slot has no zones")
+        phases = phases_for_slot(slot, inst.zones, inst.max_parallel_zones)
+        if not phases:
+            raise ScheduleSlotRunError("no_runnable_zones", "No enabled zones to run in this slot")
+        if self.is_busy():
+            raise ScheduleSlotRunError("busy", "Irrigation is already running")
+        await self.async_run_phases(
+            phases,
+            scheduled=False,
+            slot_ids=[slot.slot_id],
+        )
+
     async def async_run_due_now(self) -> None:
         """Run phases for schedule slots that are due now (service)."""
-        from .scheduler import phases_for_slot
         from .time_util import next_slot_fire_local
 
         inst = self.coordinator.installation

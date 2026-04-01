@@ -143,6 +143,24 @@ export const formLayoutStyles = css`
     cursor: pointer;
     font-size: 1rem;
   }
+  .switch-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .switch-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .switch-row ha-switch {
+    flex-shrink: 0;
+  }
+  .switch-row .switch-row-label {
+    font-size: 1rem;
+    color: var(--primary-text-color);
+    line-height: 1.3;
+  }
   .action-row {
     display: flex;
     flex-wrap: wrap;

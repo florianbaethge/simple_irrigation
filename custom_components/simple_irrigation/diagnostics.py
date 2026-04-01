@@ -50,6 +50,7 @@ async def async_get_config_entry_diagnostics(
             "max_parallel_zones": inst.max_parallel_zones,
             "pause_until": inst.pause_until.isoformat() if inst.pause_until else None,
             "pre_start_switches": inst.pre_start_switches,
+            "pre_start_delay_sec": inst.pre_start_delay_sec,
         },
         "zones": {zid: z.to_dict() for zid, z in inst.zones.items()},
         "schedule_slots": slots_diag,

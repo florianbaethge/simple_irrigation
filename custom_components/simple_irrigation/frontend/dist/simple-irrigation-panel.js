@@ -3126,6 +3126,11 @@ __decorate([
 defineCustomElementOnce("si-view-zones", ViewZones);
 
 const VERSION = "0.1.4";
+const PANEL_PAGES = ["general", "zones", "schedule", "status"];
+function normalizePanelPage(raw) {
+    const p = raw || "general";
+    return PANEL_PAGES.includes(p) ? p : "general";
+}
 class SimpleIrrigationPanel extends i {
     constructor() {
         super(...arguments);
@@ -3306,13 +3311,18 @@ class SimpleIrrigationPanel extends i {
         if (!entryId) {
             await this._teardownRunStateListeners();
             await this._loadEntryList();
+            /* Another `_reloadPath` may have navigated to an entry while we awaited the list. */
+            if (getPath().entryId) {
+                this.requestUpdate();
+                return;
+            }
             this._loading = false;
             this._state = null;
             this.requestUpdate();
             return;
         }
         await this._loadState(entryId);
-        if (page && !["general", "zones", "schedule", "status"].includes(page)) {
+        if (page && !PANEL_PAGES.includes(page)) {
             navigate(this, exportPath(entryId, "general"));
         }
     }
@@ -3428,7 +3438,7 @@ class SimpleIrrigationPanel extends i {
             return b `<div class="view"><div class="view-inner">Loading…</div></div>`;
         }
         const path = getPath();
-        const page = path.page || "general";
+        const page = normalizePanelPage(path.page);
         if (!path.entryId) {
             return b `
         <div class="entry-picker">
@@ -3479,7 +3489,7 @@ class SimpleIrrigationPanel extends i {
           <div class="version">v${VERSION}</div>
         </div>
         <ha-tab-group @wa-tab-show=${this._onTab}>
-          ${["general", "zones", "schedule", "status"].map((p) => b `
+          ${PANEL_PAGES.map((p) => b `
               <ha-tab-group-tab slot="nav" panel=${p} .active=${page === p}>
                 ${p === "general"
             ? t(this.hass, "config_panel.tab_general")

@@ -17,6 +17,14 @@ import "./views/view-zones";
 
 const VERSION = "0.1.4";
 
+const PANEL_PAGES = ["general", "zones", "schedule", "status"] as const;
+type PanelPage = (typeof PANEL_PAGES)[number];
+
+function normalizePanelPage(raw: string | undefined): PanelPage {
+  const p = raw || "general";
+  return (PANEL_PAGES as readonly string[]).includes(p) ? (p as PanelPage) : "general";
+}
+
 export class SimpleIrrigationPanel extends LitElement {
   static properties = {
     hass: { attribute: false },
@@ -215,13 +223,18 @@ export class SimpleIrrigationPanel extends LitElement {
     if (!entryId) {
       await this._teardownRunStateListeners();
       await this._loadEntryList();
+      /* Another `_reloadPath` may have navigated to an entry while we awaited the list. */
+      if (getPath().entryId) {
+        this.requestUpdate();
+        return;
+      }
       this._loading = false;
       this._state = null;
       this.requestUpdate();
       return;
     }
     await this._loadState(entryId);
-    if (page && !["general", "zones", "schedule", "status"].includes(page)) {
+    if (page && !(PANEL_PAGES as readonly string[]).includes(page)) {
       navigate(this, exportPath(entryId, "general"));
     }
   }
@@ -345,7 +358,7 @@ export class SimpleIrrigationPanel extends LitElement {
     }
 
     const path = getPath();
-    const page = path.page || "general";
+    const page = normalizePanelPage(path.page);
 
     if (!path.entryId) {
       return html`
@@ -412,7 +425,7 @@ export class SimpleIrrigationPanel extends LitElement {
           <div class="version">v${VERSION}</div>
         </div>
         <ha-tab-group @wa-tab-show=${this._onTab}>
-          ${(["general", "zones", "schedule", "status"] as const).map(
+          ${PANEL_PAGES.map(
             (p) => html`
               <ha-tab-group-tab slot="nav" panel=${p} .active=${page === p}>
                 ${p === "general"

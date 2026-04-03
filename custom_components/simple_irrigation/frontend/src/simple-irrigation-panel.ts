@@ -13,12 +13,21 @@ import type { HomeAssistant, PanelStateResult } from "./types";
 import "./views/view-general";
 import "./views/view-schedule";
 import "./views/view-status";
+import "./views/view-timetable";
 import "./views/view-zones";
 
-const VERSION = "0.1.4";
+const VERSION = "0.2.0";
 
-const PANEL_PAGES = ["general", "zones", "schedule", "status"] as const;
+const PANEL_PAGES = ["general", "zones", "schedule", "timetable", "status"] as const;
 type PanelPage = (typeof PANEL_PAGES)[number];
+
+const TAB_LABEL_KEYS: Record<PanelPage, string> = {
+  general: "config_panel.tab_general",
+  zones: "config_panel.tab_zones",
+  schedule: "config_panel.tab_schedule",
+  timetable: "config_panel.tab_timetable",
+  status: "config_panel.tab_status",
+};
 
 function normalizePanelPage(raw: string | undefined): PanelPage {
   const p = raw || "general";
@@ -428,13 +437,7 @@ export class SimpleIrrigationPanel extends LitElement {
           ${PANEL_PAGES.map(
             (p) => html`
               <ha-tab-group-tab slot="nav" panel=${p} .active=${page === p}>
-                ${p === "general"
-                  ? t(this.hass, "config_panel.tab_general")
-                  : p === "zones"
-                    ? t(this.hass, "config_panel.tab_zones")
-                    : p === "schedule"
-                      ? t(this.hass, "config_panel.tab_schedule")
-                      : t(this.hass, "config_panel.tab_status")}
+                ${t(this.hass, TAB_LABEL_KEYS[p])}
               </ha-tab-group-tab>
             `
           )}
@@ -469,6 +472,13 @@ export class SimpleIrrigationPanel extends LitElement {
                 .runState=${rs}
                 .onSaved=${() => this._loadState(path.entryId!, { silent: true })}
               ></si-view-schedule>`
+            : nothing}
+          ${page === "timetable"
+            ? html`<si-view-timetable
+                .hass=${this.hass}
+                .entryId=${path.entryId!}
+                .installation=${inst}
+              ></si-view-timetable>`
             : nothing}
           ${page === "status"
             ? html`<si-view-status

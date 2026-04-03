@@ -5,6 +5,7 @@ import { renderEntityDatalist, renderNativeEntityField } from "../entity-input";
 import { defineCustomElementOnce, formatApiError } from "../helpers";
 import { t } from "../i18n";
 import { formLayoutStyles } from "../form-layout-styles";
+import { slotInclusionCountPerZone } from "../timetable-model";
 import type { HomeAssistant } from "../types";
 
 const domains = ["switch", "input_boolean", "group"];
@@ -478,6 +479,7 @@ export class ViewZones extends LitElement {
   protected render() {
     const zones = this._zonesFromInstallation();
     const edit = this._editDraft;
+    const slotsPerZone = slotInclusionCountPerZone(this.installation ?? {});
 
     return html`
       ${renderEntityDatalist(this.hass, this._zonesEntityListId(), domains)}
@@ -539,6 +541,14 @@ export class ViewZones extends LitElement {
                             extra: z.duration_extra_min,
                           })
                         );
+                        const slotN = slotsPerZone[z.zone_id] ?? 0;
+                        if (slotN === 1) {
+                          parts.push(t(this.hass, "config_panel.zones_detail_added_slots_one"));
+                        } else if (slotN > 1) {
+                          parts.push(
+                            t(this.hass, "config_panel.zones_detail_added_slots_many", { n: slotN })
+                          );
+                        }
                         if (outs === 1) {
                           parts.push(t(this.hass, "config_panel.zones_detail_outputs_one"));
                         } else if (outs > 1) {

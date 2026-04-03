@@ -161,6 +161,24 @@ const getPath = () => {
 const exportPath = (entryId, page) => {
     return `/${BASE}/${entryId}/${page}`;
 };
+/**
+ * Remove `editSlot` from the current URL without dispatching `location-changed`.
+ * Using `navigate()` would trigger a full panel reload and unmount the schedule view,
+ * which closes the slot edit dialog immediately after opening it.
+ */
+function stripEditSlotQueryFromUrl() {
+    try {
+        const url = new URL(window.location.href);
+        if (!url.searchParams.has("editSlot"))
+            return;
+        url.searchParams.delete("editSlot");
+        const qs = url.searchParams.toString();
+        history.replaceState(null, "", url.pathname + (qs ? `?${qs}` : "") + url.hash);
+    }
+    catch {
+        /* ignore */
+    }
+}
 
 const panelStyles = i$3 `
   :host {
@@ -1590,6 +1608,8 @@ class ViewSchedule extends i {
         this._slotEditDraft = null;
         this._addSlotDialogOpen = false;
         this._addZonePick = "";
+        /** Cleared when URL has no `editSlot` query; avoids reopening the same deep link repeatedly. */
+        this._consumedEditSlotKey = null;
     }
     static { this.properties = {
         hass: { attribute: false },
@@ -1848,6 +1868,32 @@ class ViewSchedule extends i {
     _closeEditDialog() {
         this._slotEditDraft = null;
     }
+    _consumeEditSlotQueryFromUrl() {
+        const slotId = new URLSearchParams(window.location.search).get("editSlot");
+        if (!slotId) {
+            this._consumedEditSlotKey = null;
+            return;
+        }
+        if (!this.entryId)
+            return;
+        const key = `${this.entryId}:${slotId}`;
+        if (this._consumedEditSlotKey === key)
+            return;
+        const slot = this._slots().find((s) => s.slot_id === slotId);
+        const scheduleKnown = Array.isArray(this.installation?.schedule_slots);
+        if (slot) {
+            this._consumedEditSlotKey = key;
+            this._msg = undefined;
+            this._addZonePick = "";
+            this._slotEditDraft = this._cloneSlot(slot);
+            stripEditSlotQueryFromUrl();
+            return;
+        }
+        if (scheduleKnown) {
+            this._consumedEditSlotKey = key;
+            stripEditSlotQueryFromUrl();
+        }
+    }
     _resetNewSlotForm() {
         this._newWeekday = 0;
         this._newTime = "06:00";
@@ -1927,6 +1973,10 @@ class ViewSchedule extends i {
         if (!ok) {
             this.requestUpdate();
         }
+    }
+    updated(changed) {
+        super.updated(changed);
+        this._consumeEditSlotQueryFromUrl();
     }
     render() {
         const slots = this._slots();
@@ -2492,6 +2542,680 @@ __decorate([
 ], ViewStatus.prototype, "_showRaw", void 0);
 defineCustomElementOnce("si-view-status", ViewStatus);
 
+/** Weekly timetable entries from schedule slots (local wall clock, Mon=0 … Sun=6). */
+function parseTimeLocalToMinutes(timeLocal) {
+    const m = /^(\d{1,2}):(\d{2})$/.exec(timeLocal.trim());
+    if (!m)
+        return 0;
+    const h = Math.min(23, Math.max(0, parseInt(m[1], 10)));
+    const min = Math.min(59, Math.max(0, parseInt(m[2], 10)));
+    return h * 60 + min;
+}
+function durationForMode(zone, mode) {
+    if (!zone)
+        return 0;
+    if (mode === "eco")
+        return Math.max(0, Number(zone.duration_eco_min ?? 0));
+    if (mode === "extra")
+        return Math.max(0, Number(zone.duration_extra_min ?? 0));
+    return Math.max(0, Number(zone.duration_normal_min ?? 0));
+}
+/** Bucket by wall-clock hour of segment start ([0,8), [8,16), [16,24)). */
+function bucketFromStartMin(startMin) {
+    const h = Math.floor(Math.max(0, startMin) / 60);
+    if (h < 8)
+        return 0;
+    if (h < 16)
+        return 1;
+    return 2;
+}
+/**
+ * Weekday column order: values are internal indices 0=Monday … 6=Sunday.
+ */
+function weekdayIndicesForDisplay(firstWeekday, language) {
+    const monFirst = [0, 1, 2, 3, 4, 5, 6];
+    const sunFirst = [6, 0, 1, 2, 3, 4, 5];
+    const fw = (firstWeekday || "monday").toLowerCase();
+    if (fw === "sunday")
+        return sunFirst;
+    if (fw === "monday")
+        return monFirst;
+    if (fw === "language" && language) {
+        try {
+            const loc = new Intl.Locale(language.replace(/_/g, "-"));
+            const fd = loc.weekInfo?.firstDay;
+            if (fd === 7)
+                return sunFirst;
+            return monFirst;
+        }
+        catch {
+            return monFirst;
+        }
+    }
+    return monFirst;
+}
+function zonesPhaseInputFromInstallation(zones) {
+    const out = {};
+    if (!zones)
+        return out;
+    for (const [id, z] of Object.entries(zones)) {
+        out[id] = {
+            enabled: Boolean(z.enabled ?? true),
+            exclusive: Boolean(z.exclusive),
+        };
+    }
+    return out;
+}
+/**
+ * Phase grouping includes disabled zones (they render gray) but phase advance
+ * uses max duration among enabled zones only (matches runtime).
+ */
+function buildTimetableEntries(installation) {
+    const planEnabled = Boolean(installation?.enabled ?? true);
+    const preStartSec = Math.max(0, Number(installation?.pre_start_delay_sec ?? 10));
+    const mode = String(installation?.mode ?? "normal");
+    const maxParallel = Math.max(1, Number(installation?.max_parallel_zones ?? 2));
+    const zones = installation?.zones;
+    const slots = installation?.schedule_slots;
+    const zonesById = zonesPhaseInputFromInstallation(zones);
+    const entries = [];
+    if (!slots?.length || !zones) {
+        return entries;
+    }
+    for (const slot of slots) {
+        const slotId = String(slot.slot_id ?? "");
+        const slotEnabled = Boolean(slot.enabled ?? true);
+        const weekday = Math.max(0, Math.min(6, Number(slot.weekday ?? 0)));
+        const timeLocal = String(slot.time_local ?? "00:00");
+        const ordered = Array.isArray(slot.zone_ids_ordered)
+            ? slot.zone_ids_ordered
+            : [];
+        const slotStartMin = parseTimeLocalToMinutes(timeLocal);
+        let cursor = slotStartMin + preStartSec / 60;
+        const phases = computePhases(ordered, zonesById, maxParallel, false);
+        for (const phase of phases) {
+            const phaseStart = cursor;
+            let phaseLenMin = 0;
+            for (const zid of phase) {
+                const z = zones[zid];
+                if (!z)
+                    continue;
+                if (Boolean(z.enabled ?? true)) {
+                    const d = durationForMode(z, mode);
+                    phaseLenMin = Math.max(phaseLenMin, d);
+                }
+            }
+            for (const zid of phase) {
+                const z = zones[zid];
+                if (!z)
+                    continue;
+                const zoneEnabled = Boolean(z.enabled ?? true);
+                const dur = durationForMode(z, mode);
+                const startMin = phaseStart;
+                const endMin = phaseStart + dur;
+                entries.push({
+                    zoneId: zid,
+                    weekday,
+                    startMin,
+                    endMin,
+                    bucket: bucketFromStartMin(startMin),
+                    enabled: planEnabled && slotEnabled && zoneEnabled,
+                    mode,
+                    slotId,
+                });
+            }
+            cursor = phaseStart + phaseLenMin;
+        }
+    }
+    return entries;
+}
+function zoneRowOrder(installation) {
+    const zones = installation?.zones;
+    if (!zones)
+        return [];
+    return Object.keys(zones);
+}
+function zoneDisplayName(installation, zoneId) {
+    const zones = installation?.zones;
+    const z = zones?.[zoneId];
+    const name = z?.name != null ? String(z.name) : "";
+    return name.trim() || zoneId.slice(0, 8);
+}
+/** HH:MM for profile time formatting (minutes may be fractional from pre-start seconds). */
+function minutesToTimeLocal(totalMin) {
+    const t = Math.max(0, totalMin);
+    const m = Math.floor(t);
+    const h = Math.min(23, Math.floor(m / 60));
+    const mm = m % 60;
+    return `${h}:${String(mm).padStart(2, "0")}`;
+}
+/** Rounded duration in minutes for UI labels. */
+function entryDurationMinutesRounded(entry) {
+    return Math.max(0, Math.round(entry.endMin - entry.startMin));
+}
+const BUCKET_KEYS = [0, 1, 2];
+/** Horizontal stacking when multiple entries share the same zone, weekday, and bucket. */
+function assignEntryLanes(entries) {
+    const byCell = new Map();
+    for (const e of entries) {
+        const k = `${e.weekday}:${e.zoneId}:${e.bucket}`;
+        if (!byCell.has(k))
+            byCell.set(k, []);
+        byCell.get(k).push(e);
+    }
+    const out = new Map();
+    for (const list of byCell.values()) {
+        list.sort((a, b) => a.startMin - b.startMin || a.endMin - b.endMin);
+        const ends = [];
+        for (const e of list) {
+            let lane = 0;
+            while (lane < ends.length && ends[lane] > e.startMin + 1e-3) {
+                lane++;
+            }
+            if (lane === ends.length) {
+                ends.push(e.endMin);
+            }
+            else {
+                ends[lane] = Math.max(ends[lane], e.endMin);
+            }
+            out.set(e, { lane, maxLanes: 0 });
+        }
+        const maxLanes = Math.max(1, ends.length);
+        for (const e of list) {
+            out.get(e).maxLanes = maxLanes;
+        }
+    }
+    return out;
+}
+const TIMETABLE_BUCKET_INDICES = BUCKET_KEYS;
+/**
+ * How many schedule slots include `zone_id` in `zone_ids_ordered` (distinct slots;
+ * each slot counts at most once per zone).
+ */
+function slotInclusionCountPerZone(installation) {
+    const slots = installation?.schedule_slots;
+    const counts = {};
+    if (!Array.isArray(slots))
+        return counts;
+    for (const slot of slots) {
+        const ordered = Array.isArray(slot.zone_ids_ordered)
+            ? slot.zone_ids_ordered
+            : [];
+        const seen = new Set();
+        for (const zid of ordered) {
+            if (seen.has(zid))
+                continue;
+            seen.add(zid);
+            counts[zid] = (counts[zid] ?? 0) + 1;
+        }
+    }
+    return counts;
+}
+
+class ViewTimetable extends i {
+    static { this.properties = {
+        hass: { attribute: false },
+        entryId: { type: String },
+        installation: { type: Object },
+    }; }
+    static { this.styles = i$3 `
+    ha-card {
+      margin-bottom: 16px;
+    }
+    .card-content {
+      padding: 0 8px 16px;
+    }
+    .intro {
+      font-size: 0.875rem;
+      color: var(--secondary-text-color);
+      line-height: 1.45;
+      margin: 0 0 12px;
+    }
+    .table-wrap {
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      margin: 0 -4px;
+    }
+    .tt-table {
+      width: 100%;
+      min-width: 520px;
+      border-collapse: collapse;
+      table-layout: fixed;
+      font-size: 0.8125rem;
+      background: var(--card-background-color, var(--ha-card-background));
+      border: 1px solid var(--divider-color);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .tt-table th,
+    .tt-table td {
+      border: 1px solid var(--divider-color);
+      vertical-align: top;
+      padding: 6px 8px;
+    }
+    .tt-th-zone {
+      width: 12%;
+      max-width: 96px;
+      text-align: left;
+      font-weight: 600;
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--secondary-text-color);
+      background: var(--secondary-background-color, rgba(0, 0, 0, 0.04));
+    }
+    .tt-th-bucket {
+      width: 1.75rem;
+      min-width: 1.75rem;
+      max-width: 1.75rem;
+      padding: 6px 2px;
+      background: var(--secondary-background-color, rgba(0, 0, 0, 0.04));
+    }
+    .tt-th-day {
+      text-align: center;
+      font-weight: 600;
+      font-size: 0.78rem;
+      color: var(--primary-text-color);
+      background: var(--secondary-background-color, rgba(0, 0, 0, 0.04));
+    }
+    .tt-zone-name {
+      text-align: left;
+      font-weight: 600;
+      font-size: 0.8125rem;
+      line-height: 1.3;
+      color: var(--primary-text-color);
+      background: var(--card-background-color, var(--ha-card-background));
+      word-break: break-word;
+      hyphens: auto;
+      padding: 6px 6px;
+      vertical-align: middle;
+    }
+    .tt-bucket-icon {
+      text-align: center;
+      vertical-align: middle;
+      padding: 4px 2px;
+      width: 1.75rem;
+      min-width: 1.75rem;
+      max-width: 1.75rem;
+      background: var(--card-background-color, var(--ha-card-background));
+    }
+    .tt-bucket-icon ha-icon {
+      display: block;
+      margin: 0 auto;
+      color: var(--secondary-text-color);
+      --mdc-icon-size: 18px;
+      width: 18px;
+      height: 18px;
+    }
+    .tt-bucket-cell {
+      background: var(--card-background-color, var(--ha-card-background));
+      padding: 4px 4px 6px;
+      min-height: 52px;
+    }
+    .tt-blocks {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      align-items: stretch;
+    }
+    .tt-blocks--lanes {
+      flex-direction: row;
+      flex-wrap: wrap;
+      gap: 3px;
+    }
+    .tt-block {
+      box-sizing: border-box;
+      border-radius: 6px;
+      padding: 5px 6px;
+      font-size: 0.68rem;
+      line-height: 1.25;
+      min-height: 2.5rem;
+      flex: 1 1 auto;
+      min-width: 0;
+      color: var(--text-primary-color, var(--primary-text-color));
+      border: 1px solid transparent;
+    }
+    .tt-blocks--lanes .tt-block {
+      flex: 1 1 calc(50% - 2px);
+      min-width: calc(50% - 2px);
+    }
+    .tt-block--active {
+      background: color-mix(in srgb, var(--primary-color) 78%, var(--card-background-color));
+      border-color: color-mix(in srgb, var(--primary-color) 42%, transparent);
+      color: var(--text-primary-color, var(--primary-text-color));
+    }
+    .tt-block--disabled {
+      background: color-mix(in srgb, var(--disabled-color, #9e9e9e) 38%, var(--card-background-color));
+      border-color: var(--divider-color);
+      color: var(--secondary-text-color);
+    }
+    .tt-block:hover {
+      filter: brightness(1.05);
+    }
+    .tt-block--clickable {
+      cursor: pointer;
+    }
+    .tt-block--clickable:focus-visible {
+      outline: 2px solid var(--primary-color);
+      outline-offset: 2px;
+    }
+    .tt-block-time {
+      font-weight: 600;
+      display: block;
+    }
+    .tt-block-dur {
+      font-size: 0.62rem;
+      opacity: 0.92;
+    }
+    .foot {
+      margin-top: 14px;
+      padding-top: 10px;
+      border-top: 1px solid var(--divider-color);
+      font-size: 0.75rem;
+      color: var(--secondary-text-color);
+    }
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px 14px;
+      align-items: center;
+    }
+    .legend-sep {
+      flex-shrink: 0;
+      width: 1px;
+      align-self: stretch;
+      min-height: 1rem;
+      margin: 2px 2px 2px 4px;
+      background: var(--divider-color);
+    }
+    .legend-period {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      line-height: 1.35;
+    }
+    .legend-period ha-icon {
+      flex-shrink: 0;
+      color: var(--secondary-text-color);
+      --mdc-icon-size: 18px;
+      width: 18px;
+      height: 18px;
+    }
+    .legend-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .swatch {
+      width: 14px;
+      height: 14px;
+      border-radius: 3px;
+      flex-shrink: 0;
+      border: 1px solid var(--divider-color);
+    }
+    .swatch--active {
+      background: color-mix(in srgb, var(--primary-color) 78%, var(--card-background-color));
+      border-color: color-mix(in srgb, var(--primary-color) 35%, transparent);
+    }
+    .swatch--disabled {
+      background: color-mix(in srgb, var(--disabled-color, #9e9e9e) 38%, var(--card-background-color));
+    }
+    .empty {
+      font-size: 0.875rem;
+      color: var(--secondary-text-color);
+      margin: 0;
+      padding: 8px 0;
+    }
+    @media (max-width: 600px) {
+      .intro {
+        font-size: 0.8rem;
+        margin-bottom: 8px;
+      }
+      .tt-table {
+        min-width: 480px;
+        font-size: 0.72rem;
+      }
+      .tt-table th,
+      .tt-table td {
+        padding: 4px 5px;
+      }
+      .tt-th-zone {
+        font-size: 0.62rem;
+        max-width: 80px;
+      }
+      .tt-th-bucket {
+        width: 1.5rem;
+        min-width: 1.5rem;
+        max-width: 1.5rem;
+      }
+      .tt-th-day {
+        font-size: 0.68rem;
+      }
+      .tt-zone-name {
+        font-size: 0.72rem;
+      }
+      .tt-bucket-icon {
+        padding: 3px 1px;
+        width: 1.5rem;
+        min-width: 1.5rem;
+        max-width: 1.5rem;
+      }
+      .tt-bucket-icon ha-icon {
+        --mdc-icon-size: 16px;
+        width: 16px;
+        height: 16px;
+      }
+      .tt-bucket-cell {
+        min-height: 44px;
+        padding: 3px 2px 4px;
+      }
+      .tt-block {
+        font-size: 0.6rem;
+        padding: 3px 4px;
+        min-height: 2.1rem;
+        border-radius: 4px;
+      }
+      .tt-block-dur {
+        font-size: 0.55rem;
+      }
+      .foot {
+        font-size: 0.68rem;
+      }
+      .legend-period ha-icon {
+        --mdc-icon-size: 16px;
+        width: 16px;
+        height: 16px;
+      }
+    }
+  `; }
+    _bucketIcon(bucket) {
+        if (bucket === 0)
+            return "mdi:weather-sunset-up";
+        if (bucket === 1)
+            return "mdi:white-balance-sunny";
+        return "mdi:weather-sunset";
+    }
+    _bucketAriaLabel(bucket) {
+        if (bucket === 0)
+            return t(this.hass, "config_panel.timetable_bucket_aria_morning");
+        if (bucket === 1)
+            return t(this.hass, "config_panel.timetable_bucket_aria_day");
+        return t(this.hass, "config_panel.timetable_bucket_aria_evening");
+    }
+    _bucketLegendCaption(bucket) {
+        if (bucket === 0)
+            return t(this.hass, "config_panel.timetable_legend_bucket_morning");
+        if (bucket === 1)
+            return t(this.hass, "config_panel.timetable_legend_bucket_day");
+        return t(this.hass, "config_panel.timetable_legend_bucket_evening");
+    }
+    _entryTooltip(e) {
+        const start = formatSlotTimeForProfile(this.hass, minutesToTimeLocal(e.startMin));
+        const end = formatSlotTimeForProfile(this.hass, minutesToTimeLocal(e.endMin));
+        const modeKey = e.mode === "eco"
+            ? "config_panel.timetable_mode_eco"
+            : e.mode === "extra"
+                ? "config_panel.timetable_mode_extra"
+                : "config_panel.timetable_mode_normal";
+        const modeLabel = t(this.hass, modeKey);
+        return t(this.hass, "config_panel.timetable_bar_tooltip", {
+            start,
+            end,
+            mode: modeLabel,
+        });
+    }
+    _entriesForCell(map, weekday, zoneId, bucket) {
+        return map.get(`${weekday}\t${zoneId}\t${bucket}`) ?? [];
+    }
+    _openSlotEditor(slotId) {
+        if (!slotId || !this.entryId)
+            return;
+        const q = new URLSearchParams({ editSlot: slotId });
+        navigate(this, `${exportPath(this.entryId, "schedule")}?${q.toString()}`);
+    }
+    _blockKeydown(ev, slotId) {
+        if (ev.key === "Enter" || ev.key === " ") {
+            ev.preventDefault();
+            this._openSlotEditor(slotId);
+        }
+    }
+    render() {
+        const inst = this.installation ?? {};
+        const zones = inst.zones;
+        const slots = inst.schedule_slots;
+        const zoneIds = zoneRowOrder(inst);
+        const entries = buildTimetableEntries(inst);
+        const laneInfo = assignEntryLanes(entries);
+        const colOrder = weekdayIndicesForDisplay(this.hass?.locale?.first_weekday, this.hass?.locale?.language ?? this.hass?.language);
+        if (!zones || zoneIds.length === 0) {
+            return b `
+        <ha-card .header=${t(this.hass, "config_panel.timetable_card_title")}>
+          <div class="card-content">
+            <p class="intro">${t(this.hass, "config_panel.timetable_intro")}</p>
+            <p class="empty">${t(this.hass, "config_panel.timetable_empty_no_zones")}</p>
+          </div>
+        </ha-card>
+      `;
+        }
+        if (!slots?.length) {
+            return b `
+        <ha-card .header=${t(this.hass, "config_panel.timetable_card_title")}>
+          <div class="card-content">
+            <p class="intro">${t(this.hass, "config_panel.timetable_intro")}</p>
+            <p class="empty">${t(this.hass, "config_panel.timetable_empty_no_slots")}</p>
+          </div>
+        </ha-card>
+      `;
+        }
+        const byCell = new Map();
+        for (const e of entries) {
+            const k = `${e.weekday}\t${e.zoneId}\t${e.bucket}`;
+            if (!byCell.has(k))
+                byCell.set(k, []);
+            byCell.get(k).push(e);
+        }
+        return b `
+      <ha-card .header=${t(this.hass, "config_panel.timetable_card_title")}>
+        <div class="card-content">
+          <p class="intro">${t(this.hass, "config_panel.timetable_intro")}</p>
+          <div class="table-wrap">
+            <table class="tt-table">
+              <thead>
+                <tr>
+                  <th class="tt-th-zone" scope="col">${t(this.hass, "config_panel.timetable_col_zone")}</th>
+                  <th class="tt-th-bucket" scope="col" aria-hidden="true"></th>
+                  ${colOrder.map((wd) => b `<th class="tt-th-day" scope="col">${weekdayLong(this.hass, wd)}</th>`)}
+                </tr>
+              </thead>
+              <tbody>
+                ${zoneIds.flatMap((zid) => {
+            const name = zoneDisplayName(inst, zid);
+            return TIMETABLE_BUCKET_INDICES.map((bucket, bi) => {
+                return b `
+                      <tr>
+                        ${bi === 0
+                    ? b `<th class="tt-zone-name" scope="row" rowspan="3">${name}</th>`
+                    : A}
+                        <th
+                          class="tt-bucket-icon"
+                          scope="row"
+                          aria-label=${this._bucketAriaLabel(bucket)}
+                        >
+                          <ha-icon icon=${this._bucketIcon(bucket)}></ha-icon>
+                        </th>
+                        ${colOrder.map((wd) => {
+                    const cellEntries = [...this._entriesForCell(byCell, wd, zid, bucket)].sort((a, b) => a.startMin - b.startMin);
+                    const multiLane = cellEntries.some((e) => {
+                        const info = laneInfo.get(e);
+                        return info && info.maxLanes > 1;
+                    });
+                    return b `
+                            <td class="tt-bucket-cell">
+                              ${cellEntries.length
+                        ? b `
+                                    <div class="tt-blocks ${multiLane ? "tt-blocks--lanes" : ""}">
+                                      ${cellEntries.map((e) => {
+                            const start = formatSlotTimeForProfile(this.hass, minutesToTimeLocal(e.startMin));
+                            const end = formatSlotTimeForProfile(this.hass, minutesToTimeLocal(e.endMin));
+                            const dur = entryDurationMinutesRounded(e);
+                            const durLabel = t(this.hass, "config_panel.timetable_duration_min", {
+                                n: dur,
+                            });
+                            return b `
+                                          <div
+                                            class="tt-block tt-block--clickable ${e.enabled
+                                ? "tt-block--active"
+                                : "tt-block--disabled"}"
+                                            title=${this._entryTooltip(e)}
+                                            role="button"
+                                            tabindex="0"
+                                            @click=${() => this._openSlotEditor(e.slotId)}
+                                            @keydown=${(ev) => this._blockKeydown(ev, e.slotId)}
+                                          >
+                                            <span class="tt-block-time">${start} – ${end}</span>
+                                            <span class="tt-block-dur">${durLabel}</span>
+                                          </div>
+                                        `;
+                        })}
+                                    </div>
+                                  `
+                        : A}
+                            </td>
+                          `;
+                })}
+                      </tr>
+                    `;
+            });
+        })}
+              </tbody>
+            </table>
+          </div>
+          <div class="foot">
+            <div class="legend" role="group" aria-label=${t(this.hass, "config_panel.timetable_legend_label")}>
+              <span class="legend-item">
+                <span class="swatch swatch--active" aria-hidden="true"></span>
+                ${t(this.hass, "config_panel.timetable_legend_active")}
+              </span>
+              <span class="legend-item">
+                <span class="swatch swatch--disabled" aria-hidden="true"></span>
+                ${t(this.hass, "config_panel.timetable_legend_disabled")}
+              </span>
+              <span class="legend-sep" aria-hidden="true"></span>
+              ${TIMETABLE_BUCKET_INDICES.map((b$1) => b `
+                  <span class="legend-period">
+                    <ha-icon icon=${this._bucketIcon(b$1)}></ha-icon>
+                    <span>${this._bucketLegendCaption(b$1)}</span>
+                  </span>
+                `)}
+            </div>
+          </div>
+        </div>
+      </ha-card>
+    `;
+    }
+}
+defineCustomElementOnce("si-view-timetable", ViewTimetable);
+
 const domains = ["switch", "input_boolean", "group"];
 class ViewZones extends i {
     constructor() {
@@ -2931,6 +3655,7 @@ class ViewZones extends i {
     render() {
         const zones = this._zonesFromInstallation();
         const edit = this._editDraft;
+        const slotsPerZone = slotInclusionCountPerZone(this.installation ?? {});
         return b `
       ${renderEntityDatalist(this.hass, this._zonesEntityListId(), domains)}
       <ha-card .header=${t(this.hass, "config_panel.zones_card_title")}>
@@ -2988,6 +3713,13 @@ class ViewZones extends i {
                     normal: z.duration_normal_min,
                     extra: z.duration_extra_min,
                 }));
+                const slotN = slotsPerZone[z.zone_id] ?? 0;
+                if (slotN === 1) {
+                    parts.push(t(this.hass, "config_panel.zones_detail_added_slots_one"));
+                }
+                else if (slotN > 1) {
+                    parts.push(t(this.hass, "config_panel.zones_detail_added_slots_many", { n: slotN }));
+                }
                 if (outs === 1) {
                     parts.push(t(this.hass, "config_panel.zones_detail_outputs_one"));
                 }
@@ -3125,8 +3857,15 @@ __decorate([
 ], ViewZones.prototype, "_editDraft", void 0);
 defineCustomElementOnce("si-view-zones", ViewZones);
 
-const VERSION = "0.1.4";
-const PANEL_PAGES = ["general", "zones", "schedule", "status"];
+const VERSION = "0.2.0";
+const PANEL_PAGES = ["general", "zones", "schedule", "timetable", "status"];
+const TAB_LABEL_KEYS = {
+    general: "config_panel.tab_general",
+    zones: "config_panel.tab_zones",
+    schedule: "config_panel.tab_schedule",
+    timetable: "config_panel.tab_timetable",
+    status: "config_panel.tab_status",
+};
 function normalizePanelPage(raw) {
     const p = raw || "general";
     return PANEL_PAGES.includes(p) ? p : "general";
@@ -3491,13 +4230,7 @@ class SimpleIrrigationPanel extends i {
         <ha-tab-group @wa-tab-show=${this._onTab}>
           ${PANEL_PAGES.map((p) => b `
               <ha-tab-group-tab slot="nav" panel=${p} .active=${page === p}>
-                ${p === "general"
-            ? t(this.hass, "config_panel.tab_general")
-            : p === "zones"
-                ? t(this.hass, "config_panel.tab_zones")
-                : p === "schedule"
-                    ? t(this.hass, "config_panel.tab_schedule")
-                    : t(this.hass, "config_panel.tab_status")}
+                ${t(this.hass, TAB_LABEL_KEYS[p])}
               </ha-tab-group-tab>
             `)}
         </ha-tab-group>
@@ -3531,6 +4264,13 @@ class SimpleIrrigationPanel extends i {
                 .runState=${rs}
                 .onSaved=${() => this._loadState(path.entryId, { silent: true })}
               ></si-view-schedule>`
+            : A}
+          ${page === "timetable"
+            ? b `<si-view-timetable
+                .hass=${this.hass}
+                .entryId=${path.entryId}
+                .installation=${inst}
+              ></si-view-timetable>`
             : A}
           ${page === "status"
             ? b `<si-view-status

@@ -10,4 +10,5 @@ These files are embedded in the root [`README.md`](../README.md).
 | `zones_edit.png` | Zone editor dialog |
 | `schedule.png` | Schedule slots list |
 | `schedule_edit.png` | Slot editor (run order / phases) |
+| `timetable.png` | Timetable tab — weekly grid (zones × weekdays, time-of-day rows) |
 | `status.png` | Runtime status |

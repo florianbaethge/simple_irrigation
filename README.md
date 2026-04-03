@@ -3,7 +3,7 @@
 [![CI](https://github.com/florianbaethge/simple_irrigation/actions/workflows/ci.yml/badge.svg)](https://github.com/florianbaethge/simple_irrigation/actions/workflows/ci.yml)
 [![HACS Default](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://hacs.xyz/docs/faq/custom_repositories/)
 
-**Custom integration for [Home Assistant](https://www.home-assistant.io/)** that orchestrates one irrigation system per config entry: weekly schedule slots, on/off outputs (switches, `input_boolean`, groups), global **Eco / Normal / Extra** watering modes, optional **pre-start** outputs, **parallel** runs with **exclusive** zones, **pause** and **skip today**, and a **sidebar panel** for full configuration (no YAML for zones or schedule).
+**Custom integration for [Home Assistant](https://www.home-assistant.io/)** that orchestrates one irrigation system per config entry: weekly schedule slots, on/off outputs (switches, `input_boolean`, groups), global **Eco / Normal / Extra** watering modes, optional **pre-start** outputs, **parallel** runs with **exclusive** zones, **pause** and **skip today**, and a **sidebar panel** for full configuration (no YAML for zones or schedule). The panel includes a **Timetable** tab with a week-at-a-glance grid (zones × weekdays, morning/day/evening buckets) derived from your slots and current mode.
 
 ---
 
@@ -14,6 +14,7 @@
 | **General** | Live run state (preparing / running / stopping), next scheduled run, plan on/off, skip today / clear pause, pre-start entities, mode, max parallel zones, stop / skip phase / clear error |
 | **Zones** | Named zones, one or more output entities per zone, Eco/Normal/Extra runtimes (minutes), enabled flag, **exclusive** (never parallel with others) |
 | **Schedule** | Weekly slots (weekday + local time), optional slot name, ordered zone list, **phase** preview from parallel rules, “run this slot now” |
+| **Timetable** | Weekly overview: each zone’s planned runs by weekday, split into **morning / daytime / evening** rows; uses the same phase and mode timing as a real run; **click a block** to jump to **Schedule** and open that slot’s editor |
 | **Status** | Human-readable runtime summary and optional **raw JSON** for debugging |
 
 Languages: **English** and **German** (UI strings, config flow, entities, services, panel). The panel follows the Home Assistant user language when translations are loaded.
@@ -67,6 +68,7 @@ Copy the folder `custom_components/simple_irrigation/` into your Home Assistant 
 3. Pick your installation if you have several entries.
 4. On **Zones**, add zones and outputs; set durations for Eco / Normal / Extra.
 5. On **Schedule**, add slots (weekday + time), then **Edit** each slot to set **run order** and review **phases**.
+6. Use **Timetable** to see when each zone runs across the week; open a slot for editing by **clicking** a run block.
 
 You can add **multiple** config entries for separate gardens or seasonal plans (each appears in the panel picker).
 
@@ -99,6 +101,13 @@ You can add **multiple** config entries for separate gardens or seasonal plans (
 - On the **Zones** tab, **Run zone now** starts a single zone with the same pre-start and shutdown behavior as a scheduled run; automations can use `simple_irrigation.run_zone` (or `run_zone_with_duration`) with `zone_id`.
 
 Tuning **phases:** Reorder zones or adjust **max parallel** / **exclusive** flags until the phase breakdown matches how you want water to overlap.
+
+### Timetable
+
+- **Grid:** One row group per **zone**; columns are **weekdays** (order follows your Home Assistant profile’s week start when set). Each zone has three **time-of-day** rows (icons: morning 0:00–8:00, daytime 8:00–16:00, evening 16:00–24:00). A run appears in the row that matches its **start** time.
+- **Timing:** Computed from your **schedule slots**, **pre-start delay**, current **Eco / Normal / Extra** mode, and the same **phase** rules as the runtime (including **disabled** zones/slots shown in a muted style).
+- **Zones** list shows how many slots reference each zone (**Added to *n* slots**).
+- **Deep link:** Clicking a timetable block opens the **Schedule** tab with that slot’s **Edit** dialog (URL uses `?editSlot=…`, then cleans up without reloading the panel).
 
 ---
 
@@ -164,6 +173,10 @@ Use **Developer tools → Services** to explore fields with translated descripti
 ![Schedule tab — slots](screenshots/schedule.png)
 
 ![Schedule tab — edit slot (run order and phases)](screenshots/schedule_edit.png)
+
+### Timetable
+
+![Timetable tab — weekly overview by zone and weekday](screenshots/timetable.png)
 
 ### Status
 

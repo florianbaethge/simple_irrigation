@@ -5,7 +5,8 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import timedelta
-from typing import TYPE_CHECKING, Any
+from contextlib import suppress
+from typing import TYPE_CHECKING
 
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.core import HomeAssistant
@@ -23,7 +24,8 @@ from .const import (
     RUN_STATE_RUNNING,
     RUN_STATE_STOPPING,
 )
-from .models import Zone
+from .grouping import can_join_active_phase, compute_phases
+from .models import RunState, Zone
 from .scheduler import phases_for_slot
 
 if TYPE_CHECKING:
@@ -48,11 +50,6 @@ class ScheduleSlotRunError(HomeAssistantError):
         super().__init__(message)
 
 
-def _upcoming_phases_slice(phases: list[list[str]], start_index: int) -> list[list[str]]:
-    """Return copies of phase groups from start_index onward (for UI: zones not yet started)."""
-    return [[str(z) for z in grp] for grp in phases[start_index:]]
-
-
 class IrrigationRuntime:
     """Execute scheduled or manual irrigation runs."""
 
@@ -66,6 +63,11 @@ class IrrigationRuntime:
         self._run_lock = asyncio.Lock()
         self._touched_entities: set[str] = set()
         self._duration_overrides: dict[str, int] = {}
+        self._phase_queue: list[list[str]] = []
+        self._manual_zone_order: list[str] = []
+        self._after_phase_zone_order: list[str] = []
+        self._mid_phase_extensions: list[str] = []
+        self._phase_extend_event = asyncio.Event()
 
     async def async_setup(self) -> None:
         """Reset state on startup."""
@@ -116,16 +118,20 @@ class IrrigationRuntime:
                 _LOGGER.warning("Run skipped: already busy")
                 return
             self._duration_overrides = dict(duration_overrides or {})
+            self._phase_queue = [list(g) for g in phases]
+            self._manual_zone_order.clear()
+            self._after_phase_zone_order.clear()
+            self._mid_phase_extensions.clear()
+            self._phase_extend_event.clear()
             self._stop_event.clear()
             self._skip_phase_event.clear()
             self._touched_entities.clear()
             self._task = self.hass.async_create_task(
-                self._async_run_pipeline(phases, scheduled, slot_ids or []),
+                self._async_run_pipeline(scheduled, slot_ids or []),
             )
 
     async def _async_run_pipeline(
         self,
-        phases: list[list[str]],
         scheduled: bool,
         slot_ids: list[str],
     ) -> None:
@@ -133,12 +139,16 @@ class IrrigationRuntime:
         rs = self.coordinator.run_state
 
         try:
+            if scheduled:
+                self._manual_zone_order.clear()
+            self._phase_extend_event.clear()
+
             rs.run_state = RUN_STATE_PREPARING
             rs.manual_run = not scheduled
             rs.current_slot_id = slot_ids[0] if slot_ids else None
             rs.current_run_started_at = dt_util.utcnow()
-            # active_zone_ids empty until first phase; include first phase in upcoming for the panel.
-            rs.upcoming_phases = _upcoming_phases_slice(phases, 0)
+            # active_zone_ids empty until first phase; upcoming = phases not yet started.
+            rs.upcoming_phases = [list(g) for g in self._phase_queue]
             await self.coordinator.async_update_run_state(rs)
 
             self.hass.bus.async_fire(
@@ -155,16 +165,31 @@ class IrrigationRuntime:
                 return
 
             rs.run_state = RUN_STATE_RUNNING
+            self._manual_zone_order.clear()
+            rs.upcoming_phases = [list(g) for g in self._phase_queue]
             await self.coordinator.async_update_run_state(rs)
 
-            for i, phase in enumerate(phases):
-                self._skip_phase_event.clear()
-                rs = self.coordinator.run_state
-                rs.upcoming_phases = _upcoming_phases_slice(phases, i + 1)
-                await self.coordinator.async_update_run_state(rs)
+            while True:
                 if self._stop_event.is_set():
                     break
-                await self._async_run_phase(phase, inst.mode)
+
+                if not self._phase_queue and self._after_phase_zone_order:
+                    self._phase_queue = compute_phases(
+                        self._after_phase_zone_order,
+                        inst.zones,
+                        inst.max_parallel_zones,
+                    )
+                    self._after_phase_zone_order.clear()
+
+                if not self._phase_queue:
+                    break
+
+                self._skip_phase_event.clear()
+                phase = self._phase_queue.pop(0)
+                rs = self.coordinator.run_state
+                rs.upcoming_phases = [list(g) for g in self._phase_queue]
+                await self.coordinator.async_update_run_state(rs)
+                await self._async_run_phase_expandable(phase, inst.mode)
 
             await self._async_finish_run(RUN_STATE_IDLE, error=None)
 
@@ -177,6 +202,10 @@ class IrrigationRuntime:
             await self._async_finish_run(RUN_STATE_ERROR, error=str(err))
         finally:
             self._duration_overrides.clear()
+            self._manual_zone_order.clear()
+            self._after_phase_zone_order.clear()
+            self._mid_phase_extensions.clear()
+            self._phase_queue.clear()
 
     async def _async_finish_run(self, state: str, error: str | None) -> None:
         rs = self.coordinator.run_state
@@ -228,29 +257,99 @@ class IrrigationRuntime:
             await self._async_switch_turn_on(entity_id)
         await self._async_sleep_interruptible(float(delay_sec))
 
-    async def _async_run_phase(self, zone_ids: list[str], mode: str) -> None:
+    async def _async_run_phase_expandable(self, initial_zone_ids: list[str], mode: str) -> None:
+        """Run one phase; extra manual zones may join mid-phase when parallel rules allow."""
         inst = self.coordinator.installation
         rs = self.coordinator.run_state
-        rs.active_zone_ids = list(zone_ids)
-        await self.coordinator.async_update_run_state(rs)
+        self._phase_extend_event.clear()
 
-        tasks = []
-        for zid in zone_ids:
+        tasks_by_zone: dict[str, asyncio.Task[None]] = {}
+
+        async def _run_one_zone(zid: str) -> None:
             zone = inst.zones.get(zid)
             if zone is None or not zone.enabled:
-                continue
+                return
             duration = self._duration_overrides.get(
                 zid,
                 zone.duration_for_mode(mode),
             )
-            tasks.append(self._async_zone_run(zone, duration))
+            await self._async_zone_run(zone, duration)
 
-        if tasks:
-            await asyncio.gather(*tasks)
+        def _launch(zid: str) -> None:
+            if zid in tasks_by_zone:
+                return
+            tasks_by_zone[zid] = asyncio.create_task(_run_one_zone(zid))
+
+        for zid in initial_zone_ids:
+            _launch(zid)
+
+        async def _sync_active() -> None:
+            rs.active_zone_ids = [
+                zid for zid, t in tasks_by_zone.items() if not t.done()
+            ]
+            await self.coordinator.async_update_run_state(rs)
+
+        await _sync_active()
+
+        while tasks_by_zone:
+            if self._stop_event.is_set():
+                for t in tasks_by_zone.values():
+                    t.cancel()
+                await asyncio.gather(*tasks_by_zone.values(), return_exceptions=True)
+                tasks_by_zone.clear()
+                break
+
+            ext_wait = asyncio.create_task(self._phase_extend_event.wait())
+            done, _ = await asyncio.wait(
+                set(tasks_by_zone.values()) | {ext_wait},
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+
+            extension_signalled = ext_wait in done
+            if not extension_signalled:
+                ext_wait.cancel()
+            with suppress(asyncio.CancelledError):
+                await ext_wait
+
+            if extension_signalled:
+                self._phase_extend_event.clear()
+                for zid in self._drain_mid_phase_extensions():
+                    _launch(zid)
+
+            for t in done:
+                if t is ext_wait:
+                    continue
+                zid = next((z for z, ut in tasks_by_zone.items() if ut is t), None)
+                if zid is None:
+                    continue
+                tasks_by_zone.pop(zid, None)
+                await t
+
+            await _sync_active()
 
         rs = self.coordinator.run_state
         rs.active_zone_ids = []
         await self.coordinator.async_update_run_state(rs)
+
+    def _drain_mid_phase_extensions(self) -> list[str]:
+        out = list(self._mid_phase_extensions)
+        self._mid_phase_extensions.clear()
+        return out
+
+    def _manual_zone_already_scheduled(self, zone_id: str, rs: RunState) -> bool:
+        """True if this zone is active, queued for mid-phase, tail list, or remaining phases."""
+        if rs.run_state == RUN_STATE_PREPARING and zone_id in self._manual_zone_order:
+            return True
+        if zone_id in rs.active_zone_ids:
+            return True
+        if zone_id in self._after_phase_zone_order:
+            return True
+        if zone_id in self._mid_phase_extensions:
+            return True
+        for grp in self._phase_queue:
+            if zone_id in grp:
+                return True
+        return False
 
     async def _wait_stop_or_skip(self) -> None:
         await asyncio.wait(
@@ -317,22 +416,71 @@ class IrrigationRuntime:
         if not zone.switch_entity_ids:
             raise ZoneManualRunError("zone_no_outputs", "Zone has no outputs configured")
 
-        if self.is_busy():
-            raise ZoneManualRunError("busy", "Irrigation is already running")
-
         mode = inst.mode
         dur = duration_min if duration_min is not None else zone.duration_for_mode(mode)
-        overrides = {zone_id: dur}
 
         async with self._run_lock:
+            rs = self.coordinator.run_state
+
             if self.is_busy():
+                if rs.run_state == RUN_STATE_STOPPING or not rs.manual_run:
+                    raise ZoneManualRunError("busy", "Irrigation is already running")
+                if self._manual_zone_already_scheduled(zone_id, rs):
+                    raise ZoneManualRunError(
+                        "zone_already_queued",
+                        "Zone is already part of this irrigation run",
+                    )
+                self._duration_overrides[zone_id] = dur
+                if rs.run_state == RUN_STATE_PREPARING:
+                    self._manual_zone_order.append(zone_id)
+                    self._phase_queue = compute_phases(
+                        self._manual_zone_order,
+                        inst.zones,
+                        inst.max_parallel_zones,
+                    )
+                    rs.upcoming_phases = [list(g) for g in self._phase_queue]
+                    await self.coordinator.async_update_run_state(rs)
+                    return
+                if rs.run_state == RUN_STATE_RUNNING:
+                    active = list(rs.active_zone_ids)
+                    if can_join_active_phase(
+                        active,
+                        zone_id,
+                        inst.zones,
+                        inst.max_parallel_zones,
+                    ):
+                        self._mid_phase_extensions.append(zone_id)
+                        self._phase_extend_event.set()
+                    else:
+                        self._after_phase_zone_order.append(zone_id)
+                        tail = compute_phases(
+                            self._after_phase_zone_order,
+                            inst.zones,
+                            inst.max_parallel_zones,
+                        )
+                        rs.upcoming_phases = [list(g) for g in self._phase_queue] + [
+                            list(g) for g in tail
+                        ]
+                        await self.coordinator.async_update_run_state(rs)
+                    return
                 raise ZoneManualRunError("busy", "Irrigation is already running")
+
+            overrides = {zone_id: dur}
             self._duration_overrides = overrides
+            self._manual_zone_order = [zone_id]
+            self._phase_queue = compute_phases(
+                self._manual_zone_order,
+                inst.zones,
+                inst.max_parallel_zones,
+            )
+            self._after_phase_zone_order.clear()
+            self._mid_phase_extensions.clear()
+            self._phase_extend_event.clear()
             self._stop_event.clear()
             self._skip_phase_event.clear()
             self._touched_entities.clear()
             self._task = self.hass.async_create_task(
-                self._async_run_pipeline([[zone_id]], scheduled=False, slot_ids=[]),
+                self._async_run_pipeline(scheduled=False, slot_ids=[]),
             )
 
     async def async_run_schedule_slot(self, slot_id: str) -> None:

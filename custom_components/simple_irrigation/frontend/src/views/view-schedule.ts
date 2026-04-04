@@ -1,7 +1,8 @@
-import { LitElement, html, css, nothing } from "lit";
+import { LitElement, html, css, nothing, type PropertyValues } from "lit";
 import { state } from "lit/decorators.js";
 import { runSlotNow, saveSlot } from "../data/api";
 import { defineCustomElementOnce, formatApiError } from "../helpers";
+import { stripEditSlotQueryFromUrl } from "../navigation";
 import { t } from "../i18n";
 import { formLayoutStyles } from "../form-layout-styles";
 import { formatTimeLocalForDisplay, weekdayLong } from "../date-format";
@@ -197,6 +198,8 @@ export class ViewSchedule extends LitElement {
   @state() private _slotEditDraft: SlotRow | null = null;
   @state() private _addSlotDialogOpen = false;
   @state() private _addZonePick = "";
+  /** Cleared when URL has no `editSlot` query; avoids reopening the same deep link repeatedly. */
+  private _consumedEditSlotKey: string | null = null;
 
   private _wd(i: number): string {
     return weekdayLong(this.hass, i);
@@ -299,6 +302,34 @@ export class ViewSchedule extends LitElement {
     this._slotEditDraft = null;
   }
 
+  private _consumeEditSlotQueryFromUrl(): void {
+    const slotId = new URLSearchParams(window.location.search).get("editSlot");
+    if (!slotId) {
+      this._consumedEditSlotKey = null;
+      return;
+    }
+    if (!this.entryId) return;
+    const key = `${this.entryId}:${slotId}`;
+    if (this._consumedEditSlotKey === key) return;
+
+    const slot = this._slots().find((s) => s.slot_id === slotId);
+    const scheduleKnown = Array.isArray(this.installation?.schedule_slots);
+
+    if (slot) {
+      this._consumedEditSlotKey = key;
+      this._msg = undefined;
+      this._addZonePick = "";
+      this._slotEditDraft = this._cloneSlot(slot);
+      stripEditSlotQueryFromUrl();
+      return;
+    }
+
+    if (scheduleKnown) {
+      this._consumedEditSlotKey = key;
+      stripEditSlotQueryFromUrl();
+    }
+  }
+
   private _resetNewSlotForm(): void {
     this._newWeekday = 0;
     this._newTime = "06:00";
@@ -382,6 +413,11 @@ export class ViewSchedule extends LitElement {
     if (!ok) {
       this.requestUpdate();
     }
+  }
+
+  override updated(changed: PropertyValues): void {
+    super.updated(changed);
+    this._consumeEditSlotQueryFromUrl();
   }
 
   protected render() {

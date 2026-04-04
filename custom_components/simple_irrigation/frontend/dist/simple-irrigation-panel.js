@@ -3406,14 +3406,7 @@ class ViewZones extends i {
     _canSaveZone(zone) {
         return Boolean(zone.name.trim() && zone.switch_entity_ids.some((id) => id.trim()));
     }
-    _runtimeBusy() {
-        const rs = this.runState ?? {};
-        const s = String(rs.run_state ?? "idle");
-        return ["preparing", "running", "stopping"].includes(s);
-    }
     async _runZoneNow(zoneId) {
-        if (this._runtimeBusy())
-            return;
         this._busy = true;
         this._msg = undefined;
         this.requestUpdate();
@@ -3424,13 +3417,15 @@ class ViewZones extends i {
                 this._msg =
                     err === "busy"
                         ? t(this.hass, "config_panel.zones_err_busy")
-                        : err === "unknown_zone"
-                            ? t(this.hass, "config_panel.zones_err_unknown_zone")
-                            : err === "zone_disabled"
-                                ? t(this.hass, "config_panel.zones_err_zone_disabled")
-                                : err === "zone_no_outputs"
-                                    ? t(this.hass, "config_panel.zones_err_zone_no_outputs")
-                                    : String(err);
+                        : err === "zone_already_queued"
+                            ? t(this.hass, "config_panel.zones_err_zone_already_queued")
+                            : err === "unknown_zone"
+                                ? t(this.hass, "config_panel.zones_err_unknown_zone")
+                                : err === "zone_disabled"
+                                    ? t(this.hass, "config_panel.zones_err_zone_disabled")
+                                    : err === "zone_no_outputs"
+                                        ? t(this.hass, "config_panel.zones_err_zone_no_outputs")
+                                        : String(err);
             }
             else {
                 this.onSaved?.();
@@ -3676,10 +3671,7 @@ class ViewZones extends i {
           </div>
           ${zones.map((z) => {
             const outs = z.switch_entity_ids.filter(Boolean).length;
-            const runDisabled = this._busy ||
-                this._runtimeBusy() ||
-                !z.enabled ||
-                outs === 0;
+            const runDisabled = this._busy || !z.enabled || outs === 0;
             return b `
               <div class="zone-list-row-wrap">
                 <div

@@ -307,6 +307,7 @@
     "zones_edit": "Bearbeiten",
     "zones_run_zone_now": "Zone jetzt starten",
     "zones_err_busy": "Bewässerung läuft bereits.",
+    "zones_err_zone_already_queued": "Diese Zone ist bereits im aktuellen Lauf eingeplant.",
     "zones_err_unknown_zone": "Unbekannte Zone.",
     "zones_err_zone_disabled": "Diese Zone ist deaktiviert.",
     "zones_err_zone_no_outputs": "Fügen Sie mindestens einen Ausgang hinzu, bevor Sie diese Zone starten.",

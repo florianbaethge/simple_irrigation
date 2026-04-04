@@ -59,6 +59,36 @@ def compute_phases(
     return phases
 
 
+def can_join_active_phase(
+    active_zone_ids: list[str],
+    new_zone_id: str,
+    zones_by_id: dict[str, Zone],
+    max_parallel_zones: int,
+) -> bool:
+    """Return True if ``new_zone_id`` may start while ``active_zone_ids`` are still running.
+
+    Mirrors the non-exclusive parallel rules in :func:`compute_phases`: exclusive zones never
+    join an in-flight phase; capacity is capped by ``max_parallel_zones``.
+    """
+    if max_parallel_zones < 1:
+        max_parallel_zones = 1
+    if not active_zone_ids:
+        return False
+
+    new_zone = zones_by_id.get(new_zone_id)
+    if new_zone is None or not new_zone.enabled:
+        return False
+    if new_zone.exclusive:
+        return False
+
+    for zid in active_zone_ids:
+        z = zones_by_id.get(zid)
+        if z is not None and z.exclusive:
+            return False
+
+    return len(active_zone_ids) < max_parallel_zones
+
+
 def phase_index_per_zone(ordered_zone_ids: list[str], phases: list[list[str]]) -> dict[str, int]:
     """Map each zone id to 1-based phase index for UI (first occurrence only)."""
     result: dict[str, int] = {}

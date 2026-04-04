@@ -307,6 +307,7 @@
     "zones_edit": "Edit",
     "zones_run_zone_now": "Run zone now",
     "zones_err_busy": "Irrigation is already running.",
+    "zones_err_zone_already_queued": "This zone is already included in the current run.",
     "zones_err_unknown_zone": "Unknown zone.",
     "zones_err_zone_disabled": "This zone is disabled.",
     "zones_err_zone_no_outputs": "Add at least one output before running this zone.",

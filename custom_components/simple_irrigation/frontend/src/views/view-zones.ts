@@ -221,14 +221,7 @@ export class ViewZones extends LitElement {
     return Boolean(zone.name.trim() && zone.switch_entity_ids.some((id) => id.trim()));
   }
 
-  private _runtimeBusy(): boolean {
-    const rs = this.runState ?? {};
-    const s = String(rs.run_state ?? "idle");
-    return ["preparing", "running", "stopping"].includes(s);
-  }
-
   private async _runZoneNow(zoneId: string): Promise<void> {
-    if (this._runtimeBusy()) return;
     this._busy = true;
     this._msg = undefined;
     this.requestUpdate();
@@ -242,13 +235,15 @@ export class ViewZones extends LitElement {
         this._msg =
           err === "busy"
             ? t(this.hass, "config_panel.zones_err_busy")
-            : err === "unknown_zone"
-              ? t(this.hass, "config_panel.zones_err_unknown_zone")
-              : err === "zone_disabled"
-                ? t(this.hass, "config_panel.zones_err_zone_disabled")
-                : err === "zone_no_outputs"
-                  ? t(this.hass, "config_panel.zones_err_zone_no_outputs")
-                  : String(err);
+            : err === "zone_already_queued"
+              ? t(this.hass, "config_panel.zones_err_zone_already_queued")
+              : err === "unknown_zone"
+                ? t(this.hass, "config_panel.zones_err_unknown_zone")
+                : err === "zone_disabled"
+                  ? t(this.hass, "config_panel.zones_err_zone_disabled")
+                  : err === "zone_no_outputs"
+                    ? t(this.hass, "config_panel.zones_err_zone_no_outputs")
+                    : String(err);
       } else {
         this.onSaved?.();
       }
@@ -501,11 +496,7 @@ export class ViewZones extends LitElement {
           </div>
           ${zones.map((z) => {
             const outs = z.switch_entity_ids.filter(Boolean).length;
-            const runDisabled =
-              this._busy ||
-              this._runtimeBusy() ||
-              !z.enabled ||
-              outs === 0;
+            const runDisabled = this._busy || !z.enabled || outs === 0;
             return html`
               <div class="zone-list-row-wrap">
                 <div

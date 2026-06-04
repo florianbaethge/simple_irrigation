@@ -23,7 +23,7 @@ export const formLayoutStyles = css`
     max-width: 100%;
     box-sizing: border-box;
   }
-  .field-row ha-textfield {
+  .field-row ha-input {
     width: 100%;
     display: block;
   }
@@ -115,7 +115,7 @@ export const formLayoutStyles = css`
     gap: 12px;
     width: 100%;
   }
-  .duration-row ha-textfield {
+  .duration-row ha-input {
     width: 100%;
     display: block;
   }

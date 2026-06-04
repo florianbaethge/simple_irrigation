@@ -677,13 +677,13 @@ export class ViewGeneral extends LitElement {
             <span class="field-title">${t(this.hass, "config_panel.general_installation_name")}</span>
             <p class="field-desc">${t(this.hass, "config_panel.general_installation_name_desc")}</p>
             <div class="field-row">
-              <ha-textfield
+              <ha-input
                 .label=${t(this.hass, "config_panel.general_field_name")}
                 .value=${this._name}
                 @input=${(e: Event) => {
                   this._name = (e.target as HTMLInputElement).value;
                 }}
-              ></ha-textfield>
+              ></ha-input>
             </div>
           </div>
           <div class="field-block">
@@ -745,7 +745,7 @@ export class ViewGeneral extends LitElement {
             <span class="field-title">${t(this.hass, "config_panel.general_pre_start_delay_title")}</span>
             <p class="field-desc">${t(this.hass, "config_panel.general_pre_start_delay_desc")}</p>
             <div class="field-row">
-              <ha-textfield
+              <ha-input
                 type="number"
                 .label=${t(this.hass, "config_panel.general_pre_start_delay_field")}
                 .value=${String(this._preStartDelaySec)}
@@ -757,7 +757,7 @@ export class ViewGeneral extends LitElement {
                     Math.min(3600, parseInt((e.target as HTMLInputElement).value, 10) || 1)
                   );
                 }}
-              ></ha-textfield>
+              ></ha-input>
             </div>
           </div>
           <div class="field-block">
@@ -786,7 +786,7 @@ export class ViewGeneral extends LitElement {
             <span class="field-title">${t(this.hass, "config_panel.general_max_parallel")}</span>
             <p class="field-desc">${t(this.hass, "config_panel.general_max_parallel_desc")}</p>
             <div class="field-row">
-              <ha-textfield
+              <ha-input
                 type="number"
                 .label=${t(this.hass, "config_panel.general_max_parallel_field")}
                 .value=${String(this._maxParallel)}
@@ -798,7 +798,7 @@ export class ViewGeneral extends LitElement {
                     Math.min(16, parseInt((e.target as HTMLInputElement).value, 10) || 1)
                   );
                 }}
-              ></ha-textfield>
+              ></ha-input>
             </div>
           </div>
           <div class="action-row">

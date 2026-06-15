@@ -306,6 +306,10 @@ const panelStyles = i$3 `
     color: var(--error-color);
     background: var(--secondary-background-color, rgba(0, 0, 0, 0.06));
   }
+  .entry-badge-default {
+    color: var(--primary-color);
+    background: rgba(var(--rgb-primary-color, 33, 150, 243), 0.12);
+  }
   .entry-card-desc {
     margin: 0;
     font-size: 0.875rem;
@@ -776,6 +780,9 @@ class ViewGeneral extends i {
         this._preStart = [];
         this._preStartDelaySec = 10;
         this._planEnabled = true;
+        this._isDefault = false;
+        this._defaultConfirmOpen = false;
+        this._defaultConfirmOtherName = "";
     }
     static { this.properties = {
         hass: { attribute: false },
@@ -1022,6 +1029,7 @@ class ViewGeneral extends i {
             this._mode = String(inst.mode ?? "normal");
             this._maxParallel = Number(inst.max_parallel_zones ?? 2);
             this._planEnabled = Boolean(inst.enabled ?? true);
+            this._isDefault = Boolean(inst.is_default ?? false);
             const ps = Array.isArray(inst.pre_start_switches)
                 ? inst.pre_start_switches.filter(Boolean)
                 : [];
@@ -1059,6 +1067,39 @@ class ViewGeneral extends i {
             return "";
         return this._fmtWhen(raw);
     }
+    _closeDefaultConfirm() {
+        this._defaultConfirmOpen = false;
+        this._defaultConfirmOtherName = "";
+    }
+    _confirmDefaultChange() {
+        this._isDefault = true;
+        this._closeDefaultConfirm();
+    }
+    async _onDefaultToggle(checked) {
+        if (!checked) {
+            this._isDefault = false;
+            return;
+        }
+        try {
+            const entries = await listSimpleIrrigationEntries(this.hass);
+            for (const e of entries) {
+                if (e.entry_id === this.entryId) {
+                    continue;
+                }
+                const st = await fetchPanelState(this.hass, e.entry_id);
+                const inst = st.installation;
+                if (Boolean(inst.is_default ?? false)) {
+                    this._defaultConfirmOtherName = String(inst.name ?? e.title);
+                    this._defaultConfirmOpen = true;
+                    return;
+                }
+            }
+            this._isDefault = true;
+        }
+        catch (e) {
+            this._msg = formatApiError(e, this.hass);
+        }
+    }
     async _save() {
         this._busy = true;
         this._msg = undefined;
@@ -1070,6 +1111,7 @@ class ViewGeneral extends i {
                 pre_start_delay_sec: this._preStartDelaySec,
                 mode: this._mode,
                 max_parallel_zones: this._maxParallel,
+                is_default: this._isDefault,
             });
             if (!res.success) {
                 this._msg = formatApiError(res.error, this.hass);
@@ -1532,6 +1574,23 @@ class ViewGeneral extends i {
               ></ha-input>
             </div>
           </div>
+          <div class="field-block">
+            <span class="field-title">${t(this.hass, "config_panel.general_default_section")}</span>
+            <p class="field-desc">${t(this.hass, "config_panel.general_default_toggle_desc")}</p>
+            <div class="field-row switch-row">
+              <label class="plan-label">
+                <ha-switch
+                  .disabled=${this._busy}
+                  .checked=${this._isDefault}
+                  @change=${(e) => {
+            const tgt = e.target;
+            void this._onDefaultToggle(Boolean(tgt.checked));
+        }}
+                ></ha-switch>
+                ${t(this.hass, "config_panel.general_default_toggle_label")}
+              </label>
+            </div>
+          </div>
           <div class="action-row">
             <button type="button" class="save" @click=${() => this._save()} ?disabled=${this._busy}>
               ${this._busy
@@ -1541,12 +1600,48 @@ class ViewGeneral extends i {
           </div>
         </div>
       </ha-card>
+
+      <ha-dialog
+        .open=${this._defaultConfirmOpen}
+        header-title=${t(this.hass, "config_panel.general_default_confirm_title")}
+        @closed=${() => this._closeDefaultConfirm()}
+      >
+        <p>
+          ${t(this.hass, "config_panel.general_default_confirm_body", {
+            name: this._name || this.entryId,
+            other: this._defaultConfirmOtherName,
+        })}
+        </p>
+        <div slot="footer" class="dialog-footer">
+          <div class="dialog-footer-row">
+            <div class="dialog-footer-lead"></div>
+            <div class="dialog-footer-actions">
+              <button
+                type="button"
+                class="btn-outline"
+                @click=${() => this._closeDefaultConfirm()}
+              >
+                ${t(this.hass, "config_panel.general_default_confirm_cancel")}
+              </button>
+              <button type="button" class="primary" @click=${() => this._confirmDefaultChange()}>
+                ${t(this.hass, "config_panel.general_default_confirm_ok")}
+              </button>
+            </div>
+          </div>
+        </div>
+      </ha-dialog>
     `;
     }
 }
 __decorate([
     r()
 ], ViewGeneral.prototype, "_runCtrlBusy", void 0);
+__decorate([
+    r()
+], ViewGeneral.prototype, "_isDefault", void 0);
+__decorate([
+    r()
+], ViewGeneral.prototype, "_defaultConfirmOpen", void 0);
 defineCustomElementOnce("si-view-general", ViewGeneral);
 
 /** Mirrors `grouping.compute_phases` for schedule slot preview in the panel. */
@@ -4047,6 +4142,12 @@ class SimpleIrrigationPanel extends i {
                 this.requestUpdate();
                 return;
             }
+            const defaultEntry = this._entries.find((e) => e.is_default);
+            if (defaultEntry) {
+                navigate(this, exportPath(defaultEntry.entry_id, "general"));
+                this.requestUpdate();
+                return;
+            }
             this._loading = false;
             this._state = null;
             this.requestUpdate();
@@ -4067,15 +4168,17 @@ class SimpleIrrigationPanel extends i {
             const hass = this.hass;
             this._entries = await Promise.all(entries.map(async (e) => {
                 let plan_enabled = true;
+                let is_default = false;
                 try {
                     const st = await fetchPanelState(hass, e.entry_id);
                     const inst = st.installation;
                     plan_enabled = Boolean(inst.enabled ?? true);
+                    is_default = Boolean(inst.is_default ?? false);
                 }
                 catch {
                     /* ignore; show as active */
                 }
-                return { ...e, plan_enabled };
+                return { ...e, plan_enabled, is_default };
             }));
         }
         catch (e) {
@@ -4188,6 +4291,9 @@ class SimpleIrrigationPanel extends i {
                   >
                     <div class="entry-card-head">
                       <div class="entry-card-title">${e.title}</div>
+                      ${e.is_default
+                ? b `<span class="entry-badge entry-badge-default">${t(this.hass, "config_panel.entry_badge_default")}</span>`
+                : A}
                       ${e.disabled_by
                 ? b `<span class="entry-badge entry-badge-ha">${t(this.hass, "config_panel.entry_badge_ha")}</span>`
                 : !e.plan_enabled

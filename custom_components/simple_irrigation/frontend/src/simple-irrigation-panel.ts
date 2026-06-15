@@ -52,7 +52,7 @@ export class SimpleIrrigationPanel extends LitElement {
   private _state: PanelStateResult | null = null;
   private _loading = true;
   private _error?: string;
-  private _entries: Array<ConfigEntryRow & { plan_enabled: boolean }> = [];
+  private _entries: Array<ConfigEntryRow & { plan_enabled: boolean; is_default: boolean }> = [];
   private _entriesLoading = false;
 
   private _runStateUnsub?: () => Promise<void>;
@@ -237,6 +237,12 @@ export class SimpleIrrigationPanel extends LitElement {
         this.requestUpdate();
         return;
       }
+      const defaultEntry = this._entries.find((e) => e.is_default);
+      if (defaultEntry) {
+        navigate(this, exportPath(defaultEntry.entry_id, "general"));
+        this.requestUpdate();
+        return;
+      }
       this._loading = false;
       this._state = null;
       this.requestUpdate();
@@ -258,14 +264,16 @@ export class SimpleIrrigationPanel extends LitElement {
       this._entries = await Promise.all(
         entries.map(async (e) => {
           let plan_enabled = true;
+          let is_default = false;
           try {
             const st = await fetchPanelState(hass, e.entry_id);
             const inst = st.installation as Record<string, unknown>;
             plan_enabled = Boolean(inst.enabled ?? true);
+            is_default = Boolean(inst.is_default ?? false);
           } catch {
             /* ignore; show as active */
           }
-          return { ...e, plan_enabled };
+          return { ...e, plan_enabled, is_default };
         })
       );
     } catch (e) {
@@ -389,6 +397,12 @@ export class SimpleIrrigationPanel extends LitElement {
                   >
                     <div class="entry-card-head">
                       <div class="entry-card-title">${e.title}</div>
+                      ${e.is_default
+                        ? html`<span class="entry-badge entry-badge-default">${t(
+                            this.hass,
+                            "config_panel.entry_badge_default"
+                          )}</span>`
+                        : nothing}
                       ${e.disabled_by
                         ? html`<span class="entry-badge entry-badge-ha">${t(
                             this.hass,

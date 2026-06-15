@@ -337,14 +337,14 @@ export class ViewZones extends LitElement {
         <span class="field-title">${t(this.hass, "config_panel.zones_field_name_title")}</span>
         <p class="field-desc">${t(this.hass, "config_panel.zones_field_name_desc")}</p>
         <div class="field-row">
-          <ha-textfield
+          <ha-input
             .label=${t(this.hass, "config_panel.zones_field_zone_name")}
             .value=${z.name}
             @input=${(e: Event) => {
               z.name = (e.target as HTMLInputElement).value;
               this.requestUpdate();
             }}
-          ></ha-textfield>
+          ></ha-input>
         </div>
       </div>
       <div class="field-block">
@@ -406,7 +406,7 @@ export class ViewZones extends LitElement {
         <span class="field-title">${t(this.hass, "config_panel.zones_runtime_title")}</span>
         <p class="field-desc">${t(this.hass, "config_panel.zones_runtime_desc")}</p>
         <div class="duration-row">
-          <ha-textfield
+          <ha-input
             type="number"
             .label=${t(this.hass, "config_panel.zones_duration_eco")}
             .value=${String(z.duration_eco_min)}
@@ -415,8 +415,8 @@ export class ViewZones extends LitElement {
             @input=${(e: Event) => {
               z.duration_eco_min = parseInt((e.target as HTMLInputElement).value, 10) || 0;
             }}
-          ></ha-textfield>
-          <ha-textfield
+          ></ha-input>
+          <ha-input
             type="number"
             .label=${t(this.hass, "config_panel.zones_duration_normal")}
             .value=${String(z.duration_normal_min)}
@@ -425,8 +425,8 @@ export class ViewZones extends LitElement {
             @input=${(e: Event) => {
               z.duration_normal_min = parseInt((e.target as HTMLInputElement).value, 10) || 0;
             }}
-          ></ha-textfield>
-          <ha-textfield
+          ></ha-input>
+          <ha-input
             type="number"
             .label=${t(this.hass, "config_panel.zones_duration_extra")}
             .value=${String(z.duration_extra_min)}
@@ -435,7 +435,7 @@ export class ViewZones extends LitElement {
             @input=${(e: Event) => {
               z.duration_extra_min = parseInt((e.target as HTMLInputElement).value, 10) || 0;
             }}
-          ></ha-textfield>
+          ></ha-input>
         </div>
       </div>
       <div class="field-block">

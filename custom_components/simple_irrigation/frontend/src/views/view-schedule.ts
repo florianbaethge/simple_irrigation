@@ -537,13 +537,13 @@ export class ViewSchedule extends LitElement {
           <span class="field-title">${t(this.hass, "config_panel.schedule_name_optional_title")}</span>
           <p class="field-desc">${t(this.hass, "config_panel.schedule_name_optional_desc")}</p>
           <div class="field-row">
-            <ha-textfield
+            <ha-input
               .label=${t(this.hass, "config_panel.schedule_slot_name")}
               .value=${this._newSlotName}
               @input=${(e: Event) => {
                 this._newSlotName = (e.target as HTMLInputElement).value;
               }}
-            ></ha-textfield>
+            ></ha-input>
           </div>
         </div>
         <div class="field-block">
@@ -567,13 +567,13 @@ export class ViewSchedule extends LitElement {
           <span class="field-title">${t(this.hass, "config_panel.schedule_local_time_title")}</span>
           <p class="field-desc">${t(this.hass, "config_panel.schedule_local_time_desc")}</p>
           <div class="field-row">
-            <ha-textfield
+            <ha-input
               .label=${t(this.hass, "config_panel.schedule_time_hhmm")}
               .value=${this._newTime}
               @input=${(e: Event) => {
                 this._newTime = (e.target as HTMLInputElement).value;
               }}
-            ></ha-textfield>
+            ></ha-input>
           </div>
         </div>
         <div class="field-block">
@@ -641,13 +641,13 @@ export class ViewSchedule extends LitElement {
               <div class="field-block">
                 <span class="field-title">${t(this.hass, "config_panel.schedule_name_optional_title")}</span>
                 <div class="field-row">
-                  <ha-textfield
+                  <ha-input
                     .label=${t(this.hass, "config_panel.schedule_slot_name")}
                     .value=${draft.name}
                     @input=${(e: Event) => {
                       draft.name = (e.target as HTMLInputElement).value;
                     }}
-                  ></ha-textfield>
+                  ></ha-input>
                 </div>
               </div>
               <div class="field-block">
@@ -671,13 +671,13 @@ export class ViewSchedule extends LitElement {
               <div class="field-block">
                 <span class="field-title">${t(this.hass, "config_panel.schedule_start_time_title")}</span>
                 <div class="field-row">
-                  <ha-textfield
+                  <ha-input
                     .label=${t(this.hass, "config_panel.schedule_time_hhmm")}
                     .value=${draft.time_local}
                     @input=${(e: Event) => {
                       draft.time_local = (e.target as HTMLInputElement).value;
                     }}
-                  ></ha-textfield>
+                  ></ha-input>
                 </div>
               </div>
               <div class="field-block">

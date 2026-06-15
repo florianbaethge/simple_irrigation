@@ -138,7 +138,7 @@ async function loadHaPanelElements() {
         "ha-tab-group-tab",
         "ha-card",
         "ha-dialog",
-        "ha-textfield",
+        "ha-input",
         "ha-icon",
         "ha-switch",
     ];
@@ -452,7 +452,7 @@ const formLayoutStyles = i$3 `
     max-width: 100%;
     box-sizing: border-box;
   }
-  .field-row ha-textfield {
+  .field-row ha-input {
     width: 100%;
     display: block;
   }
@@ -544,7 +544,7 @@ const formLayoutStyles = i$3 `
     gap: 12px;
     width: 100%;
   }
-  .duration-row ha-textfield {
+  .duration-row ha-input {
     width: 100%;
     display: block;
   }
@@ -1422,13 +1422,13 @@ class ViewGeneral extends i {
             <span class="field-title">${t(this.hass, "config_panel.general_installation_name")}</span>
             <p class="field-desc">${t(this.hass, "config_panel.general_installation_name_desc")}</p>
             <div class="field-row">
-              <ha-textfield
+              <ha-input
                 .label=${t(this.hass, "config_panel.general_field_name")}
                 .value=${this._name}
                 @input=${(e) => {
             this._name = e.target.value;
         }}
-              ></ha-textfield>
+              ></ha-input>
             </div>
           </div>
           <div class="field-block">
@@ -1482,7 +1482,7 @@ class ViewGeneral extends i {
             <span class="field-title">${t(this.hass, "config_panel.general_pre_start_delay_title")}</span>
             <p class="field-desc">${t(this.hass, "config_panel.general_pre_start_delay_desc")}</p>
             <div class="field-row">
-              <ha-textfield
+              <ha-input
                 type="number"
                 .label=${t(this.hass, "config_panel.general_pre_start_delay_field")}
                 .value=${String(this._preStartDelaySec)}
@@ -1491,7 +1491,7 @@ class ViewGeneral extends i {
                 @input=${(e) => {
             this._preStartDelaySec = Math.max(1, Math.min(3600, parseInt(e.target.value, 10) || 1));
         }}
-              ></ha-textfield>
+              ></ha-input>
             </div>
           </div>
           <div class="field-block">
@@ -1520,7 +1520,7 @@ class ViewGeneral extends i {
             <span class="field-title">${t(this.hass, "config_panel.general_max_parallel")}</span>
             <p class="field-desc">${t(this.hass, "config_panel.general_max_parallel_desc")}</p>
             <div class="field-row">
-              <ha-textfield
+              <ha-input
                 type="number"
                 .label=${t(this.hass, "config_panel.general_max_parallel_field")}
                 .value=${String(this._maxParallel)}
@@ -1529,7 +1529,7 @@ class ViewGeneral extends i {
                 @input=${(e) => {
             this._maxParallel = Math.max(1, Math.min(16, parseInt(e.target.value, 10) || 1));
         }}
-              ></ha-textfield>
+              ></ha-input>
             </div>
           </div>
           <div class="action-row">
@@ -2087,13 +2087,13 @@ class ViewSchedule extends i {
           <span class="field-title">${t(this.hass, "config_panel.schedule_name_optional_title")}</span>
           <p class="field-desc">${t(this.hass, "config_panel.schedule_name_optional_desc")}</p>
           <div class="field-row">
-            <ha-textfield
+            <ha-input
               .label=${t(this.hass, "config_panel.schedule_slot_name")}
               .value=${this._newSlotName}
               @input=${(e) => {
             this._newSlotName = e.target.value;
         }}
-            ></ha-textfield>
+            ></ha-input>
           </div>
         </div>
         <div class="field-block">
@@ -2114,13 +2114,13 @@ class ViewSchedule extends i {
           <span class="field-title">${t(this.hass, "config_panel.schedule_local_time_title")}</span>
           <p class="field-desc">${t(this.hass, "config_panel.schedule_local_time_desc")}</p>
           <div class="field-row">
-            <ha-textfield
+            <ha-input
               .label=${t(this.hass, "config_panel.schedule_time_hhmm")}
               .value=${this._newTime}
               @input=${(e) => {
             this._newTime = e.target.value;
         }}
-            ></ha-textfield>
+            ></ha-input>
           </div>
         </div>
         <div class="field-block">
@@ -2188,13 +2188,13 @@ class ViewSchedule extends i {
               <div class="field-block">
                 <span class="field-title">${t(this.hass, "config_panel.schedule_name_optional_title")}</span>
                 <div class="field-row">
-                  <ha-textfield
+                  <ha-input
                     .label=${t(this.hass, "config_panel.schedule_slot_name")}
                     .value=${draft.name}
                     @input=${(e) => {
                 draft.name = e.target.value;
             }}
-                  ></ha-textfield>
+                  ></ha-input>
                 </div>
               </div>
               <div class="field-block">
@@ -2215,13 +2215,13 @@ class ViewSchedule extends i {
               <div class="field-block">
                 <span class="field-title">${t(this.hass, "config_panel.schedule_start_time_title")}</span>
                 <div class="field-row">
-                  <ha-textfield
+                  <ha-input
                     .label=${t(this.hass, "config_panel.schedule_time_hhmm")}
                     .value=${draft.time_local}
                     @input=${(e) => {
                 draft.time_local = e.target.value;
             }}
-                  ></ha-textfield>
+                  ></ha-input>
                 </div>
               </div>
               <div class="field-block">
@@ -3522,14 +3522,14 @@ class ViewZones extends i {
         <span class="field-title">${t(this.hass, "config_panel.zones_field_name_title")}</span>
         <p class="field-desc">${t(this.hass, "config_panel.zones_field_name_desc")}</p>
         <div class="field-row">
-          <ha-textfield
+          <ha-input
             .label=${t(this.hass, "config_panel.zones_field_zone_name")}
             .value=${z.name}
             @input=${(e) => {
             z.name = e.target.value;
             this.requestUpdate();
         }}
-          ></ha-textfield>
+          ></ha-input>
         </div>
       </div>
       <div class="field-block">
@@ -3583,7 +3583,7 @@ class ViewZones extends i {
         <span class="field-title">${t(this.hass, "config_panel.zones_runtime_title")}</span>
         <p class="field-desc">${t(this.hass, "config_panel.zones_runtime_desc")}</p>
         <div class="duration-row">
-          <ha-textfield
+          <ha-input
             type="number"
             .label=${t(this.hass, "config_panel.zones_duration_eco")}
             .value=${String(z.duration_eco_min)}
@@ -3592,8 +3592,8 @@ class ViewZones extends i {
             @input=${(e) => {
             z.duration_eco_min = parseInt(e.target.value, 10) || 0;
         }}
-          ></ha-textfield>
-          <ha-textfield
+          ></ha-input>
+          <ha-input
             type="number"
             .label=${t(this.hass, "config_panel.zones_duration_normal")}
             .value=${String(z.duration_normal_min)}
@@ -3602,8 +3602,8 @@ class ViewZones extends i {
             @input=${(e) => {
             z.duration_normal_min = parseInt(e.target.value, 10) || 0;
         }}
-          ></ha-textfield>
-          <ha-textfield
+          ></ha-input>
+          <ha-input
             type="number"
             .label=${t(this.hass, "config_panel.zones_duration_extra")}
             .value=${String(z.duration_extra_min)}
@@ -3612,7 +3612,7 @@ class ViewZones extends i {
             @input=${(e) => {
             z.duration_extra_min = parseInt(e.target.value, 10) || 0;
         }}
-          ></ha-textfield>
+          ></ha-input>
         </div>
       </div>
       <div class="field-block">

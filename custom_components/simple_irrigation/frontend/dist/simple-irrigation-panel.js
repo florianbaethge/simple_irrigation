@@ -3944,7 +3944,7 @@ __decorate([
 ], ViewZones.prototype, "_editDraft", void 0);
 defineCustomElementOnce("si-view-zones", ViewZones);
 
-const VERSION = "0.2.0";
+const VERSION = "0.3.0";
 const PANEL_PAGES = ["general", "zones", "schedule", "timetable", "status"];
 const TAB_LABEL_KEYS = {
     general: "config_panel.tab_general",
@@ -4112,24 +4112,15 @@ class SimpleIrrigationPanel extends i {
         this._watchedEntryId = entryId;
         this._watchedRunningEntity = runningId;
         if (!this._runStateUnsub) {
+            // Subscribe to state_changed events with efficient filtering
+            // This is more efficient than the previous implementation that had 1-second polling
             this._runStateUnsub = await this.hass.connection.subscribeEvents((ev) => {
+                // Only process events for the specific entity we're monitoring
                 if (ev.data?.entity_id !== runningId)
                     return;
+                // Trigger a silent refresh when the running state changes
                 this._scheduleSilentRefresh(entryId);
             }, "state_changed");
-        }
-        if (this._runStatePollTimer === undefined) {
-            this._runStatePollTimer = window.setInterval(() => {
-                if (!window.location.pathname.includes("simple-irrigation"))
-                    return;
-                const { entryId: eid } = getPath();
-                if (!eid || eid !== this._watchedEntryId || !this.hass || !this._state)
-                    return;
-                const rid = this._state.panel_entity_ids?.running;
-                if (!rid || this.hass.states?.[rid]?.state !== "on")
-                    return;
-                void this._loadState(eid, { silent: true });
-            }, 1000);
         }
     }
     async _reloadPath() {

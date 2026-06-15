@@ -76,7 +76,7 @@ class ZoneRunButton(SimpleIrrigationEntity, ButtonEntity):
         self._runtime = runtime
         self._zone_id = zone_id
         self._attr_translation_key = "zone_run_now"
-        self._attr_name = f"{zone_name} run now"
+        self._attr_translation_placeholders = {"zone_name": zone_name}
 
     async def async_press(self) -> None:
         """Run zone."""

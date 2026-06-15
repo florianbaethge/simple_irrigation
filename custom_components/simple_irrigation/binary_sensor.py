@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from homeassistant.components.binary_sensor import BinarySensorEntity
+from homeassistant.components.binary_sensor import BinarySensorDeviceClass, BinarySensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import dt as dt_util
 
@@ -34,6 +35,7 @@ class RunningBinarySensor(SimpleIrrigationEntity, BinarySensorEntity):
     """True when a run is in progress."""
 
     _attr_translation_key = "running"
+    _attr_device_class = BinarySensorDeviceClass.RUNNING
 
     def __init__(self, coordinator: SimpleIrrigationCoordinator) -> None:
         """Initialize."""
@@ -50,6 +52,7 @@ class PausedBinarySensor(SimpleIrrigationEntity, BinarySensorEntity):
     """True when pause_until is active."""
 
     _attr_translation_key = "paused"
+    _attr_device_class = BinarySensorDeviceClass.PROBLEM
 
     def __init__(self, coordinator: SimpleIrrigationCoordinator) -> None:
         """Initialize."""
@@ -68,6 +71,8 @@ class ErrorBinarySensor(SimpleIrrigationEntity, BinarySensorEntity):
     """True when last state is error."""
 
     _attr_translation_key = "error_state"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_device_class = BinarySensorDeviceClass.PROBLEM
 
     def __init__(self, coordinator: SimpleIrrigationCoordinator) -> None:
         """Initialize."""
@@ -94,7 +99,7 @@ class ZoneActiveBinarySensor(SimpleIrrigationEntity, BinarySensorEntity):
         super().__init__(coordinator, f"zone_{zone_id}_active")
         self._zone_id = zone_id
         self._attr_translation_key = "zone_active"
-        self._attr_name = f"{zone_name} active"
+        self._attr_translation_placeholders = {"zone_name": zone_name}
 
     @property
     def is_on(self) -> bool | None:

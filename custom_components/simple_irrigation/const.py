@@ -1,13 +1,14 @@
 """Constants for Simple Irrigation."""
 
 from typing import Final
+from .version import __version__
 
 DOMAIN: Final = "simple_irrigation"
 
 # Full HA configuration dict from async_setup; needed for async_setup_component(..., config).
 HASS_CONFIG_KEY: Final = "_hass_config"
 
-INTEGRATION_VERSION: Final = "0.3.0"
+INTEGRATION_VERSION: Final = __version__
 
 CUSTOM_COMPONENTS: Final = "custom_components"
 INTEGRATION_FOLDER: Final = DOMAIN

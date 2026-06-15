@@ -207,6 +207,29 @@ npm run build
 
 Commit the updated `frontend/dist/simple-irrigation-panel.js` when you change the panel sources so HACS users do not need Node.
 
+## Version Management
+
+The integration version is centrally managed in the `VERSION` file. To update the version across all files:
+
+```bash
+# Update to a new version
+make update-version VERSION=1.0.0
+
+# Or use the Python script directly
+python3 update_version.py 1.0.0
+
+# Check current version
+make version
+```
+
+This automatically updates:
+- `VERSION` file (source of truth)
+- `manifest.json` 
+- `frontend/package.json`
+- `frontend/src/simple-irrigation-panel.ts` (TypeScript source)
+- `custom_components/simple_irrigation/version.py` (embedded version)
+- `frontend/dist/simple-irrigation-panel.js` (rebuilt automatically)
+
 ---
 
 ## Contributing and support

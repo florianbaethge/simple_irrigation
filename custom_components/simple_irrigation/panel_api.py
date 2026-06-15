@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import uuid
+from dataclasses import replace
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -225,6 +226,7 @@ class SimpleIrrigationPanelGlobalView(HomeAssistantView):
                 vol.Optional("max_parallel_zones"): vol.All(int, vol.Range(min=1, max=16)),
                 vol.Optional("pre_start_delay_sec"): vol.All(cv.positive_int, vol.Range(max=3600)),
                 vol.Optional("enabled"): cv.boolean,
+                vol.Optional("is_default"): cv.boolean,
                 vol.Optional("pause_until"): vol.Any(cv.string, None),
             }
         )
@@ -258,6 +260,8 @@ class SimpleIrrigationPanelGlobalView(HomeAssistantView):
             inst.pre_start_delay_sec = int(data["pre_start_delay_sec"])
         if "enabled" in data:
             inst.enabled = bool(data["enabled"])
+        if "is_default" in data:
+            inst.is_default = bool(data["is_default"])
         if "pause_until" in data:
             raw = data["pause_until"]
             if raw in (None, ""):
@@ -269,6 +273,18 @@ class SimpleIrrigationPanelGlobalView(HomeAssistantView):
                     return self.json({"success": False, "error": "invalid_pause_until"}, status=400)
 
         await coord.async_update_installation(inst)
+        if inst.is_default:
+            for other_entry in hass.config_entries.async_entries(DOMAIN):
+                if other_entry.entry_id == entry.entry_id:
+                    continue
+                other_coord = _get_coordinator(hass, other_entry.entry_id)
+                if other_coord is None:
+                    continue
+                other_inst = other_coord.installation
+                if other_inst.is_default:
+                    await other_coord.async_update_installation(
+                        replace(other_inst, is_default=False)
+                    )
         _sync_config_entry_from_installation(hass, entry, inst)
         return self.json({"success": True})
 

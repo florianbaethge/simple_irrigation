@@ -7,9 +7,6 @@ import logging
 from datetime import datetime, time, timedelta
 from typing import Any
 
-_LOGGER = logging.getLogger(__name__)
-
-
 def parse_hh_mm(value: str) -> tuple[int, int] | None:
     """Parse 'HH:MM' string."""
     parts = value.strip().split(":")

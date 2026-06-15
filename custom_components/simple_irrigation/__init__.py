@@ -22,8 +22,6 @@ if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
     from homeassistant.helpers.typing import ConfigType
 
-_LOGGER = logging.getLogger(__name__)
-
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 

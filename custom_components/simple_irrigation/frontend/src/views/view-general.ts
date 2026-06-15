@@ -1,6 +1,6 @@
 import { LitElement, html, css, nothing } from "lit";
 import { state } from "lit/decorators.js";
-import { panelControl, saveGlobal, skipIrrigationToday } from "../data/api";
+import { panelControl, saveGlobal, skipIrrigationToday, fetchPanelState, listSimpleIrrigationEntries } from "../data/api";
 import { renderEntityDatalist, renderNativeEntityField } from "../entity-input";
 import { defineCustomElementOnce, formatApiError } from "../helpers";
 import { t } from "../i18n";
@@ -266,6 +266,9 @@ export class ViewGeneral extends LitElement {
   private _preStart: string[] = [];
   private _preStartDelaySec = 10;
   private _planEnabled = true;
+  @state() private _isDefault = false;
+  @state() private _defaultConfirmOpen = false;
+  private _defaultConfirmOtherName = "";
 
   protected willUpdate(changed: Map<PropertyKey, unknown>): void {
     if (changed.has("installation") && this.installation) {
@@ -274,6 +277,7 @@ export class ViewGeneral extends LitElement {
       this._mode = String(inst.mode ?? "normal");
       this._maxParallel = Number(inst.max_parallel_zones ?? 2);
       this._planEnabled = Boolean(inst.enabled ?? true);
+      this._isDefault = Boolean(inst.is_default ?? false);
       const ps = Array.isArray(inst.pre_start_switches)
         ? (inst.pre_start_switches as string[]).filter(Boolean)
         : [];
@@ -312,6 +316,41 @@ export class ViewGeneral extends LitElement {
     return this._fmtWhen(raw);
   }
 
+  private _closeDefaultConfirm(): void {
+    this._defaultConfirmOpen = false;
+    this._defaultConfirmOtherName = "";
+  }
+
+  private _confirmDefaultChange(): void {
+    this._isDefault = true;
+    this._closeDefaultConfirm();
+  }
+
+  private async _onDefaultToggle(checked: boolean): Promise<void> {
+    if (!checked) {
+      this._isDefault = false;
+      return;
+    }
+    try {
+      const entries = await listSimpleIrrigationEntries(this.hass);
+      for (const e of entries) {
+        if (e.entry_id === this.entryId) {
+          continue;
+        }
+        const st = await fetchPanelState(this.hass, e.entry_id);
+        const inst = st.installation as Record<string, unknown>;
+        if (Boolean(inst.is_default ?? false)) {
+          this._defaultConfirmOtherName = String(inst.name ?? e.title);
+          this._defaultConfirmOpen = true;
+          return;
+        }
+      }
+      this._isDefault = true;
+    } catch (e) {
+      this._msg = formatApiError(e, this.hass);
+    }
+  }
+
   private async _save(): Promise<void> {
     this._busy = true;
     this._msg = undefined;
@@ -323,6 +362,7 @@ export class ViewGeneral extends LitElement {
         pre_start_delay_sec: this._preStartDelaySec,
         mode: this._mode,
         max_parallel_zones: this._maxParallel,
+        is_default: this._isDefault,
       });
       if (!res.success) {
         this._msg = formatApiError(res.error, this.hass);
@@ -801,6 +841,23 @@ export class ViewGeneral extends LitElement {
               ></ha-input>
             </div>
           </div>
+          <div class="field-block">
+            <span class="field-title">${t(this.hass, "config_panel.general_default_section")}</span>
+            <p class="field-desc">${t(this.hass, "config_panel.general_default_toggle_desc")}</p>
+            <div class="field-row switch-row">
+              <label class="plan-label">
+                <ha-switch
+                  .disabled=${this._busy}
+                  .checked=${this._isDefault}
+                  @change=${(e: Event) => {
+                    const tgt = e.target as HTMLInputElement & { checked: boolean };
+                    void this._onDefaultToggle(Boolean(tgt.checked));
+                  }}
+                ></ha-switch>
+                ${t(this.hass, "config_panel.general_default_toggle_label")}
+              </label>
+            </div>
+          </div>
           <div class="action-row">
             <button type="button" class="save" @click=${() => this._save()} ?disabled=${this._busy}>
               ${this._busy
@@ -810,6 +867,36 @@ export class ViewGeneral extends LitElement {
           </div>
         </div>
       </ha-card>
+
+      <ha-dialog
+        .open=${this._defaultConfirmOpen}
+        header-title=${t(this.hass, "config_panel.general_default_confirm_title")}
+        @closed=${() => this._closeDefaultConfirm()}
+      >
+        <p>
+          ${t(this.hass, "config_panel.general_default_confirm_body", {
+            name: this._name || this.entryId,
+            other: this._defaultConfirmOtherName,
+          })}
+        </p>
+        <div slot="footer" class="dialog-footer">
+          <div class="dialog-footer-row">
+            <div class="dialog-footer-lead"></div>
+            <div class="dialog-footer-actions">
+              <button
+                type="button"
+                class="btn-outline"
+                @click=${() => this._closeDefaultConfirm()}
+              >
+                ${t(this.hass, "config_panel.general_default_confirm_cancel")}
+              </button>
+              <button type="button" class="primary" @click=${() => this._confirmDefaultChange()}>
+                ${t(this.hass, "config_panel.general_default_confirm_ok")}
+              </button>
+            </div>
+          </div>
+        </div>
+      </ha-dialog>
     `;
   }
 }

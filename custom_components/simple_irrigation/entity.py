@@ -30,3 +30,8 @@ class SimpleIrrigationEntity(CoordinatorEntity[SimpleIrrigationCoordinator]):
             manufacturer="Florian Bäthge",
             model="Simple Irrigation",
         )
+
+    @property
+    def available(self) -> bool:
+        """Return if entity is available."""
+        return self.coordinator.last_update_success

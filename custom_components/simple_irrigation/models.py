@@ -118,6 +118,7 @@ class Installation:
     mode: str = MODE_NORMAL
     pause_until: datetime | None = None
     max_parallel_zones: int = 2
+    is_default: bool = False
     zones: dict[str, Zone] = field(default_factory=dict)
     schedule_slots: list[ScheduleSlot] = field(default_factory=list)
 
@@ -132,6 +133,7 @@ class Installation:
             "mode": self.mode,
             "pause_until": self.pause_until.isoformat() if self.pause_until else None,
             "max_parallel_zones": self.max_parallel_zones,
+            "is_default": self.is_default,
             "zones": {k: v.to_dict() for k, v in self.zones.items()},
             "schedule_slots": [s.to_dict() for s in self.schedule_slots],
         }
@@ -162,6 +164,7 @@ class Installation:
             mode=str(data.get("mode", MODE_NORMAL)),
             pause_until=pause_until,
             max_parallel_zones=max(1, int(data.get("max_parallel_zones", 2))),
+            is_default=bool(data.get("is_default", False)),
             zones=zones,
             schedule_slots=schedule_slots,
         )

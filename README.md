@@ -1,7 +1,16 @@
-# Simple Irrigation
-
 [![CI](https://github.com/florianbaethge/simple_irrigation/actions/workflows/ci.yml/badge.svg)](https://github.com/florianbaethge/simple_irrigation/actions/workflows/ci.yml)
-[![HACS Default](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://hacs.xyz/docs/faq/custom_repositories/)
+[![HACS Default](https://img.shields.io/badge/HACS-Default-41BDF5.svg)](https://hacs.xyz)
+
+<p align="center">
+  <img src="screenshots/simple-irrigation-logo.svg" alt="Simple Irrigation" width="600"/>
+</p>
+
+
+- **Three watering modes** — Eco / Normal / Extra (swappable via automation)
+- **Smart parallel runs** — configurable concurrency + exclusive zones
+- **Complete configuration in GUI** — Zones · Schedule · Timetable 
+- **Multi-installation** — create multiple irrigation installations to control multiple gardens or add seasonal control
+- **EN / DE** translations; Home Assistant 2024.1+
 
 **Custom integration for [Home Assistant](https://www.home-assistant.io/)** that orchestrates one irrigation system per config entry: weekly schedule slots, on/off outputs (switches, `input_boolean`, groups), global **Eco / Normal / Extra** watering modes, optional **pre-start** outputs, **parallel** runs with **exclusive** zones, **pause** and **skip today**, and a **sidebar panel** for full configuration (no YAML for zones or schedule). The panel includes a **Timetable** tab with a week-at-a-glance grid (zones × weekdays, morning/day/evening buckets) derived from your slots and current mode.
 
@@ -48,12 +57,11 @@ simple_irrigation/
 
 ## Installation
 
-### HACS (custom repository)
+### HACS (recommended)
 
-1. Open HACS → **Integrations** → **⋮** → **Custom repositories**.
-2. Add repository: `https://github.com/florianbaethge/simple_irrigation`, category **Integration**.
-3. Install **Simple Irrigation** and restart Home Assistant.
-4. **Settings → Devices & services → Add integration** → search **Simple Irrigation**.
+1. Open HACS → **Integrations** → search **Simple Irrigation**.
+2. Click **Download** and restart Home Assistant.
+3. **Settings → Devices & services → Add integration** → search **Simple Irrigation**.
 
 ### Manual install
 
@@ -198,6 +206,29 @@ npm run build
 ```
 
 Commit the updated `frontend/dist/simple-irrigation-panel.js` when you change the panel sources so HACS users do not need Node.
+
+## Version Management
+
+The integration version is centrally managed in the `VERSION` file. To update the version across all files:
+
+```bash
+# Update to a new version
+make update-version VERSION=1.0.0
+
+# Or use the Python script directly
+python3 update_version.py 1.0.0
+
+# Check current version
+make version
+```
+
+This automatically updates:
+- `VERSION` file (source of truth)
+- `manifest.json` 
+- `frontend/package.json`
+- `frontend/src/simple-irrigation-panel.ts` (TypeScript source)
+- `custom_components/simple_irrigation/version.py` (embedded version)
+- `frontend/dist/simple-irrigation-panel.js` (rebuilt automatically)
 
 ---
 

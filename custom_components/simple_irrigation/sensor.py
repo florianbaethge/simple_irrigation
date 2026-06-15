@@ -5,6 +5,7 @@ from __future__ import annotations
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from .const import DOMAIN
 from .coordinator import SimpleIrrigationCoordinator
@@ -34,6 +35,7 @@ class ActiveZonesSensor(SimpleIrrigationEntity, SensorEntity):
 
     _attr_translation_key = "active_zones"
     _attr_icon = "mdi:sprinkler-variant"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
 
     def __init__(self, coordinator: SimpleIrrigationCoordinator) -> None:
         """Initialize."""
@@ -51,6 +53,7 @@ class NextRunSensor(SimpleIrrigationEntity, SensorEntity):
 
     _attr_translation_key = "next_run"
     _attr_device_class = SensorDeviceClass.TIMESTAMP
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
 
     def __init__(self, coordinator: SimpleIrrigationCoordinator) -> None:
         """Initialize."""
@@ -67,6 +70,7 @@ class PauseUntilSensor(SimpleIrrigationEntity, SensorEntity):
 
     _attr_translation_key = "pause_until"
     _attr_device_class = SensorDeviceClass.TIMESTAMP
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
 
     def __init__(self, coordinator: SimpleIrrigationCoordinator) -> None:
         """Initialize."""
@@ -82,6 +86,7 @@ class ZoneNextRunSensor(SimpleIrrigationEntity, SensorEntity):
     """Per-zone next run."""
 
     _attr_device_class = SensorDeviceClass.TIMESTAMP
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
 
     def __init__(
         self,
@@ -93,7 +98,7 @@ class ZoneNextRunSensor(SimpleIrrigationEntity, SensorEntity):
         super().__init__(coordinator, f"zone_{zone_id}_next_run")
         self._zone_id = zone_id
         self._attr_translation_key = "zone_next_run"
-        self._attr_name = f"{zone_name} next run"
+        self._attr_translation_placeholders = {"zone_name": zone_name}
 
     @property
     def native_value(self):
@@ -105,6 +110,7 @@ class ZoneLastRunSensor(SimpleIrrigationEntity, SensorEntity):
     """Per-zone last run."""
 
     _attr_device_class = SensorDeviceClass.TIMESTAMP
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
 
     def __init__(
         self,
@@ -116,7 +122,7 @@ class ZoneLastRunSensor(SimpleIrrigationEntity, SensorEntity):
         super().__init__(coordinator, f"zone_{zone_id}_last_run")
         self._zone_id = zone_id
         self._attr_translation_key = "zone_last_run"
-        self._attr_name = f"{zone_name} last run"
+        self._attr_translation_placeholders = {"zone_name": zone_name}
 
     @property
     def native_value(self):

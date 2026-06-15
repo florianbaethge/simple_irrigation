@@ -15,6 +15,7 @@ from homeassistant.helpers.selector import (
     SelectSelector,
     SelectSelectorConfig,
     SelectSelectorMode,
+    TextSelector,
 )
 
 from .const import DOMAIN, MODES
@@ -64,7 +65,7 @@ class SimpleIrrigationConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         schema = vol.Schema(
             {
-                vol.Required("name", default="Simple Irrigation"): str,
+                vol.Required("name", default="Simple Irrigation"): TextSelector(),
                 vol.Optional("pre_start_switches"): _output_entity_selector(
                     multiple=True
                 ),

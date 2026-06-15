@@ -1,0 +1,25 @@
+# Version Synchronization System
+
+This file documents the centralized version management system.
+
+## Source of Truth
+- `VERSION` file in project root contains the canonical version
+
+## Synchronized Files
+1. `VERSION` - Source of truth
+2. `custom_components/simple_irrigation/manifest.json` - Home Assistant manifest
+3. `custom_components/simple_irrigation/frontend/package.json` - Frontend package
+4. `custom_components/simple_irrigation/frontend/src/simple-irrigation-panel.ts` - Frontend code (via build process)
+5. `custom_components/simple_irrigation/version.py` - Python version module
+6. `custom_components/simple_irrigation/const.py` - Uses version.py
+
+## Update Process
+1. Run: `make update-version VERSION=x.y.z`
+2. Or: `python3 update_version.py x.y.z`
+3. Build frontend: `make build`
+4. Commit all changes
+
+## Build Process
+- Frontend build reads VERSION file and replaces `__VERSION__` placeholder
+- Python version is embedded in `version.py` and updated by the sync script
+- No runtime file dependencies - works in Home Assistant installation

@@ -126,6 +126,10 @@ export const panelStyles = css`
     color: var(--error-color);
     background: var(--secondary-background-color, rgba(0, 0, 0, 0.06));
   }
+  .entry-badge-default {
+    color: var(--primary-color);
+    background: rgba(var(--rgb-primary-color, 33, 150, 243), 0.12);
+  }
   .entry-card-desc {
     margin: 0;
     font-size: 0.875rem;

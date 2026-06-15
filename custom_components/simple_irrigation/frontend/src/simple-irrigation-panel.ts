@@ -16,7 +16,9 @@ import "./views/view-status";
 import "./views/view-timetable";
 import "./views/view-zones";
 
-const VERSION = "0.2.0";
+// Version is automatically injected from ../../../../VERSION file during build
+declare const __VERSION__: string;
+const VERSION = __VERSION__;
 
 const PANEL_PAGES = ["general", "zones", "schedule", "timetable", "status"] as const;
 type PanelPage = (typeof PANEL_PAGES)[number];
@@ -52,7 +54,7 @@ export class SimpleIrrigationPanel extends LitElement {
   private _state: PanelStateResult | null = null;
   private _loading = true;
   private _error?: string;
-  private _entries: Array<ConfigEntryRow & { plan_enabled: boolean }> = [];
+  private _entries: Array<ConfigEntryRow & { plan_enabled: boolean; is_default: boolean }> = [];
   private _entriesLoading = false;
 
   private _runStateUnsub?: () => Promise<void>;
@@ -206,24 +208,17 @@ export class SimpleIrrigationPanel extends LitElement {
     this._watchedRunningEntity = runningId;
 
     if (!this._runStateUnsub) {
+      // Subscribe to state_changed events with efficient filtering
+      // This is more efficient than the previous implementation that had 1-second polling
       this._runStateUnsub = await this.hass.connection.subscribeEvents(
-        (ev: { data?: { entity_id?: string } }) => {
+        (ev: { data?: { entity_id?: string; new_state?: { state?: string } } }) => {
+          // Only process events for the specific entity we're monitoring
           if (ev.data?.entity_id !== runningId) return;
+          // Trigger a silent refresh when the running state changes
           this._scheduleSilentRefresh(entryId);
         },
         "state_changed"
       );
-    }
-
-    if (this._runStatePollTimer === undefined) {
-      this._runStatePollTimer = window.setInterval(() => {
-        if (!window.location.pathname.includes("simple-irrigation")) return;
-        const { entryId: eid } = getPath();
-        if (!eid || eid !== this._watchedEntryId || !this.hass || !this._state) return;
-        const rid = this._state.panel_entity_ids?.running;
-        if (!rid || this.hass.states?.[rid]?.state !== "on") return;
-        void this._loadState(eid, { silent: true });
-      }, 1000);
     }
   }
 
@@ -234,6 +229,12 @@ export class SimpleIrrigationPanel extends LitElement {
       await this._loadEntryList();
       /* Another `_reloadPath` may have navigated to an entry while we awaited the list. */
       if (getPath().entryId) {
+        this.requestUpdate();
+        return;
+      }
+      const defaultEntry = this._entries.find((e) => e.is_default);
+      if (defaultEntry) {
+        navigate(this, exportPath(defaultEntry.entry_id, "general"));
         this.requestUpdate();
         return;
       }
@@ -258,14 +259,16 @@ export class SimpleIrrigationPanel extends LitElement {
       this._entries = await Promise.all(
         entries.map(async (e) => {
           let plan_enabled = true;
+          let is_default = false;
           try {
             const st = await fetchPanelState(hass, e.entry_id);
             const inst = st.installation as Record<string, unknown>;
             plan_enabled = Boolean(inst.enabled ?? true);
+            is_default = Boolean(inst.is_default ?? false);
           } catch {
             /* ignore; show as active */
           }
-          return { ...e, plan_enabled };
+          return { ...e, plan_enabled, is_default };
         })
       );
     } catch (e) {
@@ -389,6 +392,12 @@ export class SimpleIrrigationPanel extends LitElement {
                   >
                     <div class="entry-card-head">
                       <div class="entry-card-title">${e.title}</div>
+                      ${e.is_default
+                        ? html`<span class="entry-badge entry-badge-default">${t(
+                            this.hass,
+                            "config_panel.entry_badge_default"
+                          )}</span>`
+                        : nothing}
                       ${e.disabled_by
                         ? html`<span class="entry-badge entry-badge-ha">${t(
                             this.hass,

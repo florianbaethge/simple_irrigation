@@ -34,8 +34,6 @@ from .const import (
 )
 from .models import Installation
 
-_LOGGER = logging.getLogger(__name__)
-
 
 def _get_domain_data(hass: HomeAssistant, call: ServiceCall) -> dict[str, Any]:
     """Resolve integration runtime data for a config entry (explicit or first loaded)."""

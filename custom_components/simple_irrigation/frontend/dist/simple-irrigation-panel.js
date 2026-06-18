@@ -3947,7 +3947,7 @@ __decorate([
 ], ViewZones.prototype, "_editDraft", void 0);
 defineCustomElementOnce("si-view-zones", ViewZones);
 
-const VERSION = "0.3.1";
+const VERSION = "0.3.2";
 const PANEL_PAGES = ["general", "zones", "schedule", "timetable", "status"];
 const TAB_LABEL_KEYS = {
     general: "config_panel.tab_general",

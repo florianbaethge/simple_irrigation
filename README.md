@@ -1,7 +1,13 @@
 [![CI](https://github.com/florianbaethge/simple_irrigation/actions/workflows/ci.yml/badge.svg)](https://github.com/florianbaethge/simple_irrigation/actions/workflows/ci.yml)
 [![HACS Default](https://img.shields.io/badge/HACS-Default-41BDF5.svg)](https://hacs.xyz)
 
-![Simple Irrigation](screenshots/simple_irrigation_logo.png)
+<p align="center">
+  <img
+    src="https://raw.githubusercontent.com/florianbaethge/simple_irrigation/main/screenshots/simple_irrigation_logo.png"
+    alt="Simple Irrigation"
+    width="760"
+  >
+</p>
 
 
 - **Three watering modes** — Eco / Normal / Extra (swappable via automation)
@@ -163,29 +169,29 @@ Use **Developer tools → Services** to explore fields with translated descripti
 
 ### General
 
-![General tab — current run, schedule overview, plan control](screenshots/general_1.png)
+![General tab — current run, schedule overview, plan control](https://raw.githubusercontent.com/florianbaethge/simple_irrigation/main/screenshots/general_1.png)
 
-![General tab — general settings (pre-start, mode, max parallel)](screenshots/general_2.png)
+![General tab — general settings (pre-start, mode, max parallel)](https://raw.githubusercontent.com/florianbaethge/simple_irrigation/main/screenshots/general_2.png)
 
 ### Zones
 
-![Zones tab — list](screenshots/zones.png)
+![Zones tab — list](https://raw.githubusercontent.com/florianbaethge/simple_irrigation/main/screenshots/zones.png)
 
-![Zones tab — edit zone](screenshots/zones_edit.png)
+![Zones tab — edit zone](https://raw.githubusercontent.com/florianbaethge/simple_irrigation/main/screenshots/zones_edit.png)
 
 ### Schedule
 
-![Schedule tab — slots](screenshots/schedule.png)
+![Schedule tab — slots](https://raw.githubusercontent.com/florianbaethge/simple_irrigation/main/screenshots/schedule.png)
 
-![Schedule tab — edit slot (run order and phases)](screenshots/schedule_edit.png)
+![Schedule tab — edit slot (run order and phases)](https://raw.githubusercontent.com/florianbaethge/simple_irrigation/main/screenshots/schedule_edit.png)
 
 ### Timetable
 
-![Timetable tab — weekly overview by zone and weekday](screenshots/timetable.png)
+![Timetable tab — weekly overview by zone and weekday](https://raw.githubusercontent.com/florianbaethge/simple_irrigation/main/screenshots/timetable.png)
 
 ### Status
 
-![Status tab — runtime summary](screenshots/status.png)
+![Status tab — runtime summary](https://raw.githubusercontent.com/florianbaethge/simple_irrigation/main/screenshots/status.png)
 
 ---
 

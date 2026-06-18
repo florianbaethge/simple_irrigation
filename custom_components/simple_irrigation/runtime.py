@@ -559,23 +559,47 @@ class IrrigationRuntime:
         return True
 
     async def _async_switch_turn_on(self, entity_id: str) -> None:
+        from .const import OUTPUT_DOMAIN_SERVICES
+        
         self._touched_entities.add(entity_id)
         domain = entity_id.split(".")[0]
-        await self.hass.services.async_call(
-            domain,
-            "turn_on",
-            {"entity_id": entity_id},
-            blocking=True,
-        )
+        
+        if domain in OUTPUT_DOMAIN_SERVICES:
+            service_on, _service_off = OUTPUT_DOMAIN_SERVICES[domain]
+            await self.hass.services.async_call(
+                domain,
+                service_on,
+                {"entity_id": entity_id},
+                blocking=True,
+            )
+        else:
+            await self.hass.services.async_call(
+                domain,
+                "turn_on",
+                {"entity_id": entity_id},
+                blocking=True,
+            )
 
     async def _async_switch_turn_off(self, entity_id: str) -> None:
+        from .const import OUTPUT_DOMAIN_SERVICES
+        
         domain = entity_id.split(".")[0]
-        await self.hass.services.async_call(
-            domain,
-            "turn_off",
-            {"entity_id": entity_id},
-            blocking=True,
-        )
+        
+        if domain in OUTPUT_DOMAIN_SERVICES:
+            _service_on, service_off = OUTPUT_DOMAIN_SERVICES[domain]
+            await self.hass.services.async_call(
+                domain,
+                service_off,
+                {"entity_id": entity_id},
+                blocking=True,
+            )
+        else:
+            await self.hass.services.async_call(
+                domain,
+                "turn_off",
+                {"entity_id": entity_id},
+                blocking=True,
+            )
 
     async def _async_turn_off_all_tracked(self) -> None:
         inst = self.coordinator.installation

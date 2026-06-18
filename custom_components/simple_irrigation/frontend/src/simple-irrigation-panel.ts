@@ -461,6 +461,7 @@ export class SimpleIrrigationPanel extends LitElement {
                 .installation=${inst}
                 .scheduleNext=${scheduleNext}
                 .runState=${rs}
+                .outputEntityDomains=${this._state?.output_entity_domains ?? ["switch", "input_boolean", "group", "valve"]}
                 .onSaved=${() => this._loadState(path.entryId!, { silent: true })}
               ></si-view-general>`
             : nothing}
@@ -470,6 +471,7 @@ export class SimpleIrrigationPanel extends LitElement {
                 .entryId=${path.entryId!}
                 .installation=${inst}
                 .runState=${rs}
+                .outputEntityDomains=${this._state?.output_entity_domains ?? ["switch", "input_boolean", "group", "valve"]}
                 .onSaved=${() => this._loadState(path.entryId!, { silent: true })}
               ></si-view-zones>`
             : nothing}

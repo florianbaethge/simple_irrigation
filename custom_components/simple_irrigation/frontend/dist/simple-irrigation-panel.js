@@ -790,6 +790,7 @@ class ViewGeneral extends i {
         installation: { type: Object },
         scheduleNext: { type: Object },
         runState: { type: Object },
+        outputEntityDomains: { type: Array },
         onSaved: { attribute: false },
     }; }
     static { this.styles = [
@@ -1242,7 +1243,7 @@ class ViewGeneral extends i {
         }
     }
     render() {
-        const domains = ["switch", "input_boolean", "group"];
+        const domains = this.outputEntityDomains ?? ["switch", "input_boolean", "group", "valve"];
         const sn = this.scheduleNext ?? { fire_at: null, slots: [] };
         const nextGlobal = sn.fire_at || this.runState?.next_run_global || null;
         const pauseOn = this._pauseIsActive();
@@ -3311,7 +3312,8 @@ class ViewTimetable extends i {
 }
 defineCustomElementOnce("si-view-timetable", ViewTimetable);
 
-const domains = ["switch", "input_boolean", "group"];
+// Default domains if not provided by backend
+const defaultDomains = ["switch", "input_boolean", "group", "valve"];
 class ViewZones extends i {
     constructor() {
         super(...arguments);
@@ -3334,6 +3336,7 @@ class ViewZones extends i {
         entryId: { type: String },
         installation: { type: Object },
         runState: { type: Object },
+        outputEntityDomains: { type: Array },
         onSaved: { attribute: false },
     }; }
     static { this.styles = [
@@ -3747,7 +3750,7 @@ class ViewZones extends i {
         const edit = this._editDraft;
         const slotsPerZone = slotInclusionCountPerZone(this.installation ?? {});
         return b `
-      ${renderEntityDatalist(this.hass, this._zonesEntityListId(), domains)}
+      ${renderEntityDatalist(this.hass, this._zonesEntityListId(), this.outputEntityDomains ?? defaultDomains)}
       <ha-card .header=${t(this.hass, "config_panel.zones_card_title")}>
         <div class="card-content">
           ${this._msg ? b `<div class="error">${this._msg}</div>` : A}
@@ -3944,7 +3947,7 @@ __decorate([
 ], ViewZones.prototype, "_editDraft", void 0);
 defineCustomElementOnce("si-view-zones", ViewZones);
 
-const VERSION = "0.3.0";
+const VERSION = "0.3.1";
 const PANEL_PAGES = ["general", "zones", "schedule", "timetable", "status"];
 const TAB_LABEL_KEYS = {
     general: "config_panel.tab_general",
@@ -4333,6 +4336,7 @@ class SimpleIrrigationPanel extends i {
                 .installation=${inst}
                 .scheduleNext=${scheduleNext}
                 .runState=${rs}
+                .outputEntityDomains=${this._state?.output_entity_domains ?? ["switch", "input_boolean", "group", "valve"]}
                 .onSaved=${() => this._loadState(path.entryId, { silent: true })}
               ></si-view-general>`
             : A}
@@ -4342,6 +4346,7 @@ class SimpleIrrigationPanel extends i {
                 .entryId=${path.entryId}
                 .installation=${inst}
                 .runState=${rs}
+                .outputEntityDomains=${this._state?.output_entity_domains ?? ["switch", "input_boolean", "group", "valve"]}
                 .onSaved=${() => this._loadState(path.entryId, { silent: true })}
               ></si-view-zones>`
             : A}

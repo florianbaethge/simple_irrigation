@@ -24,7 +24,10 @@ def domain_of(entity_id: str) -> str:
 
 
 def is_allowed_output_domain(domain: str) -> bool:
-    """Return True if domain may be used for on/off outputs (turn_on/turn_off)."""
+    """Return True if domain may be used for irrigation outputs.
+    
+    Most domains use turn_on/turn_off; valve domain uses open_valve/close_valve.
+    """
     return domain in OUTPUT_ENTITY_DOMAINS
 
 

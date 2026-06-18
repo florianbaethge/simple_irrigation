@@ -19,13 +19,13 @@ from homeassistant.helpers.selector import (
 )
 
 from .const import DOMAIN, MODES
-from .validation import validate_max_parallel
+from .validation import validate_max_parallel, validate_pre_start_entities
 
 
 def _output_entity_selector(multiple: bool) -> EntitySelector:
-    """Allow switch-like outputs from any supported integration."""
+    """Allow output entities from any supported domain."""
     return EntitySelector(
-        {"domain": ["switch", "input_boolean", "group"], "multiple": multiple}
+        {"domain": ["switch", "input_boolean", "group", "valve"], "multiple": multiple}
     )
 
 
@@ -44,6 +44,14 @@ class SimpleIrrigationConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             if err:
                 errors["base"] = err
             else:
+                # Validate pre-start entities if provided
+                pre_start_err = validate_pre_start_entities(
+                    self.hass, user_input.get("pre_start_switches")
+                )
+                if pre_start_err:
+                    errors["pre_start_switches"] = pre_start_err
+                
+            if not errors:
                 inst_id = str(uuid.uuid4())
                 max_p = int(user_input["max_parallel_zones"])
                 delay_raw = user_input.get("pre_start_delay_sec", 10)

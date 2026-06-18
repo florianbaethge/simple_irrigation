@@ -18,6 +18,7 @@ from custom_components.simple_irrigation.validation import (
         ("switch.pump", True),
         ("input_boolean.zone_1", True),
         ("group.valves", True),
+        ("valve.master", True),
         ("light.kitchen", False),
         ("", False),
     ],
@@ -39,6 +40,7 @@ def test_domain_of() -> None:
 
 def test_is_allowed_output_domain() -> None:
     assert is_allowed_output_domain("switch") is True
+    assert is_allowed_output_domain("valve") is True
     assert is_allowed_output_domain("light") is False
 
 

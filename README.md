@@ -2,7 +2,7 @@
 [![HACS Default](https://img.shields.io/badge/HACS-Default-41BDF5.svg)](https://hacs.xyz)
 
 <p align="center">
-  <img src="screenshots/simple-irrigation-logo.svg" alt="Simple Irrigation" width="600"/>
+  <img src="screenshots/simple_irrigation_logo.png" alt="Simple Irrigation" width="600"/>
 </p>
 
 
@@ -10,9 +10,8 @@
 - **Smart parallel runs** — configurable concurrency + exclusive zones
 - **Complete configuration in GUI** — Zones · Schedule · Timetable 
 - **Multi-installation** — create multiple irrigation installations to control multiple gardens or add seasonal control
-- **EN / DE** translations; Home Assistant 2024.1+
 
-**Custom integration for [Home Assistant](https://www.home-assistant.io/)** that orchestrates one irrigation system per config entry: weekly schedule slots, on/off outputs (switches, `input_boolean`, groups), global **Eco / Normal / Extra** watering modes, optional **pre-start** outputs, **parallel** runs with **exclusive** zones, **pause** and **skip today**, and a **sidebar panel** for full configuration (no YAML for zones or schedule). The panel includes a **Timetable** tab with a week-at-a-glance grid (zones × weekdays, morning/day/evening buckets) derived from your slots and current mode.
+**Custom integration for [Home Assistant](https://www.home-assistant.io/)** that orchestrates one irrigation system per config entry: weekly schedule slots, irrigation outputs (switches, `input_boolean`, groups, valves), global **Eco / Normal / Extra** watering modes, optional **pre-start** outputs, **parallel** runs with **exclusive** zones, **pause** and **skip today**, and a **sidebar panel** for full configuration (no YAML for zones or schedule). The panel includes a **Timetable** tab with a week-at-a-glance grid (zones × weekdays, morning/day/evening buckets) derived from your slots and current mode.
 
 ---
 
@@ -96,7 +95,7 @@ You can add **multiple** config entries for separate gardens or seasonal plans (
 
 ### Zones
 
-- **Outputs:** Any mix of `switch`, `input_boolean`, and `group` entities that support `turn_on` / `turn_off`.
+- **Outputs:** Any mix of `switch`, `input_boolean`, `group`, and `valve` entities. Most use `turn_on` / `turn_off`; valves use `open_valve` / `close_valve`.
 - **Exclusive:** When checked, that zone never runs in parallel with others (useful for high-flow or shared supply lines).
 - **Disabled:** Skipped at runtime and omitted from phase previews where applicable.
 

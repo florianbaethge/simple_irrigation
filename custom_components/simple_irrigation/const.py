@@ -23,8 +23,14 @@ PANEL_FRONTEND_PATH: Final = "simple-irrigation"
 PANEL_REGISTERED_KEY: Final = "_simple_irrigation_panel_registered"
 PANEL_API_REGISTERED_KEY: Final = "_simple_irrigation_panel_api_registered"
 
-# Domains that support standard turn_on / turn_off for irrigation outputs.
-OUTPUT_ENTITY_DOMAINS: Final = frozenset({"switch", "input_boolean", "group"})
+# Domains that support irrigation output control.
+# Most use turn_on/turn_off; valve domain uses open_valve/close_valve.
+OUTPUT_ENTITY_DOMAINS: Final = frozenset({"switch", "input_boolean", "group", "valve"})
+
+# Service mappings for domains that don't use standard turn_on/turn_off.
+OUTPUT_DOMAIN_SERVICES: Final = {
+    "valve": ("open_valve", "close_valve"),
+}
 
 STORE_VERSION: Final = 1
 

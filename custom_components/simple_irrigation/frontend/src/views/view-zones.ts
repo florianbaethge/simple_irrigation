@@ -8,7 +8,8 @@ import { formLayoutStyles } from "../form-layout-styles";
 import { slotInclusionCountPerZone } from "../timetable-model";
 import type { HomeAssistant } from "../types";
 
-const domains = ["switch", "input_boolean", "group"];
+// Default domains if not provided by backend
+const defaultDomains = ["switch", "input_boolean", "group", "valve"];
 
 interface ZoneRow {
   zone_id: string;
@@ -27,6 +28,7 @@ export class ViewZones extends LitElement {
     entryId: { type: String },
     installation: { type: Object },
     runState: { type: Object },
+    outputEntityDomains: { type: Array },
     onSaved: { attribute: false },
   };
 
@@ -34,6 +36,7 @@ export class ViewZones extends LitElement {
   entryId!: string;
   installation!: Record<string, unknown>;
   runState?: Record<string, unknown>;
+  outputEntityDomains?: string[];
   onSaved?: () => void;
 
   static styles = [
@@ -477,7 +480,7 @@ export class ViewZones extends LitElement {
     const slotsPerZone = slotInclusionCountPerZone(this.installation ?? {});
 
     return html`
-      ${renderEntityDatalist(this.hass, this._zonesEntityListId(), domains)}
+      ${renderEntityDatalist(this.hass, this._zonesEntityListId(), this.outputEntityDomains ?? defaultDomains)}
       <ha-card .header=${t(this.hass, "config_panel.zones_card_title")}>
         <div class="card-content">
           ${this._msg ? html`<div class="error">${this._msg}</div>` : nothing}

@@ -15,6 +15,7 @@ export class ViewGeneral extends LitElement {
     installation: { type: Object },
     scheduleNext: { type: Object },
     runState: { type: Object },
+    outputEntityDomains: { type: Array },
     onSaved: { attribute: false },
   };
 
@@ -23,6 +24,7 @@ export class ViewGeneral extends LitElement {
   installation!: Record<string, unknown>;
   scheduleNext?: ScheduleNext;
   runState?: Record<string, unknown>;
+  outputEntityDomains?: string[];
   onSaved?: () => void;
 
   static styles = [
@@ -487,7 +489,7 @@ export class ViewGeneral extends LitElement {
   }
 
   protected render() {
-    const domains = ["switch", "input_boolean", "group"];
+    const domains = this.outputEntityDomains ?? ["switch", "input_boolean", "group", "valve"];
     const sn = this.scheduleNext ?? { fire_at: null, slots: [] };
     const nextGlobal =
       sn.fire_at || (this.runState?.next_run_global as string | undefined) || null;

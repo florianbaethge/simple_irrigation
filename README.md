@@ -1,9 +1,7 @@
 [![CI](https://github.com/florianbaethge/simple_irrigation/actions/workflows/ci.yml/badge.svg)](https://github.com/florianbaethge/simple_irrigation/actions/workflows/ci.yml)
 [![HACS Default](https://img.shields.io/badge/HACS-Default-41BDF5.svg)](https://hacs.xyz)
 
-<p align="center">
-  <img src="screenshots/simple_irrigation_logo.png" alt="Simple Irrigation" width="600"/>
-</p>
+![Simple Irrigation](screenshots/simple_irrigation_logo.png)
 
 
 - **Three watering modes** — Eco / Normal / Extra (swappable via automation)

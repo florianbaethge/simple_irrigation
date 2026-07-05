@@ -22,6 +22,9 @@ PANEL_FRONTEND_PATH: Final = "simple-irrigation"
 
 PANEL_REGISTERED_KEY: Final = "_simple_irrigation_panel_registered"
 PANEL_API_REGISTERED_KEY: Final = "_simple_irrigation_panel_api_registered"
+# aiohttp static routes cannot be removed, so this flag is never popped
+# (unlike PANEL_REGISTERED_KEY, which is cleared on unload).
+PANEL_STATIC_REGISTERED_KEY: Final = "_simple_irrigation_panel_static_registered"
 
 # Domains that support irrigation output control.
 # Most use turn_on/turn_off; valve domain uses open_valve/close_valve.

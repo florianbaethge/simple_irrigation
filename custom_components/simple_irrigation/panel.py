@@ -18,6 +18,7 @@ from .const import (
     PANEL_FOLDER,
     PANEL_FRONTEND_PATH,
     PANEL_ICON,
+    PANEL_STATIC_REGISTERED_KEY,
     PANEL_TITLE,
     PANEL_URL_PATH,
     PANEL_WEBCOMPONENT,
@@ -37,9 +38,17 @@ async def async_register_panel(hass) -> None:
         _LOGGER.warning("Panel file missing at %s", panel_file)
         cache_bust = 0
 
-    await hass.http.async_register_static_paths(
-        [StaticPathConfig(PANEL_URL_PATH, panel_file, cache_headers=False)]
-    )
+    # aiohttp static routes cannot be removed once added, so this must run at
+    # most once per HA lifetime — even across panel unregister/re-register
+    # cycles (entry reload) — or aiohttp raises "method GET is already
+    # registered". Claim the flag before awaiting: config entries of this
+    # domain are set up concurrently, and a check-after-await would let both
+    # entries pass the guard.
+    if not hass.data.get(PANEL_STATIC_REGISTERED_KEY):
+        hass.data[PANEL_STATIC_REGISTERED_KEY] = True
+        await hass.http.async_register_static_paths(
+            [StaticPathConfig(PANEL_URL_PATH, panel_file, cache_headers=False)]
+        )
 
     translations = await async_get_translations(
         hass, hass.config.language, "config_panel", {DOMAIN}

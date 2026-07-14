@@ -42,6 +42,7 @@ def compute_next_runs(
             slot.weekday,
             slot.time_local,
             tz,
+            slot.week_parity,
         )
         if nxt is None:
             continue
@@ -128,7 +129,7 @@ class IrrigationScheduler:
     @callback
     def async_reschedule(self) -> None:
         """Schedule next wake (sync entry point from listener)."""
-        asyncio.create_task(self._async_reschedule())
+        self.hass.async_create_task(self._async_reschedule())
 
     async def async_reschedule_now(self) -> None:
         """Await reschedule (e.g. after options save)."""
@@ -190,6 +191,7 @@ class IrrigationScheduler:
                     slot.weekday,
                     slot.time_local,
                     tz,
+                    slot.week_parity,
                 )
                 if nxt is None:
                     continue

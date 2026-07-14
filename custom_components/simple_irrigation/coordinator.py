@@ -29,10 +29,10 @@ class SimpleIrrigationCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         super().__init__(
             hass,
             _LOGGER,
+            config_entry=entry,
             name=DOMAIN,
             update_interval=None,
         )
-        self.config_entry = entry
         self.store = store
 
     @property

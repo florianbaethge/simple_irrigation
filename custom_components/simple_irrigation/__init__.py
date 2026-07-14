@@ -94,16 +94,25 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await async_register_panel_api(hass)
 
     if not hass.data.get(PANEL_REGISTERED_KEY):
-        from homeassistant.setup import async_setup_component
-
-        if "panel_custom" not in hass.config.components:
-            hass_config: ConfigType = hass.data.get(DOMAIN, {}).get(HASS_CONFIG_KEY) or {}
-            await async_setup_component(hass, "panel_custom", hass_config)
-
-        from .panel import async_register_panel
-
-        await async_register_panel(hass)
+        # Claim the flag before the first await: entries of this domain are
+        # set up concurrently, and a second entry passing this guard would
+        # re-register the panel (ValueError) and the static path (RuntimeError).
         hass.data[PANEL_REGISTERED_KEY] = True
+        try:
+            from homeassistant.setup import async_setup_component
+
+            if "panel_custom" not in hass.config.components:
+                hass_config: ConfigType = (
+                    hass.data.get(DOMAIN, {}).get(HASS_CONFIG_KEY) or {}
+                )
+                await async_setup_component(hass, "panel_custom", hass_config)
+
+            from .panel import async_register_panel
+
+            await async_register_panel(hass)
+        except Exception:
+            hass.data.pop(PANEL_REGISTERED_KEY, None)
+            raise
 
     return True
 

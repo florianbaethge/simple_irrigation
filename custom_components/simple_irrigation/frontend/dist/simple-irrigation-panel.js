@@ -1398,7 +1398,11 @@ class ViewGeneral extends i {
                 ? b `<span class="schedule-slot-name">${s.name.trim()}</span>`
                 : A}
                             <span class="schedule-slot-time"
-                              >${this._wd(s.weekday)} ${formatTimeLocalForDisplay(this.hass, s.time_local)}</span
+                              >${this._wd(s.weekday)} ${formatTimeLocalForDisplay(this.hass, s.time_local)}${s.week_parity === "odd" || s.week_parity === "even"
+                ? ` · ${t(this.hass, s.week_parity === "odd"
+                    ? "config_panel.week_parity_odd"
+                    : "config_panel.week_parity_even")}`
+                : ""}</span
                             >
                             ${s.zone_names?.length
                 ? b `<span class="schedule-slot-zones"
@@ -1693,6 +1697,7 @@ function phaseIndexByZoneId(orderedZoneIds, zonesById, maxParallelZones) {
     return m;
 }
 
+const WEEK_PARITIES = ["every", "odd", "even"];
 class ViewSchedule extends i {
     constructor() {
         super(...arguments);
@@ -1701,6 +1706,7 @@ class ViewSchedule extends i {
         this._newTime = "06:00";
         this._newEnabled = true;
         this._newSlotName = "";
+        this._newWeekParity = "every";
         this._slotEditDraft = null;
         this._addSlotDialogOpen = false;
         this._addZonePick = "";
@@ -1871,6 +1877,13 @@ class ViewSchedule extends i {
     _wd(i) {
         return weekdayLong(this.hass, i);
     }
+    _parityLabel(parity) {
+        if (parity === "odd")
+            return t(this.hass, "config_panel.week_parity_odd");
+        if (parity === "even")
+            return t(this.hass, "config_panel.week_parity_even");
+        return t(this.hass, "config_panel.week_parity_every");
+    }
     _fmtSlotTime(timeLocal) {
         return formatTimeLocalForDisplay(this.hass, timeLocal);
     }
@@ -1889,6 +1902,7 @@ class ViewSchedule extends i {
                     ? [...o.zone_ids_ordered]
                     : [],
                 name: String(o.name ?? "").trim(),
+                week_parity: o.week_parity === "odd" || o.week_parity === "even" ? o.week_parity : "every",
             };
         });
     }
@@ -1995,6 +2009,7 @@ class ViewSchedule extends i {
         this._newTime = "06:00";
         this._newEnabled = true;
         this._newSlotName = "";
+        this._newWeekParity = "every";
     }
     _closeAddSlotDialog() {
         this._addSlotDialogOpen = false;
@@ -2038,6 +2053,7 @@ class ViewSchedule extends i {
             enabled: d.enabled,
             zone_ids_ordered: d.zone_ids_ordered,
             name: d.name.trim(),
+            week_parity: d.week_parity,
         });
         if (ok) {
             this._closeEditDialog();
@@ -2065,6 +2081,7 @@ class ViewSchedule extends i {
             enabled,
             zone_ids_ordered: slot.zone_ids_ordered,
             name: slot.name.trim(),
+            week_parity: slot.week_parity,
         });
         if (!ok) {
             this.requestUpdate();
@@ -2134,6 +2151,9 @@ class ViewSchedule extends i {
                 const parts = [];
                 if (!slot.enabled) {
                     parts.push(t(this.hass, "config_panel.zones_detail_disabled"));
+                }
+                if (slot.week_parity !== "every") {
+                    parts.push(this._parityLabel(slot.week_parity));
                 }
                 parts.push(n === 1
                     ? t(this.hass, "config_panel.schedule_zones_in_order_one")
@@ -2207,6 +2227,20 @@ class ViewSchedule extends i {
           </select>
         </div>
         <div class="field-block">
+          <span class="field-title">${t(this.hass, "config_panel.schedule_week_parity_title")}</span>
+          <p class="field-desc">${t(this.hass, "config_panel.schedule_week_parity_desc")}</p>
+          <select
+            class="field-select"
+            @change=${(e) => {
+            this._newWeekParity = e.target.value;
+        }}
+          >
+            ${WEEK_PARITIES.map((p) => b `<option value=${p} ?selected=${this._newWeekParity === p}>
+                  ${this._parityLabel(p)}
+                </option>`)}
+          </select>
+        </div>
+        <div class="field-block">
           <span class="field-title">${t(this.hass, "config_panel.schedule_local_time_title")}</span>
           <p class="field-desc">${t(this.hass, "config_panel.schedule_local_time_desc")}</p>
           <div class="field-row">
@@ -2259,6 +2293,7 @@ class ViewSchedule extends i {
                 time_local: this._newTime,
                 enabled: this._newEnabled,
                 name: this._newSlotName.trim(),
+                week_parity: this._newWeekParity,
             });
             if (ok) {
                 this._closeAddSlotDialog();
@@ -2305,6 +2340,22 @@ class ViewSchedule extends i {
                 >
                   ${[0, 1, 2, 3, 4, 5, 6].map((i) => b `<option value=${i} ?selected=${draft.weekday === i}>
                         ${this._wd(i)}
+                      </option>`)}
+                </select>
+              </div>
+              <div class="field-block">
+                <span class="field-title">${t(this.hass, "config_panel.schedule_week_parity_title")}</span>
+                <p class="field-desc">${t(this.hass, "config_panel.schedule_week_parity_desc")}</p>
+                <select
+                  class="field-select"
+                  .value=${draft.week_parity}
+                  @change=${(e) => {
+                draft.week_parity = e.target.value;
+                this.requestUpdate();
+            }}
+                >
+                  ${WEEK_PARITIES.map((p) => b `<option value=${p} ?selected=${draft.week_parity === p}>
+                        ${this._parityLabel(p)}
                       </option>`)}
                 </select>
               </div>
@@ -2639,6 +2690,22 @@ __decorate([
 defineCustomElementOnce("si-view-status", ViewStatus);
 
 /** Weekly timetable entries from schedule slots (local wall clock, Mon=0 … Sun=6). */
+function normalizeWeekParity(raw) {
+    return raw === "odd" || raw === "even" ? raw : "every";
+}
+/** ISO-8601 week number (same numbering as Python's isocalendar). */
+function isoWeekNumber(d) {
+    const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+    const dayNum = (date.getUTCDay() + 6) % 7; // Mon=0
+    date.setUTCDate(date.getUTCDate() - dayNum + 3); // Thursday decides the ISO week
+    const firstThursday = new Date(Date.UTC(date.getUTCFullYear(), 0, 4));
+    const firstDayNum = (firstThursday.getUTCDay() + 6) % 7;
+    firstThursday.setUTCDate(firstThursday.getUTCDate() - firstDayNum + 3);
+    return 1 + Math.round((date.getTime() - firstThursday.getTime()) / (7 * 24 * 3600 * 1000));
+}
+function weekParityOfWeekNumber(week) {
+    return week % 2 === 1 ? "odd" : "even";
+}
 function parseTimeLocalToMinutes(timeLocal) {
     const m = /^(\d{1,2}):(\d{2})$/.exec(timeLocal.trim());
     if (!m)
@@ -2723,6 +2790,7 @@ function buildTimetableEntries(installation) {
         const slotEnabled = Boolean(slot.enabled ?? true);
         const weekday = Math.max(0, Math.min(6, Number(slot.weekday ?? 0)));
         const timeLocal = String(slot.time_local ?? "00:00");
+        const weekParity = normalizeWeekParity(slot.week_parity);
         const ordered = Array.isArray(slot.zone_ids_ordered)
             ? slot.zone_ids_ordered
             : [];
@@ -2758,6 +2826,7 @@ function buildTimetableEntries(installation) {
                     enabled: planEnabled && slotEnabled && zoneEnabled,
                     mode,
                     slotId,
+                    weekParity,
                 });
             }
             cursor = phaseStart + phaseLenMin;
@@ -2849,6 +2918,11 @@ function slotInclusionCountPerZone(installation) {
 }
 
 class ViewTimetable extends i {
+    constructor() {
+        super(...arguments);
+        /** Selected week view; null = follow the current calendar week. */
+        this._weekView = null;
+    }
     static { this.properties = {
         hass: { attribute: false },
         entryId: { type: String },
@@ -2984,6 +3058,73 @@ class ViewTimetable extends i {
       background: color-mix(in srgb, var(--disabled-color, #9e9e9e) 38%, var(--card-background-color));
       border-color: var(--divider-color);
       color: var(--secondary-text-color);
+    }
+    .tt-block--biweekly {
+      border-style: dashed;
+      border-width: 1.5px;
+    }
+    .tt-block--biweekly.tt-block--active {
+      border-color: color-mix(in srgb, var(--primary-color) 85%, var(--card-background-color));
+    }
+    .tt-block-parity {
+      display: inline-flex;
+      align-items: center;
+      gap: 2px;
+      font-size: 0.6rem;
+      opacity: 0.92;
+    }
+    .tt-block-parity ha-icon {
+      --mdc-icon-size: 11px;
+      width: 11px;
+      height: 11px;
+    }
+    .week-toggle {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      margin: 0 0 12px;
+    }
+    .week-toggle-seg {
+      display: inline-flex;
+      border: 1px solid var(--divider-color);
+      border-radius: 999px;
+      overflow: hidden;
+      background: var(--card-background-color);
+    }
+    .week-toggle-btn {
+      appearance: none;
+      border: none;
+      background: transparent;
+      color: var(--primary-text-color);
+      font: inherit;
+      font-size: 0.8rem;
+      padding: 7px 14px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      line-height: 1.2;
+    }
+    .week-toggle-btn + .week-toggle-btn {
+      border-left: 1px solid var(--divider-color);
+    }
+    .week-toggle-btn[aria-pressed="true"] {
+      background: var(--primary-color);
+      color: var(--text-primary-color);
+    }
+    .week-toggle-btn:focus-visible {
+      outline: 2px solid var(--primary-color);
+      outline-offset: -2px;
+    }
+    .week-toggle-now {
+      font-size: 0.68rem;
+      opacity: 0.85;
+      white-space: nowrap;
+    }
+    .swatch--biweekly {
+      background: color-mix(in srgb, var(--primary-color) 78%, var(--card-background-color));
+      border: 1.5px dashed color-mix(in srgb, var(--primary-color) 85%, var(--card-background-color));
     }
     .tt-block:hover {
       filter: brightness(1.05);
@@ -3124,6 +3265,18 @@ class ViewTimetable extends i {
       }
     }
   `; }
+    _parityLabel(parity) {
+        if (parity === "odd")
+            return t(this.hass, "config_panel.week_parity_odd");
+        if (parity === "even")
+            return t(this.hass, "config_panel.week_parity_even");
+        return t(this.hass, "config_panel.week_parity_every");
+    }
+    _parityBadge(parity) {
+        return parity === "odd"
+            ? t(this.hass, "config_panel.timetable_parity_badge_odd")
+            : t(this.hass, "config_panel.timetable_parity_badge_even");
+    }
     _bucketIcon(bucket) {
         if (bucket === 0)
             return "mdi:weather-sunset-up";
@@ -3154,11 +3307,14 @@ class ViewTimetable extends i {
                 ? "config_panel.timetable_mode_extra"
                 : "config_panel.timetable_mode_normal";
         const modeLabel = t(this.hass, modeKey);
-        return t(this.hass, "config_panel.timetable_bar_tooltip", {
+        const base = t(this.hass, "config_panel.timetable_bar_tooltip", {
             start,
             end,
             mode: modeLabel,
         });
+        if (e.weekParity === "every")
+            return base;
+        return `${base} · ${this._parityLabel(e.weekParity)}`;
     }
     _entriesForCell(map, weekday, zoneId, bucket) {
         return map.get(`${weekday}\t${zoneId}\t${bucket}`) ?? [];
@@ -3180,7 +3336,14 @@ class ViewTimetable extends i {
         const zones = inst.zones;
         const slots = inst.schedule_slots;
         const zoneIds = zoneRowOrder(inst);
-        const entries = buildTimetableEntries(inst);
+        const allEntries = buildTimetableEntries(inst);
+        const hasBiweekly = allEntries.some((e) => e.weekParity !== "every");
+        const nowWeek = isoWeekNumber(new Date());
+        const nowParity = weekParityOfWeekNumber(nowWeek);
+        const viewParity = hasBiweekly ? (this._weekView ?? nowParity) : null;
+        const entries = viewParity
+            ? allEntries.filter((e) => e.weekParity === "every" || e.weekParity === viewParity)
+            : allEntries;
         const laneInfo = assignEntryLanes(entries);
         const colOrder = weekdayIndicesForDisplay(this.hass?.locale?.first_weekday, this.hass?.locale?.language ?? this.hass?.language);
         if (!zones || zoneIds.length === 0) {
@@ -3214,6 +3377,37 @@ class ViewTimetable extends i {
       <ha-card .header=${t(this.hass, "config_panel.timetable_card_title")}>
         <div class="card-content">
           <p class="intro">${t(this.hass, "config_panel.timetable_intro")}</p>
+          ${viewParity
+            ? b `
+                <div
+                  class="week-toggle"
+                  role="group"
+                  aria-label=${t(this.hass, "config_panel.timetable_week_toggle_label")}
+                >
+                  <span class="week-toggle-seg">
+                    ${["odd", "even"].map((p) => b `
+                        <button
+                          type="button"
+                          class="week-toggle-btn"
+                          aria-pressed=${viewParity === p ? "true" : "false"}
+                          @click=${() => {
+                this._weekView = p;
+            }}
+                        >
+                          <span>${this._parityLabel(p)}</span>
+                          ${nowParity === p
+                ? b `<span class="week-toggle-now"
+                                >${t(this.hass, "config_panel.timetable_week_current_hint", {
+                    n: nowWeek,
+                })}</span
+                              >`
+                : A}
+                        </button>
+                      `)}
+                  </span>
+                </div>
+              `
+            : A}
           <div class="table-wrap">
             <table class="tt-table">
               <thead>
@@ -3257,11 +3451,14 @@ class ViewTimetable extends i {
                             const durLabel = t(this.hass, "config_panel.timetable_duration_min", {
                                 n: dur,
                             });
+                            const biweekly = e.weekParity !== "every";
                             return b `
                                           <div
                                             class="tt-block tt-block--clickable ${e.enabled
                                 ? "tt-block--active"
-                                : "tt-block--disabled"}"
+                                : "tt-block--disabled"} ${biweekly
+                                ? "tt-block--biweekly"
+                                : ""}"
                                             title=${this._entryTooltip(e)}
                                             role="button"
                                             tabindex="0"
@@ -3270,6 +3467,12 @@ class ViewTimetable extends i {
                                           >
                                             <span class="tt-block-time">${start} – ${end}</span>
                                             <span class="tt-block-dur">${durLabel}</span>
+                                            ${biweekly
+                                ? b `<span class="tt-block-parity">
+                                                  <ha-icon icon="mdi:calendar-sync"></ha-icon>
+                                                  ${this._parityBadge(e.weekParity)}
+                                                </span>`
+                                : A}
                                           </div>
                                         `;
                         })}
@@ -3296,6 +3499,14 @@ class ViewTimetable extends i {
                 <span class="swatch swatch--disabled" aria-hidden="true"></span>
                 ${t(this.hass, "config_panel.timetable_legend_disabled")}
               </span>
+              ${hasBiweekly
+            ? b `
+                    <span class="legend-item">
+                      <span class="swatch swatch--biweekly" aria-hidden="true"></span>
+                      ${t(this.hass, "config_panel.timetable_legend_biweekly")}
+                    </span>
+                  `
+            : A}
               <span class="legend-sep" aria-hidden="true"></span>
               ${TIMETABLE_BUCKET_INDICES.map((b$1) => b `
                   <span class="legend-period">
@@ -3310,6 +3521,9 @@ class ViewTimetable extends i {
     `;
     }
 }
+__decorate([
+    r()
+], ViewTimetable.prototype, "_weekView", void 0);
 defineCustomElementOnce("si-view-timetable", ViewTimetable);
 
 // Default domains if not provided by backend
@@ -3947,7 +4161,7 @@ __decorate([
 ], ViewZones.prototype, "_editDraft", void 0);
 defineCustomElementOnce("si-view-zones", ViewZones);
 
-const VERSION = "0.3.3";
+const VERSION = "0.4.0";
 const PANEL_PAGES = ["general", "zones", "schedule", "timetable", "status"];
 const TAB_LABEL_KEYS = {
     general: "config_panel.tab_general",

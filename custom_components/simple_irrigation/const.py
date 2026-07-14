@@ -22,6 +22,9 @@ PANEL_FRONTEND_PATH: Final = "simple-irrigation"
 
 PANEL_REGISTERED_KEY: Final = "_simple_irrigation_panel_registered"
 PANEL_API_REGISTERED_KEY: Final = "_simple_irrigation_panel_api_registered"
+# aiohttp static routes cannot be removed, so this flag is never popped
+# (unlike PANEL_REGISTERED_KEY, which is cleared on unload).
+PANEL_STATIC_REGISTERED_KEY: Final = "_simple_irrigation_panel_static_registered"
 
 # Domains that support irrigation output control.
 # Most use turn_on/turn_off; valve domain uses open_valve/close_valve.
@@ -79,6 +82,12 @@ SERVICE_SET_MODE: Final = "set_mode"
 SERVICE_SET_ZONE_ENABLED: Final = "set_zone_enabled"
 SERVICE_PAUSE_UNTIL: Final = "pause_until"
 SERVICE_CLEAR_PAUSE: Final = "clear_pause"
+
+# Schedule slot week rhythm based on ISO calendar week number.
+WEEK_PARITY_EVERY: Final = "every"
+WEEK_PARITY_ODD: Final = "odd"
+WEEK_PARITY_EVEN: Final = "even"
+WEEK_PARITIES: Final = (WEEK_PARITY_EVERY, WEEK_PARITY_ODD, WEEK_PARITY_EVEN)
 
 WEEKDAYS: Final = (
     "mon",

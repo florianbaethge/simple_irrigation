@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
-from .const import MODE_NORMAL, RUN_STATE_IDLE
+from .const import MODE_NORMAL, RUN_STATE_IDLE, WEEK_PARITIES, WEEK_PARITY_EVERY
 
 
 @dataclass
@@ -81,6 +81,7 @@ class ScheduleSlot:
     enabled: bool = True
     zone_ids_ordered: list[str] = field(default_factory=list)
     name: str = ""  # optional label for automations / recognition in the UI
+    week_parity: str = WEEK_PARITY_EVERY  # every | odd | even (ISO calendar week)
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize to JSON-compatible dict."""
@@ -91,11 +92,15 @@ class ScheduleSlot:
             "enabled": self.enabled,
             "zone_ids_ordered": list(self.zone_ids_ordered),
             "name": self.name,
+            "week_parity": self.week_parity,
         }
 
     @staticmethod
     def from_dict(data: dict[str, Any]) -> ScheduleSlot:
         """Deserialize from store dict."""
+        parity = str(data.get("week_parity") or WEEK_PARITY_EVERY)
+        if parity not in WEEK_PARITIES:
+            parity = WEEK_PARITY_EVERY
         return ScheduleSlot(
             slot_id=data["slot_id"],
             weekday=int(data["weekday"]),
@@ -103,6 +108,7 @@ class ScheduleSlot:
             enabled=bool(data.get("enabled", True)),
             zone_ids_ordered=list(data.get("zone_ids_ordered", [])),
             name=str(data.get("name") or ""),
+            week_parity=parity,
         )
 
 

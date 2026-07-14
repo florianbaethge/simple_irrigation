@@ -106,6 +106,7 @@ You can add **multiple** config entries for separate gardens or seasonal plans (
 ### Schedule slots
 
 - Each slot is a **weekday** and **local time** (Home Assistant timezone), with an **enabled** toggle (disabled slots are ignored by the scheduler).
+- **Week rhythm:** A slot fires **every week** (default), or only in **odd** / **even** ISO calendar weeks. Two slots on alternating weeks give an every-two-weeks rhythm without changing anything else.
 - **Run order** is the ordered list of zone IDs. **Phases** group zones that may start together according to **max parallel** and **exclusive** rules.
 - **Edit** a slot to reorder (**Up** / **Down**), **Remove** from list, or **Add zone** from the dropdown.
 - **Run this slot now** starts that slot’s sequence immediately (shown as a manual run on **Status**). The same behavior is available to automations as `simple_irrigation.run_schedule_slot` with `slot_id`.
@@ -117,6 +118,7 @@ Tuning **phases:** Reorder zones or adjust **max parallel** / **exclusive** flag
 
 - **Grid:** One row group per **zone**; columns are **weekdays** (order follows your Home Assistant profile’s week start when set). Each zone has three **time-of-day** rows (icons: morning 0:00–8:00, daytime 8:00–16:00, evening 16:00–24:00). A run appears in the row that matches its **start** time.
 - **Timing:** Computed from your **schedule slots**, **pre-start delay**, current **Eco / Normal / Extra** mode, and the same **phase** rules as the runtime (including **disabled** zones/slots shown in a muted style).
+- **Week rhythm:** If any slot runs only in odd/even calendar weeks, a toggle above the grid switches between the two weeks (the current week is preselected and labeled). Biweekly runs are drawn with a **dashed** border and a small calendar badge.
 - **Zones** list shows how many slots reference each zone (**Added to *n* slots**).
 - **Deep link:** Clicking a timetable block opens the **Schedule** tab with that slot’s **Edit** dialog (URL uses `?editSlot=…`, then cleans up without reloading the panel).
 

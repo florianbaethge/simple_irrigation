@@ -520,6 +520,7 @@ class IrrigationRuntime:
                 slot.weekday,
                 slot.time_local,
                 tz,
+                slot.week_parity,
             )
             if nxt is None:
                 continue

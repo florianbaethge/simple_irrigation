@@ -12,7 +12,7 @@ import voluptuous as vol
 from aiohttp import web
 
 from homeassistant.components import websocket_api
-from homeassistant.components.http import HomeAssistantView
+from homeassistant.components.http import KEY_HASS, HomeAssistantView
 from homeassistant.components.http.data_validator import RequestDataValidator
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
@@ -26,6 +26,8 @@ from .const import (
     PANEL_API_REGISTERED_KEY,
     RUN_STATE_ERROR,
     RUN_STATE_IDLE,
+    WEEK_PARITIES,
+    WEEK_PARITY_EVERY,
 )
 from .grouping import compute_phases
 from .models import Installation, ScheduleSlot, Zone
@@ -94,7 +96,9 @@ def _schedule_next_summary(hass: HomeAssistant, inst: Installation) -> dict[str,
     for slot in inst.schedule_slots:
         if not slot.enabled:
             continue
-        nxt = next_slot_fire_local(after, slot.weekday, slot.time_local, tz)
+        nxt = next_slot_fire_local(
+            after, slot.weekday, slot.time_local, tz, slot.week_parity
+        )
         if nxt is None:
             continue
         if abs((nxt - global_next).total_seconds()) < 1:
@@ -111,6 +115,7 @@ def _schedule_next_summary(hass: HomeAssistant, inst: Installation) -> dict[str,
                 "time_local": s.time_local,
                 "zone_names": names,
                 "name": s.name or "",
+                "week_parity": s.week_parity,
             }
         )
 
@@ -234,7 +239,7 @@ class SimpleIrrigationPanelGlobalView(HomeAssistantView):
     async def post(self, request, data: dict[str, Any]) -> web.Response:
         """Apply global updates."""
         _require_admin(request)
-        hass = request.app["hass"]
+        hass = request.app[KEY_HASS]
         entry = _get_entry(hass, data["entry_id"])
         coord = _get_coordinator(hass, entry.entry_id)
         if coord is None:
@@ -319,7 +324,7 @@ class SimpleIrrigationPanelZoneView(HomeAssistantView):
     async def post(self, request, data: dict[str, Any]) -> web.Response:
         """Zone CRUD."""
         _require_admin(request)
-        hass = request.app["hass"]
+        hass = request.app[KEY_HASS]
         entry = _get_entry(hass, data["entry_id"])
         coord = _get_coordinator(hass, entry.entry_id)
         if coord is None:
@@ -433,13 +438,14 @@ class SimpleIrrigationPanelSlotView(HomeAssistantView):
                 vol.Optional("direction"): vol.In(("up", "down")),
                 vol.Optional("zone_ids_ordered"): [cv.string],
                 vol.Optional("name"): cv.string,
+                vol.Optional("week_parity"): vol.In(WEEK_PARITIES),
             }
         )
     )
     async def post(self, request, data: dict[str, Any]) -> web.Response:
         """Slot CRUD and zone order in slot."""
         _require_admin(request)
-        hass = request.app["hass"]
+        hass = request.app[KEY_HASS]
         _get_entry(hass, data["entry_id"])
         coord = _get_coordinator(hass, data["entry_id"])
         if coord is None:
@@ -461,6 +467,7 @@ class SimpleIrrigationPanelSlotView(HomeAssistantView):
                 time_local=str(t).strip(),
                 enabled=bool(data.get("enabled", True)),
                 name=str(data.get("name") or "").strip(),
+                week_parity=str(data.get("week_parity") or WEEK_PARITY_EVERY),
             )
             inst.schedule_slots.append(slot)
             await coord.async_update_installation(inst)
@@ -500,6 +507,8 @@ class SimpleIrrigationPanelSlotView(HomeAssistantView):
                 slot.zone_ids_ordered = new_order
             if "name" in data:
                 slot.name = str(data["name"] or "").strip()
+            if "week_parity" in data:
+                slot.week_parity = str(data["week_parity"])
             await coord.async_update_installation(inst)
             return self.json({"success": True})
 
@@ -552,7 +561,7 @@ class SimpleIrrigationPanelRunSlotView(HomeAssistantView):
     async def post(self, request, data: dict[str, Any]) -> web.Response:
         """Start runtime for a single slot."""
         _require_admin(request)
-        hass = request.app["hass"]
+        hass = request.app[KEY_HASS]
         _get_entry(hass, data["entry_id"])
         coord = _get_coordinator(hass, data["entry_id"])
         runtime = _get_runtime(hass, data["entry_id"])
@@ -584,7 +593,7 @@ class SimpleIrrigationPanelRunZoneView(HomeAssistantView):
     async def post(self, request, data: dict[str, Any]) -> web.Response:
         """Start runtime for a single zone."""
         _require_admin(request)
-        hass = request.app["hass"]
+        hass = request.app[KEY_HASS]
         _get_entry(hass, data["entry_id"])
         coord = _get_coordinator(hass, data["entry_id"])
         runtime = _get_runtime(hass, data["entry_id"])
@@ -616,7 +625,7 @@ class SimpleIrrigationPanelControlView(HomeAssistantView):
     async def post(self, request, data: dict[str, Any]) -> web.Response:
         """Runtime controls for the panel."""
         _require_admin(request)
-        hass = request.app["hass"]
+        hass = request.app[KEY_HASS]
         _get_entry(hass, data["entry_id"])
         coord = _get_coordinator(hass, data["entry_id"])
         runtime = _get_runtime(hass, data["entry_id"])
@@ -662,7 +671,7 @@ class SimpleIrrigationPanelSkipTodayView(HomeAssistantView):
     async def post(self, request, data: dict[str, Any]) -> web.Response:
         """Set pause_until to midnight at start of next day in HA local TZ."""
         _require_admin(request)
-        hass = request.app["hass"]
+        hass = request.app[KEY_HASS]
         _get_entry(hass, data["entry_id"])
         coord = _get_coordinator(hass, data["entry_id"])
         if coord is None:

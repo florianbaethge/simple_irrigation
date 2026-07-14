@@ -48,6 +48,8 @@ export interface ScheduleNextSlot {
   zone_names: string[];
   /** Optional user-defined label for this slot. */
   name?: string;
+  /** Week rhythm: "every" | "odd" | "even" (ISO calendar week). */
+  week_parity?: string;
 }
 
 export interface ScheduleNext {

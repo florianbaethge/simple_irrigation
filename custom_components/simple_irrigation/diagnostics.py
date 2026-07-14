@@ -37,6 +37,7 @@ async def async_get_config_entry_diagnostics(
                 "name": slot.name,
                 "weekday": slot.weekday,
                 "time_local": slot.time_local,
+                "week_parity": slot.week_parity,
                 "enabled": slot.enabled,
                 "zone_ids_ordered": list(slot.zone_ids_ordered),
                 "computed_phases": phases,

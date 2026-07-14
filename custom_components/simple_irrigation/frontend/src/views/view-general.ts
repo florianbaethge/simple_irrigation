@@ -651,7 +651,14 @@ export class ViewGeneral extends LitElement {
                               >${this._wd(s.weekday)} ${formatTimeLocalForDisplay(
                                 this.hass,
                                 s.time_local
-                              )}</span
+                              )}${s.week_parity === "odd" || s.week_parity === "even"
+                                ? ` · ${t(
+                                    this.hass,
+                                    s.week_parity === "odd"
+                                      ? "config_panel.week_parity_odd"
+                                      : "config_panel.week_parity_even"
+                                  )}`
+                                : ""}</span
                             >
                             ${s.zone_names?.length
                               ? html`<span class="schedule-slot-zones"

@@ -83,6 +83,12 @@ SERVICE_SET_ZONE_ENABLED: Final = "set_zone_enabled"
 SERVICE_PAUSE_UNTIL: Final = "pause_until"
 SERVICE_CLEAR_PAUSE: Final = "clear_pause"
 
+# Schedule slot week rhythm based on ISO calendar week number.
+WEEK_PARITY_EVERY: Final = "every"
+WEEK_PARITY_ODD: Final = "odd"
+WEEK_PARITY_EVEN: Final = "even"
+WEEK_PARITIES: Final = (WEEK_PARITY_EVERY, WEEK_PARITY_ODD, WEEK_PARITY_EVEN)
+
 WEEKDAYS: Final = (
     "mon",
     "tue",

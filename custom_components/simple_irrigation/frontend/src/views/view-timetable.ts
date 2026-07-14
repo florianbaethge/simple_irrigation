@@ -1,4 +1,5 @@
 import { LitElement, html, css, nothing } from "lit";
+import { state } from "lit/decorators.js";
 import { defineCustomElementOnce, navigate } from "../helpers";
 import { exportPath } from "../navigation";
 import { t } from "../i18n";
@@ -8,13 +9,16 @@ import {
   assignEntryLanes,
   buildTimetableEntries,
   entryDurationMinutesRounded,
+  isoWeekNumber,
   minutesToTimeLocal,
   TIMETABLE_BUCKET_INDICES,
   weekdayIndicesForDisplay,
+  weekParityOfWeekNumber,
   zoneDisplayName,
   zoneRowOrder,
   type TimetableBucket,
   type TimetableEntry,
+  type WeekParity,
 } from "../timetable-model";
 import type { HomeAssistant } from "../types";
 
@@ -160,6 +164,73 @@ export class ViewTimetable extends LitElement {
       border-color: var(--divider-color);
       color: var(--secondary-text-color);
     }
+    .tt-block--biweekly {
+      border-style: dashed;
+      border-width: 1.5px;
+    }
+    .tt-block--biweekly.tt-block--active {
+      border-color: color-mix(in srgb, var(--primary-color) 85%, var(--card-background-color));
+    }
+    .tt-block-parity {
+      display: inline-flex;
+      align-items: center;
+      gap: 2px;
+      font-size: 0.6rem;
+      opacity: 0.92;
+    }
+    .tt-block-parity ha-icon {
+      --mdc-icon-size: 11px;
+      width: 11px;
+      height: 11px;
+    }
+    .week-toggle {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      margin: 0 0 12px;
+    }
+    .week-toggle-seg {
+      display: inline-flex;
+      border: 1px solid var(--divider-color);
+      border-radius: 999px;
+      overflow: hidden;
+      background: var(--card-background-color);
+    }
+    .week-toggle-btn {
+      appearance: none;
+      border: none;
+      background: transparent;
+      color: var(--primary-text-color);
+      font: inherit;
+      font-size: 0.8rem;
+      padding: 7px 14px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      line-height: 1.2;
+    }
+    .week-toggle-btn + .week-toggle-btn {
+      border-left: 1px solid var(--divider-color);
+    }
+    .week-toggle-btn[aria-pressed="true"] {
+      background: var(--primary-color);
+      color: var(--text-primary-color);
+    }
+    .week-toggle-btn:focus-visible {
+      outline: 2px solid var(--primary-color);
+      outline-offset: -2px;
+    }
+    .week-toggle-now {
+      font-size: 0.68rem;
+      opacity: 0.85;
+      white-space: nowrap;
+    }
+    .swatch--biweekly {
+      background: color-mix(in srgb, var(--primary-color) 78%, var(--card-background-color));
+      border: 1.5px dashed color-mix(in srgb, var(--primary-color) 85%, var(--card-background-color));
+    }
     .tt-block:hover {
       filter: brightness(1.05);
     }
@@ -300,6 +371,21 @@ export class ViewTimetable extends LitElement {
     }
   `;
 
+  /** Selected week view; null = follow the current calendar week. */
+  @state() private _weekView: Exclude<WeekParity, "every"> | null = null;
+
+  private _parityLabel(parity: WeekParity): string {
+    if (parity === "odd") return t(this.hass, "config_panel.week_parity_odd");
+    if (parity === "even") return t(this.hass, "config_panel.week_parity_even");
+    return t(this.hass, "config_panel.week_parity_every");
+  }
+
+  private _parityBadge(parity: WeekParity): string {
+    return parity === "odd"
+      ? t(this.hass, "config_panel.timetable_parity_badge_odd")
+      : t(this.hass, "config_panel.timetable_parity_badge_even");
+  }
+
   private _bucketIcon(bucket: TimetableBucket): string {
     if (bucket === 0) return "mdi:weather-sunset-up";
     if (bucket === 1) return "mdi:white-balance-sunny";
@@ -328,11 +414,13 @@ export class ViewTimetable extends LitElement {
           ? "config_panel.timetable_mode_extra"
           : "config_panel.timetable_mode_normal";
     const modeLabel = t(this.hass, modeKey);
-    return t(this.hass, "config_panel.timetable_bar_tooltip", {
+    const base = t(this.hass, "config_panel.timetable_bar_tooltip", {
       start,
       end,
       mode: modeLabel,
     });
+    if (e.weekParity === "every") return base;
+    return `${base} · ${this._parityLabel(e.weekParity)}`;
   }
 
   private _entriesForCell(
@@ -362,7 +450,15 @@ export class ViewTimetable extends LitElement {
     const zones = inst.zones as Record<string, unknown> | undefined;
     const slots = inst.schedule_slots as unknown[] | undefined;
     const zoneIds = zoneRowOrder(inst);
-    const entries = buildTimetableEntries(inst);
+    const allEntries = buildTimetableEntries(inst);
+
+    const hasBiweekly = allEntries.some((e) => e.weekParity !== "every");
+    const nowWeek = isoWeekNumber(new Date());
+    const nowParity = weekParityOfWeekNumber(nowWeek);
+    const viewParity = hasBiweekly ? (this._weekView ?? nowParity) : null;
+    const entries = viewParity
+      ? allEntries.filter((e) => e.weekParity === "every" || e.weekParity === viewParity)
+      : allEntries;
     const laneInfo = assignEntryLanes(entries);
 
     const colOrder = weekdayIndicesForDisplay(
@@ -403,6 +499,39 @@ export class ViewTimetable extends LitElement {
       <ha-card .header=${t(this.hass, "config_panel.timetable_card_title")}>
         <div class="card-content">
           <p class="intro">${t(this.hass, "config_panel.timetable_intro")}</p>
+          ${viewParity
+            ? html`
+                <div
+                  class="week-toggle"
+                  role="group"
+                  aria-label=${t(this.hass, "config_panel.timetable_week_toggle_label")}
+                >
+                  <span class="week-toggle-seg">
+                    ${(["odd", "even"] as const).map(
+                      (p) => html`
+                        <button
+                          type="button"
+                          class="week-toggle-btn"
+                          aria-pressed=${viewParity === p ? "true" : "false"}
+                          @click=${() => {
+                            this._weekView = p;
+                          }}
+                        >
+                          <span>${this._parityLabel(p)}</span>
+                          ${nowParity === p
+                            ? html`<span class="week-toggle-now"
+                                >${t(this.hass, "config_panel.timetable_week_current_hint", {
+                                  n: nowWeek,
+                                })}</span
+                              >`
+                            : nothing}
+                        </button>
+                      `
+                    )}
+                  </span>
+                </div>
+              `
+            : nothing}
           <div class="table-wrap">
             <table class="tt-table">
               <thead>
@@ -457,11 +586,14 @@ export class ViewTimetable extends LitElement {
                                         const durLabel = t(this.hass, "config_panel.timetable_duration_min", {
                                           n: dur,
                                         });
+                                        const biweekly = e.weekParity !== "every";
                                         return html`
                                           <div
                                             class="tt-block tt-block--clickable ${e.enabled
                                               ? "tt-block--active"
-                                              : "tt-block--disabled"}"
+                                              : "tt-block--disabled"} ${biweekly
+                                              ? "tt-block--biweekly"
+                                              : ""}"
                                             title=${this._entryTooltip(e)}
                                             role="button"
                                             tabindex="0"
@@ -471,6 +603,12 @@ export class ViewTimetable extends LitElement {
                                           >
                                             <span class="tt-block-time">${start} – ${end}</span>
                                             <span class="tt-block-dur">${durLabel}</span>
+                                            ${biweekly
+                                              ? html`<span class="tt-block-parity">
+                                                  <ha-icon icon="mdi:calendar-sync"></ha-icon>
+                                                  ${this._parityBadge(e.weekParity)}
+                                                </span>`
+                                              : nothing}
                                           </div>
                                         `;
                                       })}
@@ -497,6 +635,14 @@ export class ViewTimetable extends LitElement {
                 <span class="swatch swatch--disabled" aria-hidden="true"></span>
                 ${t(this.hass, "config_panel.timetable_legend_disabled")}
               </span>
+              ${hasBiweekly
+                ? html`
+                    <span class="legend-item">
+                      <span class="swatch swatch--biweekly" aria-hidden="true"></span>
+                      ${t(this.hass, "config_panel.timetable_legend_biweekly")}
+                    </span>
+                  `
+                : nothing}
               <span class="legend-sep" aria-hidden="true"></span>
               ${TIMETABLE_BUCKET_INDICES.map(
                 (b) => html`

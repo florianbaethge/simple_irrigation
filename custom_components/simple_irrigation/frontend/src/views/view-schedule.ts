@@ -9,6 +9,10 @@ import { formatTimeLocalForDisplay, weekdayLong } from "../date-format";
 import { phaseIndexByZoneId, type ZonePhaseInput } from "../schedule-phases";
 import type { HomeAssistant } from "../types";
 
+type WeekParity = "every" | "odd" | "even";
+
+const WEEK_PARITIES: WeekParity[] = ["every", "odd", "even"];
+
 interface SlotRow {
   slot_id: string;
   weekday: number;
@@ -16,6 +20,7 @@ interface SlotRow {
   enabled: boolean;
   zone_ids_ordered: string[];
   name: string;
+  week_parity: WeekParity;
 }
 
 export class ViewSchedule extends LitElement {
@@ -194,6 +199,7 @@ export class ViewSchedule extends LitElement {
   private _newTime = "06:00";
   private _newEnabled = true;
   private _newSlotName = "";
+  private _newWeekParity: WeekParity = "every";
 
   @state() private _slotEditDraft: SlotRow | null = null;
   @state() private _addSlotDialogOpen = false;
@@ -203,6 +209,12 @@ export class ViewSchedule extends LitElement {
 
   private _wd(i: number): string {
     return weekdayLong(this.hass, i);
+  }
+
+  private _parityLabel(parity: WeekParity): string {
+    if (parity === "odd") return t(this.hass, "config_panel.week_parity_odd");
+    if (parity === "even") return t(this.hass, "config_panel.week_parity_even");
+    return t(this.hass, "config_panel.week_parity_every");
   }
 
   private _fmtSlotTime(timeLocal: string): string {
@@ -223,6 +235,8 @@ export class ViewSchedule extends LitElement {
           ? [...(o.zone_ids_ordered as string[])]
           : [],
         name: String(o.name ?? "").trim(),
+        week_parity:
+          o.week_parity === "odd" || o.week_parity === "even" ? o.week_parity : "every",
       };
     });
   }
@@ -335,6 +349,7 @@ export class ViewSchedule extends LitElement {
     this._newTime = "06:00";
     this._newEnabled = true;
     this._newSlotName = "";
+    this._newWeekParity = "every";
   }
 
   private _closeAddSlotDialog(): void {
@@ -383,6 +398,7 @@ export class ViewSchedule extends LitElement {
       enabled: d.enabled,
       zone_ids_ordered: d.zone_ids_ordered,
       name: d.name.trim(),
+      week_parity: d.week_parity,
     });
     if (ok) {
       this._closeEditDialog();
@@ -409,6 +425,7 @@ export class ViewSchedule extends LitElement {
       enabled,
       zone_ids_ordered: slot.zone_ids_ordered,
       name: slot.name.trim(),
+      week_parity: slot.week_parity,
     });
     if (!ok) {
       this.requestUpdate();
@@ -487,6 +504,9 @@ export class ViewSchedule extends LitElement {
                         if (!slot.enabled) {
                           parts.push(t(this.hass, "config_panel.zones_detail_disabled"));
                         }
+                        if (slot.week_parity !== "every") {
+                          parts.push(this._parityLabel(slot.week_parity));
+                        }
                         parts.push(
                           n === 1
                             ? t(this.hass, "config_panel.schedule_zones_in_order_one")
@@ -564,6 +584,23 @@ export class ViewSchedule extends LitElement {
           </select>
         </div>
         <div class="field-block">
+          <span class="field-title">${t(this.hass, "config_panel.schedule_week_parity_title")}</span>
+          <p class="field-desc">${t(this.hass, "config_panel.schedule_week_parity_desc")}</p>
+          <select
+            class="field-select"
+            @change=${(e: Event) => {
+              this._newWeekParity = (e.target as HTMLSelectElement).value as WeekParity;
+            }}
+          >
+            ${WEEK_PARITIES.map(
+              (p) =>
+                html`<option value=${p} ?selected=${this._newWeekParity === p}>
+                  ${this._parityLabel(p)}
+                </option>`
+            )}
+          </select>
+        </div>
+        <div class="field-block">
           <span class="field-title">${t(this.hass, "config_panel.schedule_local_time_title")}</span>
           <p class="field-desc">${t(this.hass, "config_panel.schedule_local_time_desc")}</p>
           <div class="field-row">
@@ -616,6 +653,7 @@ export class ViewSchedule extends LitElement {
                     time_local: this._newTime,
                     enabled: this._newEnabled,
                     name: this._newSlotName.trim(),
+                    week_parity: this._newWeekParity,
                   });
                   if (ok) {
                     this._closeAddSlotDialog();
@@ -664,6 +702,25 @@ export class ViewSchedule extends LitElement {
                     (i) =>
                       html`<option value=${i} ?selected=${draft.weekday === i}>
                         ${this._wd(i)}
+                      </option>`
+                  )}
+                </select>
+              </div>
+              <div class="field-block">
+                <span class="field-title">${t(this.hass, "config_panel.schedule_week_parity_title")}</span>
+                <p class="field-desc">${t(this.hass, "config_panel.schedule_week_parity_desc")}</p>
+                <select
+                  class="field-select"
+                  .value=${draft.week_parity}
+                  @change=${(e: Event) => {
+                    draft.week_parity = (e.target as HTMLSelectElement).value as WeekParity;
+                    this.requestUpdate();
+                  }}
+                >
+                  ${WEEK_PARITIES.map(
+                    (p) =>
+                      html`<option value=${p} ?selected=${draft.week_parity === p}>
+                        ${this._parityLabel(p)}
                       </option>`
                   )}
                 </select>

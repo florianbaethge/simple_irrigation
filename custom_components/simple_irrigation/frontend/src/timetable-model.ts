@@ -5,6 +5,28 @@ import { computePhases, type ZonePhaseInput } from "./schedule-phases";
 /** 0 = 00:00–08:00, 1 = 08:00–16:00, 2 = 16:00–24:00 (by segment start time). */
 export type TimetableBucket = 0 | 1 | 2;
 
+/** Week rhythm of a slot: every week or only odd/even ISO calendar weeks. */
+export type WeekParity = "every" | "odd" | "even";
+
+export function normalizeWeekParity(raw: unknown): WeekParity {
+  return raw === "odd" || raw === "even" ? raw : "every";
+}
+
+/** ISO-8601 week number (same numbering as Python's isocalendar). */
+export function isoWeekNumber(d: Date): number {
+  const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  const dayNum = (date.getUTCDay() + 6) % 7; // Mon=0
+  date.setUTCDate(date.getUTCDate() - dayNum + 3); // Thursday decides the ISO week
+  const firstThursday = new Date(Date.UTC(date.getUTCFullYear(), 0, 4));
+  const firstDayNum = (firstThursday.getUTCDay() + 6) % 7;
+  firstThursday.setUTCDate(firstThursday.getUTCDate() - firstDayNum + 3);
+  return 1 + Math.round((date.getTime() - firstThursday.getTime()) / (7 * 24 * 3600 * 1000));
+}
+
+export function weekParityOfWeekNumber(week: number): Exclude<WeekParity, "every"> {
+  return week % 2 === 1 ? "odd" : "even";
+}
+
 export interface TimetableEntry {
   zoneId: string;
   weekday: number;
@@ -15,6 +37,7 @@ export interface TimetableEntry {
   enabled: boolean;
   mode: string;
   slotId: string;
+  weekParity: WeekParity;
 }
 
 export function parseTimeLocalToMinutes(timeLocal: string): number {
@@ -110,6 +133,7 @@ export function buildTimetableEntries(installation: Record<string, unknown>): Ti
     const slotEnabled = Boolean(slot.enabled ?? true);
     const weekday = Math.max(0, Math.min(6, Number(slot.weekday ?? 0)));
     const timeLocal = String(slot.time_local ?? "00:00");
+    const weekParity = normalizeWeekParity(slot.week_parity);
     const ordered = Array.isArray(slot.zone_ids_ordered)
       ? (slot.zone_ids_ordered as string[])
       : [];
@@ -147,6 +171,7 @@ export function buildTimetableEntries(installation: Record<string, unknown>): Ti
           enabled: planEnabled && slotEnabled && zoneEnabled,
           mode,
           slotId,
+          weekParity,
         });
       }
 

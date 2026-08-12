@@ -6562,31 +6562,39 @@ __decorate([
 defineCustomElementOnce("si-view-timetable", ViewTimetable);
 
 const defaultDomains = ["switch", "input_boolean", "group", "valve"];
+/** Entity domains the start target may live in — the start service does not
+ *  always address the output itself (Hydrawise starts via its `binary_sensor`). */
+const startTargetDomains = ["switch", "valve", "binary_sensor", "input_boolean", "number"];
 const zoneStartPresets = {
     rainbird: {
         start_service: "rainbird.start_irrigation",
         duration_field: "duration",
         duration_unit: "minutes",
+        hintKey: "config_panel.zones_start_hint_output_is_target",
     },
     rachio: {
         start_service: "rachio.start_watering",
         duration_field: "duration",
         duration_unit: "minutes",
+        hintKey: "config_panel.zones_start_hint_output_is_target",
     },
     hydrawise: {
         start_service: "hydrawise.start_watering",
         duration_field: "duration",
         duration_unit: "minutes",
+        hintKey: "config_panel.zones_start_hint_hydrawise",
     },
     bhyve: {
         start_service: "bhyve.start_watering",
         duration_field: "minutes",
         duration_unit: "minutes",
+        hintKey: "config_panel.zones_start_hint_output_is_target",
     },
     opensprinkler: {
         start_service: "opensprinkler.run",
         duration_field: "run_seconds",
         duration_unit: "seconds",
+        hintKey: "config_panel.zones_start_hint_output_is_target",
     },
 };
 class ViewZones extends i {
@@ -6711,13 +6719,24 @@ class ViewZones extends i {
     _entityListId() {
         return `si-ent-z-${this.entryId}`;
     }
-    _allEntityListId() {
-        return `si-ent-all-z-${this.entryId}`;
+    _startTargetListId() {
+        return `si-ent-start-z-${this.entryId}`;
     }
-    _allEntityDomains() {
-        return [...new Set(Object.keys(this.hass.states).map((eid) => eid.split(".", 1)[0]))].sort();
+    /** Which entity goes into "outputs" and which into "start target" — that pairing
+     *  is the one thing users get wrong, because stopping always runs via the outputs. */
+    _renderPresetHint(z) {
+        const cfg = zoneStartPresets[this._presetForZone(z)];
+        if (!cfg)
+            return A;
+        return b `<p class="hint">
+      <ha-icon class="inline-help-icon" icon="mdi:information-outline"></ha-icon>
+      ${t(this.hass, cfg.hintKey)}
+    </p>`;
     }
     _presetForZone(z) {
+        if (!z.start_service && !z.duration_field && !z.duration_unit && !z.start_entity_id) {
+            return "none";
+        }
         for (const [preset, cfg] of Object.entries(zoneStartPresets)) {
             if (z.start_service.trim() === cfg.start_service &&
                 z.duration_field.trim() === cfg.duration_field &&
@@ -6975,6 +6994,7 @@ class ViewZones extends i {
               <option value="opensprinkler">OpenSprinkler</option>
             </select>
           </div>
+          ${this._renderPresetHint(z)}
           <div class="field-row">
             <ha-input
               .label=${t(this.hass, "config_panel.zones_start_service")}
@@ -7008,7 +7028,7 @@ class ViewZones extends i {
             </select>
           </div>
           <div class="field-row">
-            ${renderNativeEntityField(this.hass, this._allEntityListId(), t(this.hass, "config_panel.zones_start_target_entity"), z.start_entity_id, (v) => {
+            ${renderNativeEntityField(this.hass, this._startTargetListId(), t(this.hass, "config_panel.zones_start_target_entity"), z.start_entity_id, (v) => {
             z.start_entity_id = v;
             this.requestUpdate();
         })}
@@ -7156,7 +7176,7 @@ class ViewZones extends i {
         const edit = this._editDraft;
         return b `
       ${renderEntityDatalist(this.hass, this._entityListId(), this.outputEntityDomains ?? defaultDomains)}
-      ${renderEntityDatalist(this.hass, this._allEntityListId(), this._allEntityDomains())}
+      ${renderEntityDatalist(this.hass, this._startTargetListId(), startTargetDomains)}
       <ha-card>
         <div class="card-header">
           <ha-icon icon="mdi:vector-square"></ha-icon>

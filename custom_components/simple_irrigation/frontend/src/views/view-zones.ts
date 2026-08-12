@@ -11,34 +11,50 @@ import type { HomeAssistant } from "../types";
 
 const defaultDomains = ["switch", "input_boolean", "group", "valve"];
 
+/** Entity domains the start target may live in — the start service does not
+ *  always address the output itself (Hydrawise starts via its `binary_sensor`). */
+const startTargetDomains = ["switch", "valve", "binary_sensor", "input_boolean", "number"];
+
 const zoneStartPresets: Record<
   string,
-  { start_service: string; duration_field: string; duration_unit: "minutes" | "seconds" }
+  {
+    start_service: string;
+    duration_field: string;
+    duration_unit: "minutes" | "seconds";
+    /** Which entity belongs where — the start target is the only thing that
+     *  differs between the presets, so spell it out per preset. */
+    hintKey: string;
+  }
 > = {
   rainbird: {
     start_service: "rainbird.start_irrigation",
     duration_field: "duration",
     duration_unit: "minutes",
+    hintKey: "config_panel.zones_start_hint_output_is_target",
   },
   rachio: {
     start_service: "rachio.start_watering",
     duration_field: "duration",
     duration_unit: "minutes",
+    hintKey: "config_panel.zones_start_hint_output_is_target",
   },
   hydrawise: {
     start_service: "hydrawise.start_watering",
     duration_field: "duration",
     duration_unit: "minutes",
+    hintKey: "config_panel.zones_start_hint_hydrawise",
   },
   bhyve: {
     start_service: "bhyve.start_watering",
     duration_field: "minutes",
     duration_unit: "minutes",
+    hintKey: "config_panel.zones_start_hint_output_is_target",
   },
   opensprinkler: {
     start_service: "opensprinkler.run",
     duration_field: "run_seconds",
     duration_unit: "seconds",
+    hintKey: "config_panel.zones_start_hint_output_is_target",
   },
 };
 
@@ -192,15 +208,25 @@ export class ViewZones extends LitElement {
     return `si-ent-z-${this.entryId}`;
   }
 
-  private _allEntityListId(): string {
-    return `si-ent-all-z-${this.entryId}`;
+  private _startTargetListId(): string {
+    return `si-ent-start-z-${this.entryId}`;
   }
 
-  private _allEntityDomains(): string[] {
-    return [...new Set(Object.keys(this.hass.states).map((eid) => eid.split(".", 1)[0]))].sort();
+  /** Which entity goes into "outputs" and which into "start target" — that pairing
+   *  is the one thing users get wrong, because stopping always runs via the outputs. */
+  private _renderPresetHint(z: ZoneRow): TemplateResult | typeof nothing {
+    const cfg = zoneStartPresets[this._presetForZone(z)];
+    if (!cfg) return nothing;
+    return html`<p class="hint">
+      <ha-icon class="inline-help-icon" icon="mdi:information-outline"></ha-icon>
+      ${t(this.hass, cfg.hintKey)}
+    </p>`;
   }
 
   private _presetForZone(z: ZoneRow): string {
+    if (!z.start_service && !z.duration_field && !z.duration_unit && !z.start_entity_id) {
+      return "none";
+    }
     for (const [preset, cfg] of Object.entries(zoneStartPresets)) {
       if (
         z.start_service.trim() === cfg.start_service &&
@@ -472,6 +498,7 @@ export class ViewZones extends LitElement {
               <option value="opensprinkler">OpenSprinkler</option>
             </select>
           </div>
+          ${this._renderPresetHint(z)}
           <div class="field-row">
             <ha-input
               .label=${t(this.hass, "config_panel.zones_start_service")}
@@ -507,7 +534,7 @@ export class ViewZones extends LitElement {
           <div class="field-row">
             ${renderNativeEntityField(
               this.hass,
-              this._allEntityListId(),
+              this._startTargetListId(),
               t(this.hass, "config_panel.zones_start_target_entity"),
               z.start_entity_id,
               (v) => {
@@ -673,7 +700,7 @@ export class ViewZones extends LitElement {
 
     return html`
       ${renderEntityDatalist(this.hass, this._entityListId(), this.outputEntityDomains ?? defaultDomains)}
-      ${renderEntityDatalist(this.hass, this._allEntityListId(), this._allEntityDomains())}
+      ${renderEntityDatalist(this.hass, this._startTargetListId(), startTargetDomains)}
       <ha-card>
         <div class="card-header">
           <ha-icon icon="mdi:vector-square"></ha-icon>

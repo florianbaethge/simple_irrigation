@@ -214,6 +214,32 @@ async function gotoTab(page, tab, view, w = 1180, h = 1100) {
   await sleep(1000);
   console.log("zone_edit.png", JSON.stringify(await clipToDialog(page, "zone_edit.png")));
 
+  // --- Zone editor, advanced start settings expanded ---------------------
+  // Left empty on purpose: the point of the shot is the section and its wording,
+  // not one vendor's values.
+  await gotoTab(page, "zones", "SI-VIEW-ZONES", 1180, 2200);
+  await page.evaluate((ws) => {
+    eval(ws);
+    let view = null;
+    for (const e of walk(document)) if (e.tagName === "SI-VIEW-ZONES") view = e;
+    const rows = view._zonesFromInstallation();
+    const z = rows.find((r) => r.name === "Front Lawn") || rows[0];
+    view._editDraft = view._cloneZone(z);
+    view.requestUpdate();
+  }, walkSrc);
+  await sleep(1000);
+  await page.evaluate((ws) => {
+    eval(ws);
+    for (const e of walk(document)) {
+      if (e.tagName === "DETAILS" && /start service/i.test(e.textContent)) e.open = true;
+    }
+  }, walkSrc);
+  await sleep(600);
+  console.log(
+    "zone_edit_advanced.png",
+    JSON.stringify(await clipToDialog(page, "zone_edit_advanced.png"))
+  );
+
   // --- Schedule slot editor (Morning lawns: weekday picker + run order) --
   await gotoTab(page, "schedule", "SI-VIEW-SCHEDULE", 1180, 2200);
   await page.evaluate((ws) => {

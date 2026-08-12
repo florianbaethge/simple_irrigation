@@ -103,9 +103,11 @@ You can add **multiple** config entries for separate gardens or seasonal plans (
 
 #### Duration-aware start services
 
-Some irrigation integrations do not start a zone with a regular `turn_on`. Instead, their start action requires the watering duration in the same service call. Open a zone and expand **Advanced start settings** to configure this behavior.
+Some irrigation integrations do not start a zone with a regular `turn_on`. Instead, their start action requires the watering duration in the same service call. Open a zone, scroll to **Advanced** and expand **Custom start service with duration**.
 
-Built-in presets fill in the service, duration field and unit for:
+![Edit zone — advanced start settings with preset, duration field and start target](https://raw.githubusercontent.com/florianbaethge/simple_irrigation/main/screenshots/zone_edit_advanced.png)
+
+Leave the whole section empty and nothing changes: the zone keeps the normal `turn_on` / wait / `turn_off` behavior. Built-in presets fill in the service, duration field and unit for:
 
 | Preset | Service | Duration field | Unit | Start target |
 |--------|---------|----------------|------|--------------|
@@ -122,7 +124,6 @@ Choose **Custom** for another integration and enter its `domain.service`, durati
 - All outputs of a zone start together, exactly like the default path, and the zone takes its configured duration regardless of how many outputs it has.
 - A failed off action stops the run and is reported, so a potentially open valve cannot go unnoticed while another zone starts. The cleanup that follows still closes every other output.
 - **The start service has to return once the run has started**, which is what all the presets above do. A service that instead blocks for the whole watering time — a script entered under **Custom**, typically — is given 30 seconds and then dropped, so the zone keeps its own timing. Note that dropping it cancels the call, so put the waiting in Simple Irrigation's duration, not in the start service.
-- Leave the advanced fields empty to retain the normal `turn_on` / wait / `turn_off` behavior.
 
 ### Cycles and slots
 

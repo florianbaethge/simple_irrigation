@@ -120,7 +120,8 @@ Choose **Custom** for another integration and enter its `domain.service`, durati
 - **Stopping always runs via the zone outputs.** Simple Irrigation waits for the configured mode duration and then sends the normal off/close action to every output, as a safety net against a controller that doesn't stop by itself.
 - The optional **start target entity** only changes *what the start call addresses*, for integrations whose start service does not target the output. Hydrawise is the case this exists for: it starts via the zone's `binary_sensor`, while the water is carried by the `valve` entity. Put the `valve` in the zone outputs and the `binary_sensor` in the start target — closing the valve stops the run. **An output has to control the same valve as the start target**, otherwise *Stop* cannot end the run.
 - All outputs of a zone start together, exactly like the default path, and the zone takes its configured duration regardless of how many outputs it has.
-- A failed off action stops the run and is reported, so a potentially open valve cannot go unnoticed while another zone starts.
+- A failed off action stops the run and is reported, so a potentially open valve cannot go unnoticed while another zone starts. The cleanup that follows still closes every other output.
+- **The start service has to return once the run has started**, which is what all the presets above do. A service that instead blocks for the whole watering time — a script entered under **Custom**, typically — is given 30 seconds and then dropped, so the zone keeps its own timing. Note that dropping it cancels the call, so put the waiting in Simple Irrigation's duration, not in the start service.
 - Leave the advanced fields empty to retain the normal `turn_on` / wait / `turn_off` behavior.
 
 ### Cycles and slots

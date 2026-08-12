@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from homeassistant.exceptions import HomeAssistantError
 
 from custom_components.simple_irrigation.models import RunState, Zone
+from custom_components.simple_irrigation import runtime as runtime_module
 from custom_components.simple_irrigation.runtime import IrrigationRuntime
 
 
@@ -184,3 +186,69 @@ async def test_turn_off_failure_stops_before_next_zone_starts() -> None:
     )
     assert calls[1] == ("switch", "turn_off", {"entity_id": "switch.front"})
     assert len(calls) == 2
+
+
+@pytest.mark.asyncio
+async def test_cleanup_closes_every_output_even_when_one_fails() -> None:
+    """The cleanup path must not strand the remaining outputs, and must not raise.
+
+    It runs from _async_finish_run() and async_stop_all(); a raise there leaves
+    run_state on "stopping", which is_busy() reports as busy forever.
+    """
+    calls: list[tuple[str, str, dict]] = []
+    zone = Zone(zone_id="z1", name="Front", switch_entity_ids=["switch.front"])
+    runtime = _runtime(calls, zone)
+    runtime.coordinator.installation.pre_start_switches = ["switch.pump"]
+
+    async def _call(domain, service, data=None, **_kwargs):
+        payload = dict(data or {})
+        calls.append((domain, service, payload))
+        if payload.get("entity_id") == "switch.broken":
+            raise HomeAssistantError("entity unavailable")
+
+    runtime.hass.services.async_call = AsyncMock(side_effect=_call)
+    runtime._touched_entities.update({"switch.broken", "switch.front"})
+
+    await runtime._async_turn_off_all_tracked()
+
+    turned_off = {c[2]["entity_id"] for c in calls if c[1] == "turn_off"}
+    assert turned_off == {"switch.broken", "switch.front", "switch.pump"}
+    assert runtime._touched_entities == set()
+    assert "switch.broken" in runtime.coordinator.run_state.last_error
+
+
+@pytest.mark.asyncio
+async def test_start_service_that_never_returns_does_not_park_the_zone(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A start service is expected to acknowledge and return. One that blocks for
+    the whole watering time must not swallow the duration wait and stop_all()."""
+    monkeypatch.setattr(runtime_module, "START_SERVICE_TIMEOUT_SEC", 0.05)
+    calls: list[tuple[str, str, dict]] = []
+    zone = Zone(
+        zone_id="z1",
+        name="Front",
+        switch_entity_ids=["switch.front"],
+        start_service="script.blocks_forever",
+        duration_field="duration",
+        duration_unit="minutes",
+    )
+    runtime = _runtime(calls, zone)
+
+    async def _call(domain, service, data=None, **_kwargs):
+        calls.append((domain, service, dict(data or {})))
+        if domain == "script":
+            await asyncio.sleep(30)
+
+    runtime.hass.services.async_call = AsyncMock(side_effect=_call)
+
+    await runtime._async_zone_run(zone, duration_min=15)
+
+    assert calls[0] == (
+        "script",
+        "blocks_forever",
+        {"entity_id": "switch.front", "duration": 15},
+    )
+    # The run carried on: duration waited once, output closed.
+    assert runtime._async_wait_zone_duration.await_count == 1
+    assert calls[1] == ("switch", "turn_off", {"entity_id": "switch.front"})

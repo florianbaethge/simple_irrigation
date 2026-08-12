@@ -37,6 +37,11 @@ if TYPE_CHECKING:
 
 _LOGGER = logging.getLogger(__name__)
 
+# How long a duration-aware start service may take to acknowledge the run before
+# the zone stops waiting on it. Generous — the call only has to reach the
+# controller, not carry out the watering.
+START_SERVICE_TIMEOUT_SEC = 30
+
 
 class ZoneManualRunError(HomeAssistantError):
     """Manual zone run cannot start; ``code`` is used by the panel HTTP API."""
@@ -576,12 +581,29 @@ class IrrigationRuntime:
                 "entity_id": target_entity_id,
                 duration_field: duration_value,
             }
-            await self.hass.services.async_call(
-                domain,
-                service,
-                service_data,
-                blocking=True,
-            )
+            # blocking=True so a ServiceNotFound or a rejected call still fails the
+            # run. A start service is expected to return once the controller has
+            # accepted the job — but a script entered as a custom start service may
+            # block for the whole watering time, which would park the zone inside
+            # this call: the duration wait would never start and stop_all() would
+            # hang on it. Bound the wait and carry on instead.
+            try:
+                async with asyncio.timeout(START_SERVICE_TIMEOUT_SEC):
+                    await self.hass.services.async_call(
+                        domain,
+                        service,
+                        service_data,
+                        blocking=True,
+                    )
+            except TimeoutError:
+                _LOGGER.warning(
+                    "Zone %s: start service %s did not return within %s s; "
+                    "continuing with the configured duration. A start service must "
+                    "return once the run has started, not run for its duration",
+                    zone.zone_id,
+                    service_ref,
+                    START_SERVICE_TIMEOUT_SEC,
+                )
 
         # The start service either addresses the outputs directly, or a separate
         # entity of the same zone (Hydrawise starts via its `binary_sensor`).
@@ -796,10 +818,27 @@ class IrrigationRuntime:
             )
 
     async def _async_turn_off_all_tracked(self) -> None:
+        """Close everything this run touched. Never raises.
+
+        This is the cleanup path — it runs from _async_finish_run() and from
+        async_stop_all(). A raise here would skip the remaining outputs and leave
+        run_state stuck on "stopping", which is_busy() reports as busy, so the
+        integration would refuse every further run until Home Assistant restarts.
+        Failures are collected into last_error instead.
+        """
         inst = self.coordinator.installation
-        for entity_id in self._touched_entities:
-            await self._async_switch_turn_off(entity_id)
-        for entity_id in inst.pre_start_switches:
-            if entity_id not in self._touched_entities:
+        pending = list(self._touched_entities) + [
+            eid for eid in inst.pre_start_switches if eid not in self._touched_entities
+        ]
+        failed: list[str] = []
+        for entity_id in pending:
+            try:
                 await self._async_switch_turn_off(entity_id)
+            except Exception:  # noqa: BLE001 - one bad output must not strand the rest
+                _LOGGER.exception("Could not turn off %s during cleanup", entity_id)
+                failed.append(entity_id)
         self._touched_entities.clear()
+        if failed:
+            self.coordinator.run_state.last_error = (
+                f"Could not turn off: {', '.join(failed)}"
+            )

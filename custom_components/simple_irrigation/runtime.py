@@ -559,8 +559,17 @@ class IrrigationRuntime:
         if not outputs:
             return False
 
-        duration_value = duration_min if duration_unit == "minutes" else duration_min * 60
-        explicit_target = zone.start_entity_id.strip()
+        if duration_unit == "minutes":
+            duration_value = duration_min
+        elif duration_unit == "seconds":
+            duration_value = duration_min * 60
+        else:
+            _LOGGER.warning(
+                "Zone %s has unknown duration unit '%s'; using default output start",
+                zone.zone_id,
+                duration_unit,
+            )
+            return False
 
         async def _start_target(target_entity_id: str) -> None:
             service_data = {
@@ -574,23 +583,17 @@ class IrrigationRuntime:
                 blocking=True,
             )
 
-        if explicit_target:
-            await _start_target(explicit_target)
-            for entity_id in outputs:
-                self._touched_entities.add(entity_id)
-            await self._async_wait_zone_duration(duration_min * 60)
-            await asyncio.gather(*(self._async_switch_turn_off(eid) for eid in outputs))
-            return True
+        # The start service either addresses the outputs directly, or a separate
+        # entity of the same zone (Hydrawise starts via its `binary_sensor`).
+        # Either way the outputs are what actually carries the water, so they are
+        # tracked and closed again — see _async_turn_off_all_tracked().
+        explicit_target = zone.start_entity_id.strip()
+        targets = [explicit_target] if explicit_target else outputs
 
-        # No explicit target: run each configured output one after another.
-        for entity_id in outputs:
-            await _start_target(entity_id)
-            self._touched_entities.add(entity_id)
-            await self._async_wait_zone_duration(duration_min * 60)
-            await self._async_switch_turn_off(entity_id)
-            if self._stop_event.is_set() or self._skip_phase_event.is_set():
-                break
-
+        await asyncio.gather(*(_start_target(eid) for eid in targets))
+        self._touched_entities.update(outputs)
+        await self._async_wait_zone_duration(duration_min * 60)
+        await asyncio.gather(*(self._async_switch_turn_off(eid) for eid in outputs))
         return True
 
     async def async_run_zone(self, zone_id: str, duration_min: int | None = None) -> None:

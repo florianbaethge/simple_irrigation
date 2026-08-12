@@ -80,7 +80,9 @@ async def test_zone_uses_custom_target_and_seconds_conversion() -> None:
 
 
 @pytest.mark.asyncio
-async def test_zone_uses_custom_start_service_for_each_output_when_no_target_is_set() -> None:
+async def test_zone_starts_all_outputs_in_parallel_when_no_target_is_set() -> None:
+    """All outputs start together, like the default path — a zone with two outputs
+    must not take twice its configured duration."""
     calls: list[tuple[str, str, dict]] = []
     zone = Zone(
         zone_id="z1",
@@ -94,26 +96,36 @@ async def test_zone_uses_custom_start_service_for_each_output_when_no_target_is_
 
     await runtime._async_zone_run(zone, duration_min=7)
 
-    assert calls[0] == (
-        "rainbird",
-        "start_irrigation",
-        {"entity_id": "switch.front", "duration": 7},
+    starts, offs = calls[:2], calls[2:]
+    assert sorted(starts) == [
+        ("rainbird", "start_irrigation", {"entity_id": "switch.back", "duration": 7}),
+        ("rainbird", "start_irrigation", {"entity_id": "switch.front", "duration": 7}),
+    ]
+    assert sorted(offs) == [
+        ("switch", "turn_off", {"entity_id": "switch.back"}),
+        ("switch", "turn_off", {"entity_id": "switch.front"}),
+    ]
+    # Exactly one wait for the whole zone, not one per output.
+    assert runtime._async_wait_zone_duration.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_zone_falls_back_to_default_start_on_unknown_duration_unit() -> None:
+    calls: list[tuple[str, str, dict]] = []
+    zone = Zone(
+        zone_id="z1",
+        name="Front",
+        switch_entity_ids=["switch.front"],
+        start_service="rainbird.start_irrigation",
+        duration_field="duration",
+        duration_unit="hours",
     )
-    assert calls[1] == (
-        "switch",
-        "turn_off",
-        {"entity_id": "switch.front"},
-    )
-    assert calls[2] == (
-        "rainbird",
-        "start_irrigation",
-        {"entity_id": "switch.back", "duration": 7},
-    )
-    assert calls[3] == (
-        "switch",
-        "turn_off",
-        {"entity_id": "switch.back"},
-    )
+    runtime = _runtime(calls, zone)
+
+    await runtime._async_zone_run(zone, duration_min=5)
+
+    assert calls[0] == ("switch", "turn_on", {"entity_id": "switch.front"})
+    assert calls[1] == ("switch", "turn_off", {"entity_id": "switch.front"})
 
 
 @pytest.mark.asyncio

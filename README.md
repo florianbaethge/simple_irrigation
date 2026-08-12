@@ -107,18 +107,19 @@ Some irrigation integrations do not start a zone with a regular `turn_on`. Inste
 
 Built-in presets fill in the service, duration field and unit for:
 
-| Preset | Service | Duration field | Unit |
-|--------|---------|----------------|------|
-| **Rain Bird** | `rainbird.start_irrigation` | `duration` | minutes |
-| **Rachio** | `rachio.start_watering` | `duration` | minutes |
-| **Hydrawise** | `hydrawise.start_watering` | `duration` | minutes |
-| **B-hyve / Orbit** | `bhyve.start_watering` | `minutes` | minutes |
-| **OpenSprinkler** | `opensprinkler.run` | `run_seconds` | seconds |
+| Preset | Service | Duration field | Unit | Start target |
+|--------|---------|----------------|------|--------------|
+| **Rain Bird** | `rainbird.start_irrigation` | `duration` | minutes | leave empty |
+| **Rachio** | `rachio.start_watering` | `duration` | minutes | leave empty |
+| **Hydrawise** | `hydrawise.start_watering` | `duration` | minutes | the zone's `binary_sensor` |
+| **B-hyve / Orbit** | `bhyve.start_watering` | `minutes` | minutes | leave empty |
+| **OpenSprinkler** | `opensprinkler.run` | `run_seconds` | seconds | leave empty |
 
-Choose **Custom** for another integration and enter its `domain.service`, duration field and whether that field expects minutes or seconds. The optional **start target entity** is useful when the start service targets a controller or sensor entity instead of the zone's output entity.
+Choose **Custom** for another integration and enter its `domain.service`, duration field and whether that field expects minutes or seconds.
 
-- With a start target, the service is called once for that target. Without one, it is called for every configured zone output in sequence.
-- Simple Irrigation waits for the configured mode duration and then sends the normal off/close action to every zone output as a safety measure.
+- **Stopping always runs via the zone outputs.** Simple Irrigation waits for the configured mode duration and then sends the normal off/close action to every output, as a safety net against a controller that doesn't stop by itself.
+- The optional **start target entity** only changes *what the start call addresses*, for integrations whose start service does not target the output. Hydrawise is the case this exists for: it starts via the zone's `binary_sensor`, while the water is carried by the `valve` entity. Put the `valve` in the zone outputs and the `binary_sensor` in the start target — closing the valve stops the run. **An output has to control the same valve as the start target**, otherwise *Stop* cannot end the run.
+- All outputs of a zone start together, exactly like the default path, and the zone takes its configured duration regardless of how many outputs it has.
 - A failed off action stops the run and is reported, so a potentially open valve cannot go unnoticed while another zone starts.
 - Leave the advanced fields empty to retain the normal `turn_on` / wait / `turn_off` behavior.
 

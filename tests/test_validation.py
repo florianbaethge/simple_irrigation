@@ -169,13 +169,25 @@ def test_parse_guard_list_too_many() -> None:
     assert guards == []
 
 
-def _hass_with_known_entities(entity_ids: set[str]) -> MagicMock:
+def _hass_with_known_entities(
+    entity_ids: set[str],
+    services: set[str] | None = None,
+) -> MagicMock:
     hass = MagicMock()
 
     def _get(entity_id: str):
         return MagicMock() if entity_id in entity_ids else None
 
+    known_services = {
+        "hydrawise.start_watering",
+        "rainbird.start_irrigation",
+        "opensprinkler.run",
+    } if services is None else services
+
     hass.states.get.side_effect = _get
+    hass.services.has_service.side_effect = (
+        lambda domain, service: f"{domain}.{service}" in known_services
+    )
     return hass
 
 
@@ -256,6 +268,22 @@ def test_validate_zone_payload_rejects_invalid_service_name(service_name: str, e
         "duration_unit": "minutes",
     }
     assert validate_zone_payload(hass, payload) == expected
+
+
+def test_validate_zone_payload_rejects_service_that_is_not_registered() -> None:
+    hass = _hass_with_known_entities({"switch.zone_1"}, services=set())
+    payload = {
+        "name": "Front lawn",
+        "switch_entity_ids": ["switch.zone_1"],
+        "duration_eco_min": 10,
+        "duration_normal_min": 15,
+        "duration_extra_min": 20,
+        "exclusive": False,
+        "start_service": "bhyve.start_watering",
+        "duration_field": "minutes",
+        "duration_unit": "minutes",
+    }
+    assert validate_zone_payload(hass, payload) == "unknown_service"
 
 
 def test_validate_zone_payload_rejects_unknown_start_target_entity() -> None:

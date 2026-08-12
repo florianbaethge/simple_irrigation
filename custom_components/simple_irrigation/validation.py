@@ -163,6 +163,9 @@ def validate_zone_payload(hass: Any, user_input: dict[str, Any]) -> str | None:
             return "invalid_duration_service"
         if SERVICE_REF_PATTERN.fullmatch(start_service) is None:
             return "invalid_duration_service"
+        service_domain, _, service_name = start_service.partition(".")
+        if not hass.services.has_service(service_domain, service_name):
+            return "unknown_service"
         if (
             SERVICE_FIELD_PATTERN.fullmatch(duration_field) is None
             or duration_field in RESERVED_SERVICE_FIELDS

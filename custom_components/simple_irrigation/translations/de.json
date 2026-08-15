@@ -28,6 +28,11 @@
     }
   },
   "entity": {
+    "calendar": {
+      "schedule": {
+        "name": "Bewässerungsplan"
+      }
+    },
     "select": {
       "mode": {
         "name": "Modus",

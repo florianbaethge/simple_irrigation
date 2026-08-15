@@ -28,6 +28,11 @@
     }
   },
   "entity": {
+    "calendar": {
+      "schedule": {
+        "name": "Irrigation schedule"
+      }
+    },
     "select": {
       "mode": {
         "name": "Mode",

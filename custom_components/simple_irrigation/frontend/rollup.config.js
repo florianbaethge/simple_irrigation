@@ -8,13 +8,9 @@ import { resolve } from "path";
 const versionPath = resolve("../../../VERSION");
 const version = readFileSync(versionPath, "utf-8").trim();
 
-export default {
-  input: "src/simple-irrigation-panel.ts",
-  output: {
-    file: "dist/simple-irrigation-panel.js",
-    format: "es",
-    sourcemap: true,
-  },
+const makeConfig = (input, file) => ({
+  input,
+  output: { file, format: "es", sourcemap: true },
   plugins: [
     replace({
       preventAssignment: true,
@@ -26,4 +22,9 @@ export default {
     nodeResolve({ extensions: [".ts", ".js"] }),
     typescript({ tsconfig: "./tsconfig.json" }),
   ],
-};
+});
+
+export default [
+  makeConfig("src/simple-irrigation-panel.ts", "dist/simple-irrigation-panel.js"),
+  makeConfig("src/simple-irrigation-card.ts", "dist/simple-irrigation-card.js"),
+];

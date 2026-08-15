@@ -18,6 +18,13 @@
       }
     }
   },
+  "entity": {
+    "calendar": {
+      "schedule": {
+        "name": "Irrigation schedule"
+      }
+    }
+  },
   "selector": {
     "default_mode": {
       "options": {

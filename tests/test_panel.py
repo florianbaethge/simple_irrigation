@@ -14,7 +14,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from custom_components.simple_irrigation.const import PANEL_STATIC_REGISTERED_KEY
+from custom_components.simple_irrigation.const import (
+    CARD_URL_PATH,
+    PANEL_STATIC_REGISTERED_KEY,
+    PANEL_URL_PATH,
+)
 from custom_components.simple_irrigation.panel import async_register_panel
 
 
@@ -46,14 +50,23 @@ async def test_static_path_registered_only_once_on_reload() -> None:
     hass = _make_hass()
 
     translations_patch, panel_custom_patch = _patch_panel_deps()
-    with translations_patch, panel_custom_patch as register_panel_custom:
+    with (
+        translations_patch,
+        panel_custom_patch as register_panel_custom,
+        patch("custom_components.simple_irrigation.panel.frontend.add_extra_js_url") as add_module,
+    ):
         await async_register_panel(hass)
         # Simulates entry reload: async_unregister_panel cannot remove the
         # aiohttp route, then the panel is registered again.
         await async_register_panel(hass)
 
     assert hass.http.async_register_static_paths.await_count == 1
+    paths = hass.http.async_register_static_paths.await_args.args[0]
+    assert [path.url_path for path in paths] == [PANEL_URL_PATH, CARD_URL_PATH]
     assert hass.data[PANEL_STATIC_REGISTERED_KEY] is True
+    add_module.assert_called_once()
+    module_url = add_module.call_args.args[1]
+    assert module_url.startswith(f"{CARD_URL_PATH}?v=")
     # The sidebar panel itself is (re-)registered on every call.
     assert register_panel_custom.await_count == 2
 
@@ -76,7 +89,11 @@ async def test_static_path_registered_only_once_concurrently() -> None:
     hass.http.async_register_static_paths = AsyncMock(side_effect=slow_register)
 
     translations_patch, panel_custom_patch = _patch_panel_deps()
-    with translations_patch, panel_custom_patch:
+    with (
+        translations_patch,
+        panel_custom_patch,
+        patch("custom_components.simple_irrigation.panel.frontend.add_extra_js_url"),
+    ):
         await asyncio.gather(
             async_register_panel(hass),
             async_register_panel(hass),
@@ -100,7 +117,11 @@ async def test_second_registration_does_not_raise_route_conflict() -> None:
     )
 
     translations_patch, panel_custom_patch = _patch_panel_deps()
-    with translations_patch, panel_custom_patch:
+    with (
+        translations_patch,
+        panel_custom_patch,
+        patch("custom_components.simple_irrigation.panel.frontend.add_extra_js_url"),
+    ):
         await async_register_panel(hass)
         # Would raise RuntimeError without the guard.
         await async_register_panel(hass)

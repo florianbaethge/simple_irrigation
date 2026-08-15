@@ -28,6 +28,11 @@
     }
   },
   "entity": {
+    "calendar": {
+      "schedule": {
+        "name": "Beregeningsplanning"
+      }
+    },
     "select": {
       "mode": {
         "name": "Modus",

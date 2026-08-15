@@ -88,6 +88,27 @@ Copy the folder `custom_components/simple_irrigation/` into your Home Assistant 
 4. On **Schedule**, click **New irrigation cycle** and let the wizard build the cadence — the 14-day strip previews exactly when it will run before you create it.
 5. Use **Timetable** to see the whole week at a glance; click any run to open its editor.
 
+---
+
+## Lovelace dashboard card
+
+Simple Irrigation includes a native-style dashboard card for an installation's live status and everyday controls. The integration serves and registers the card module automatically through Home Assistant's frontend API—no Lovelace Resource entry is required.
+
+After installing or upgrading the integration, restart Home Assistant and refresh the browser. In a dashboard, choose **Edit → Add card → Simple Irrigation**, then use the searchable native entity selector to choose the enabled switch belonging to the desired individual schedule. The selector is restricted to Simple Irrigation switch entities; choose a schedule switch rather than the installation-wide schedule switch.
+
+The card finds the other entities on the same integration device. It displays the current run/pause/error state, active zones, next run, watering mode, and selected schedule state. It can run, enable or disable that schedule, and stop the active installation using the existing backend service and entities. The visual editor also supports an optional title and a **Show details** toggle. Sections dashboards can resize it from three columns upward.
+
+Advanced/manual configuration:
+
+```yaml
+type: custom:simple-irrigation-card
+entity: switch.garden_weekdays_at_0600_enabled
+title: Garden irrigation
+show_details: true
+```
+
+The entity ID above is only an example; select an entity from your own Simple Irrigation installation. The automatically registered module URL includes integration-version and file-version cache busting so upgrades do not reuse a stale browser-cached card.
+
 You can add **multiple** config entries for separate gardens or seasonal plans (each appears in the panel picker, and its name shows in the panel header).
 
 ---
@@ -223,6 +244,13 @@ When several slots are due in the same minute their zones are merged into one ru
 - **Odd/even weeks:** a toggle switches between calendar-week parities when any cycle uses them; biweekly runs are drawn dashed.
 - **Mobile:** below ~700 px the grid becomes a **per-day list** with the day’s runs and total — no horizontal scrolling.
 - **Deep link:** clicking a run opens the **Schedule** editor for that slot (and expands its cycle).
+- **Dashboard calendar:** every installation exposes a read-only `calendar` entity containing its enabled runs. Add it to Home Assistant's built-in Calendar card; event end times include the pre-start delay and the active mode's phase durations. Future conditions are not evaluated because their sensor values are not known yet.
+
+  ```yaml
+  type: calendar
+  entities:
+    - calendar.your_installation_irrigation_schedule
+  ```
 
 ---
 

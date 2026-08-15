@@ -46,6 +46,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     from .store import SimpleIrrigationStore
 
     PLATFORMS: list[Platform] = [
+        Platform.CALENDAR,
         Platform.SELECT,
         Platform.SENSOR,
         Platform.BINARY_SENSOR,
@@ -126,6 +127,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     from .scheduler import IrrigationScheduler
 
     PLATFORMS: list[Platform] = [
+        Platform.CALENDAR,
         Platform.SELECT,
         Platform.SENSOR,
         Platform.BINARY_SENSOR,

@@ -28,6 +28,11 @@
     }
   },
   "entity": {
+    "calendar": {
+      "schedule": {
+        "name": "Programma di irrigazione"
+      }
+    },
     "select": {
       "mode": {
         "name": "Modalità",

@@ -11,6 +11,8 @@ from homeassistant.helpers.translation import async_get_translations
 
 from .const import (
     CUSTOM_COMPONENTS,
+    CARD_FILENAME,
+    CARD_URL_PATH,
     DOMAIN,
     INTEGRATION_FOLDER,
     INTEGRATION_VERSION,
@@ -31,12 +33,19 @@ async def async_register_panel(hass) -> None:
     """Serve panel JS and register sidebar entry."""
     root_dir = os.path.join(hass.config.path(CUSTOM_COMPONENTS), INTEGRATION_FOLDER)
     panel_file = os.path.join(root_dir, PANEL_FOLDER, PANEL_FILENAME)
+    card_file = os.path.join(root_dir, PANEL_FOLDER, CARD_FILENAME)
 
     try:
         cache_bust = int(os.path.getmtime(panel_file))
     except OSError:
         _LOGGER.warning("Panel file missing at %s", panel_file)
         cache_bust = 0
+
+    try:
+        card_cache_bust = int(os.path.getmtime(card_file))
+    except OSError:
+        _LOGGER.warning("Lovelace card file missing at %s", card_file)
+        card_cache_bust = 0
 
     # aiohttp static routes cannot be removed once added, so this must run at
     # most once per HA lifetime — even across panel unregister/re-register
@@ -47,7 +56,17 @@ async def async_register_panel(hass) -> None:
     if not hass.data.get(PANEL_STATIC_REGISTERED_KEY):
         hass.data[PANEL_STATIC_REGISTERED_KEY] = True
         await hass.http.async_register_static_paths(
-            [StaticPathConfig(PANEL_URL_PATH, panel_file, cache_headers=False)]
+            [
+                StaticPathConfig(PANEL_URL_PATH, panel_file, cache_headers=False),
+                StaticPathConfig(CARD_URL_PATH, card_file, cache_headers=False),
+            ]
+        )
+        # Home Assistant exposes this public helper specifically so custom
+        # integrations can load frontend modules. This makes the card appear
+        # in the dashboard picker without modifying Lovelace storage.
+        frontend.add_extra_js_url(
+            hass,
+            f"{CARD_URL_PATH}?v={INTEGRATION_VERSION}&m={card_cache_bust}",
         )
 
     translations = await async_get_translations(

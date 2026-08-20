@@ -111,7 +111,7 @@ export class ViewSettings extends LitElement {
       : [];
     this._preStart = ps.length ? [...ps] : [""];
     const d = Number(inst.pre_start_delay_sec ?? 10);
-    this._preStartDelaySec = Number.isFinite(d) ? Math.max(1, Math.min(3600, Math.round(d))) : 10;
+    this._preStartDelaySec = Number.isFinite(d) ? Math.max(0, Math.min(3600, Math.round(d))) : 10;
     this._preStartScript = String(inst.pre_start_script ?? "");
     const st = Number(inst.pre_start_script_timeout_sec ?? 300);
     this._preStartScriptTimeoutSec = Number.isFinite(st)
@@ -365,13 +365,15 @@ export class ViewSettings extends LitElement {
                 type="number"
                 .label=${t(this.hass, "config_panel.general_pre_start_delay_field")}
                 .value=${String(this._preStartDelaySec)}
-                min="1"
+                min="0"
                 max="3600"
                 @input=${(e: Event) => {
-                  this._preStartDelaySec = Math.max(
-                    1,
-                    Math.min(3600, parseInt((e.target as HTMLInputElement).value, 10) || 1)
-                  );
+                  const raw = parseInt((e.target as HTMLInputElement).value, 10);
+                  // Not `|| 0`: a typed 0 is falsy and must survive as 0, which
+                  // is the value that means "open the zone at the scheduled time".
+                  this._preStartDelaySec = Number.isNaN(raw)
+                    ? 0
+                    : Math.max(0, Math.min(3600, raw));
                   this._markDirty();
                 }}
               ></ha-input>

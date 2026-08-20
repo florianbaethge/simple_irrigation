@@ -293,6 +293,12 @@ class IrrigationRuntime:
         )
         if self._stop_event.is_set():
             return
+        if not inst.pre_start_switches:
+            # The delay exists to give a pump time to build pressure. With no
+            # pre-start outputs nothing is coming up, so waiting would only push
+            # every zone past its scheduled minute -- the pre-start script has
+            # already run to completion by here.
+            return
         for entity_id in inst.pre_start_switches:
             await self._async_switch_turn_on(entity_id)
         await self._async_sleep_interruptible(float(delay_sec))

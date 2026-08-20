@@ -1,0 +1,634 @@
+{
+  "title": "Simple Irrigation",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Simple Irrigation",
+        "description": "Créez l’installation, puis ouvrez Simple Irrigation dans la barre latérale pour configurer les zones et la programmation.",
+        "data": {
+          "name": "Nom de l’installation",
+          "pre_start_switches": "Sorties de pré-démarrage (marche/arrêt)",
+          "pre_start_delay_sec": "Délai de pré-démarrage (secondes)",
+          "default_mode": "Mode par défaut",
+          "max_parallel_zones": "Nombre maximum de zones en parallèle"
+        }
+      }
+    },
+    "error": {
+      "invalid_max_parallel": "Le nombre maximal de zones en parallèle doit être d’au moins 1."
+    }
+  },
+  "selector": {
+    "default_mode": {
+      "options": {
+        "eco": "Eco",
+        "normal": "Normal",
+        "extra": "Extra"
+      }
+    }
+  },
+  "entity": {
+    "select": {
+      "mode": {
+        "name": "Mode",
+        "state": {
+          "eco": "Eco",
+          "normal": "Normal",
+          "extra": "Extra"
+        }
+      }
+    },
+    "sensor": {
+      "active_zones": {
+        "name": "Zones actives"
+      },
+      "next_run": {
+        "name": "Prochain arrosage"
+      },
+      "pause_until": {
+        "name": "Pause jusqu’à"
+      },
+      "current_run_ends_at": {
+        "name": "Arrosage jusqu’à"
+      },
+      "zone_next_run": {
+        "name": "Prochain arrosage de {zone_name}"
+      },
+      "zone_last_run": {
+        "name": "Dernier arrosage de {zone_name}"
+      },
+      "zone_ends_at": {
+        "name": "Arrosage de {zone_name} jusqu’à"
+      }
+    },
+    "binary_sensor": {
+      "running": {
+        "name": "En cours"
+      },
+      "paused": {
+        "name": "En pause"
+      },
+      "error_state": {
+        "name": "Erreur"
+      },
+      "zone_active": {
+        "name": "{zone_name} active"
+      }
+    },
+    "button": {
+      "run_due": {
+        "name": "Arroser les zones en attente"
+      },
+      "stop_all": {
+        "name": "Tout arrêter"
+      },
+      "zone_run_now": {
+        "name": "Arroser {zone_name} maintenant"
+      }
+    },
+    "switch": {
+      "schedule_enabled": {
+        "name": "Programmation activée"
+      },
+      "slot_enabled": {
+        "name": "{slot_name} activé"
+      }
+    }
+  },
+  "services": {
+    "run_zone": {
+      "name": "Arroser une zone",
+      "description": "Démarre un arrosage manuel complet pour une zone : sorties de pré-démarrage (si configurées), puis la zone pendant sa durée Eco/Normal/Extra correspondant au mode actuel, puis toutes les sorties coupées.",
+      "fields": {
+        "zone_id": {
+          "name": "ID de zone",
+          "description": "Identifiant interne de la zone de l’installation (affiché dans les diagnostics / le panneau)."
+        },
+        "config_entry_id": {
+          "name": "ID d’entrée de configuration",
+          "description": "Facultatif. Installation cible lorsqu’il existe plus d’une entrée Simple Irrigation."
+        }
+      }
+    },
+    "run_zone_with_duration": {
+      "name": "Arroser une zone avec durée",
+      "description": "Arrose une zone pendant une durée fixe en minutes, en ignorant la colonne Eco/Normal/Extra pour cette exécution.",
+      "fields": {
+        "zone_id": {
+          "name": "ID de zone",
+          "description": "Identifiant interne de la zone."
+        },
+        "duration_min": {
+          "name": "Durée (minutes)",
+          "description": "Durée d’arrosage de la zone (1–1440)."
+        },
+        "config_entry_id": {
+          "name": "ID d’entrée de configuration",
+          "description": "Facultatif. Installation cible lorsque plusieurs entrées existent."
+        }
+      }
+    },
+    "run_due_zones": {
+      "name": "Arroser les zones en attente",
+      "description": "Exécute ce qui doit être arrosé maintenant selon la programmation (même principe que le bouton « Arroser les zones en attente »).",
+      "fields": {
+        "config_entry_id": {
+          "name": "ID d’entrée de configuration",
+          "description": "Facultatif. Installation cible lorsque plusieurs entrées existent."
+        }
+      }
+    },
+    "run_schedule_slot": {
+      "name": "Lancer un créneau de programmation",
+      "description": "Démarre immédiatement la séquence complète d’un créneau de programmation (pré-démarrage, phases, puis arrêt) — comme « Lancer ce créneau maintenant » dans le panneau.",
+      "fields": {
+        "slot_id": {
+          "name": "ID de créneau",
+          "description": "Identifiant interne du créneau de l’installation (affiché dans les diagnostics / le panneau)."
+        },
+        "config_entry_id": {
+          "name": "ID d’entrée de configuration",
+          "description": "Facultatif. Installation cible lorsque plusieurs entrées existent."
+        }
+      }
+    },
+    "stop_all": {
+      "name": "Tout arrêter",
+      "description": "Arrête le cycle d’irrigation en cours et éteint les sorties des zones.",
+      "fields": {
+        "config_entry_id": {
+          "name": "ID d’entrée de configuration",
+          "description": "Facultatif. Installation cible lorsque plusieurs entrées existent."
+        }
+      }
+    },
+    "set_mode": {
+      "name": "Définir le mode",
+      "description": "Définit le mode d’arrosage global (Eco, Normal ou Extra).",
+      "fields": {
+        "mode": {
+          "name": "Mode",
+          "description": "eco, normal ou extra."
+        },
+        "config_entry_id": {
+          "name": "ID d’entrée de configuration",
+          "description": "Facultatif. Installation cible lorsque plusieurs entrées existent."
+        }
+      }
+    },
+    "set_zone_enabled": {
+      "name": "Activer/désactiver une zone",
+      "description": "Active ou désactive une zone. Les zones désactivées sont ignorées dans chaque créneau de programmation qui les contient.",
+      "fields": {
+        "zone_id": {
+          "name": "ID de zone",
+          "description": "UUID interne de la zone (clés sous zones dans Télécharger les diagnostics de cette intégration)."
+        },
+        "enabled": {
+          "name": "Activée",
+          "description": "Lorsqu’elle est désactivée, la zone est ignorée pour les exécutions planifiées et les créneaux jusqu’à sa réactivation."
+        },
+        "config_entry_id": {
+          "name": "ID d’entrée de configuration",
+          "description": "Facultatif. Installation cible lorsque plusieurs entrées existent."
+        }
+      }
+    },
+    "pause_until": {
+      "name": "Pause jusqu’à",
+      "description": "Met en pause les exécutions planifiées automatiques jusqu’à la date et l’heure indiquées.",
+      "fields": {
+        "until": {
+          "name": "Jusqu’à",
+          "description": "Date et heure à partir desquelles les exécutions planifiées peuvent reprendre."
+        },
+        "config_entry_id": {
+          "name": "ID d’entrée de configuration",
+          "description": "Facultatif. Installation cible lorsque plusieurs entrées existent."
+        }
+      }
+    },
+    "clear_pause": {
+      "name": "Annuler la pause",
+      "description": "Annule une pause planifiée afin que les exécutions automatiques puissent reprendre.",
+      "fields": {
+        "config_entry_id": {
+          "name": "ID d’entrée de configuration",
+          "description": "Facultatif. Installation cible lorsque plusieurs entrées existent."
+        }
+      }
+    }
+  },
+  "config_panel": {
+    "sidebar_title": "Simple Irrigation",
+    "loading": "Chargement…",
+    "main_title": "Simple Irrigation",
+    "tab_general": "Général",
+    "tab_zones": "Zones",
+    "tab_schedule": "Programmation",
+    "tab_timetable": "Planning",
+    "tab_status": "État",
+    "timetable_card_title": "Planning hebdomadaire",
+    "timetable_intro": "Planning d’arrosage hebdomadaire par zone. Les heures utilisent le fuseau horaire de votre Home Assistant ; les barres utilisent le mode actuel (Eco / Normal / Extra), le délai de pré-démarrage et les mêmes règles de phase qu’une exécution réelle.",
+    "timetable_empty_no_zones": "Ajoutez des zones dans l’onglet Zones pour voir le planning.",
+    "timetable_empty_no_slots": "Ajoutez des créneaux de programmation dans l’onglet Programmation pour voir quand les zones s’exécutent.",
+    "timetable_col_zone": "Zone",
+    "timetable_bucket_aria_morning": "Matin",
+    "timetable_bucket_aria_day": "Journée",
+    "timetable_bucket_aria_evening": "Soir",
+    "timetable_duration_min": "{n} min",
+    "timetable_legend_label": "Légende du planning",
+    "timetable_legend_bucket_morning": "Matin (0:00–8:00)",
+    "timetable_legend_bucket_day": "Journée (8:00–16:00)",
+    "timetable_legend_bucket_evening": "Soir (16:00–24:00)",
+    "timetable_legend_active": "Créneau actif",
+    "timetable_legend_disabled": "Créneau désactivé",
+    "timetable_legend_biweekly": "Toutes les 2 semaines (en pointillés)",
+    "timetable_mode_eco": "Eco",
+    "timetable_mode_normal": "Normal",
+    "timetable_mode_extra": "Extra",
+    "timetable_bar_tooltip": "{start} – {end} · {mode}",
+    "timetable_week_toggle_label": "Semaine calendaire affichée dans le planning",
+    "timetable_week_current_hint": "cette semaine · S {n}",
+    "timetable_parity_badge_odd": "sem. impaires",
+    "timetable_parity_badge_even": "sem. paires",
+    "entry_picker_title": "Simple Irrigation",
+    "entry_picker_lead": "Choisissez une installation pour modifier les zones, le planning hebdomadaire et les options d’exécution. Chaque entrée est un plan d’irrigation indépendant.",
+    "entry_picker_loading": "Chargement des installations…",
+    "entry_badge_ha": "Intégration désactivée",
+    "entry_badge_plan_off": "Plan désactivé",
+    "entry_badge_active": "Active",
+    "entry_badge_default": "Par défaut",
+    "entry_card_desc": "Configurez les zones, les créneaux de programmation, l’ordre d’exécution et les sorties de pré-démarrage pour ce contrôleur.",
+    "entry_picker_empty": "Aucune installation pour l’instant. Ajoutez l’intégration via Paramètres → Appareils et services → Ajouter une intégration, puis recherchez Simple Irrigation.",
+    "entry_picker_howto": "Ajouter un autre plan (par ex. printemps / été / un autre jardin) : utilisez Paramètres → Appareils et services → Ajouter une intégration → Simple Irrigation. Chaque plan apparaît dans la liste ci-dessus.",
+    "errors_request_failed": "Échec de la requête",
+    "errors_not_running_skip": "Rien n’est en cours d’exécution pour le moment.",
+    "entity_placeholder_example": "Rechercher par nom ou ID d’entité",
+    "entity_placeholder_script": "Rechercher un script par nom ou ID d’entité",
+    "general_card_current_run": "Arrosage en cours",
+    "general_label_irrigation_state": "État de l’irrigation",
+    "general_state_preparing": "Préparation",
+    "general_state_stopping": "Arrêt…",
+    "general_state_pre_start_script": "Attente du script de pré-démarrage : {name}",
+    "general_state_post_run_script": "Exécution du script de post-exécution : {name}",
+    "general_state_running": "En cours",
+    "general_state_error_idle": "Erreur (inactif)",
+    "general_state_idle": "Inactif",
+    "general_preparing_hint": "Sorties de pré-démarrage et délai avant le début des zones.",
+    "general_active_zones": "Zones actives",
+    "general_remaining": "Restant",
+    "general_remaining_finishing": "finalisation",
+    "general_next_zones": "Zones suivantes",
+    "general_last_error": "Dernière erreur",
+    "general_scheduled_pause_hint": "Les pauses planifiées utilisent le Contrôle du plan ci-dessous. Elles n’arrêtent pas une exécution déjà en cours — utilisez Arrêter ici.",
+    "general_stop_irrigation": "Arrêter l’irrigation",
+    "general_skip_phase": "Passer à la phase suivante",
+    "general_clear_error": "Effacer le message d’erreur",
+    "general_card_schedule_overview": "Aperçu de la programmation",
+    "general_plan_off_hint": "Ce plan est désactivé. Aucune exécution automatique ne démarrera tant que vous ne le réactiverez pas.",
+    "general_next_scheduled_run": "Prochaine exécution planifiée",
+    "general_no_slots": "Aucun créneau de programmation activé ou aucune zone assignée pour l’instant.",
+    "general_none_scheduled": "Rien de planifié",
+    "general_card_plan_control": "Contrôle du plan",
+    "general_enable_plan": "Activer l’irrigation automatique pour ce plan",
+    "general_pause_active_hint": "Les exécutions planifiées sont en pause jusqu’au {when} (heure locale). Vous pouvez annuler cette pause ci-dessous ou utiliser le service simple_irrigation.clear_pause avec config_entry_id dans vos automatisations.",
+    "general_skip_today": "Sauter l’arrosage aujourd’hui",
+    "general_clear_pause": "Annuler la pause",
+    "general_card_settings": "Paramètres généraux",
+    "general_installation_name": "Nom de l’installation",
+    "general_installation_name_desc": "Affiché dans les listes et vous aide à distinguer plusieurs contrôleurs.",
+    "general_field_name": "Nom",
+    "general_pre_start_title": "Sorties de pré-démarrage",
+    "general_pre_start_desc": "Sorties activées avant le début de toute zone (par ex. pompe ou vanne principale). Prend en charge les interrupteurs, les vannes, input_boolean et les groupes. Choisissez-les dans le sélecteur d’entités ; laissez vide si inutile.",
+    "general_pre_start_output_n": "Sortie de pré-démarrage (marche/arrêt)",
+    "general_pre_start_output_i": "Pré-démarrage {n}",
+    "general_remove": "Supprimer",
+    "general_add_pre_start": "Ajouter une sortie de pré-démarrage",
+    "general_pre_start_delay_title": "Délai de pré-démarrage",
+    "general_pre_start_delay_desc": "Durée d’attente après l’activation des sorties de pré-démarrage avant le début de l’irrigation des zones.",
+    "general_pre_start_delay_field": "Délai (secondes)",
+    "general_pre_start_script_title": "Script de pré-démarrage",
+    "general_pre_start_script_field": "Script",
+    "general_pre_start_script_desc": "Script facultatif exécuté jusqu’à son terme avant l’activation des sorties de pré-démarrage — utile pour préparer l’environnement, par ex. renvoyer la tondeuse robot à la maison et attendre qu’elle soit amarrée. Comme il bloque, le script peut attendre (wait_for_trigger, wait_template) ; l’arrosage démarre dès qu’il est terminé. Laissez vide si inutile.",
+    "general_pre_start_script_timeout_title": "Délai d’expiration du script de pré-démarrage",
+    "general_pre_start_script_timeout_field": "Délai d’expiration (secondes)",
+    "general_post_run_script_title": "Script de post-exécution",
+    "general_post_run_script_field": "Script",
+    "general_post_run_script_desc": "Script facultatif exécuté jusqu’à son terme après la coupure de la dernière sortie — le pendant du script de pré-démarrage : laisser ressortir la tondeuse robot, rouvrir la fenêtre. Il s’exécute à la fin de chaque exécution, y compris en cas d’échec ou d’arrêt, afin que ce qui a été préparé soit toujours annulé. Laissez vide si inutile.",
+    "general_post_run_script_timeout_title": "Délai d’expiration du script de post-exécution",
+    "general_post_run_script_timeout_field": "Délai d’expiration (secondes)",
+    "general_watering_mode": "Mode d’arrosage",
+    "general_watering_mode_desc": "Détermine la colonne de durée par zone utilisée : Eco (plus court), Normal ou Extra (plus long). Vous pouvez aussi piloter ceci depuis des automatisations — par exemple selon le niveau du réservoir d’eau ou la température extérieure pour choisir Eco plutôt qu’Extra — en appelant le service simple_irrigation.set_mode avec mode défini sur eco, normal ou extra (et config_entry_id si vous avez plusieurs plans).",
+    "general_mode_eco": "Eco",
+    "general_mode_normal": "Normal",
+    "general_mode_extra": "Extra",
+    "general_max_parallel": "Zones parallèles max",
+    "general_max_parallel_desc": "Nombre de zones pouvant arroser en même temps. Les zones exclusives s’exécutent toujours seules.",
+    "general_max_parallel_field": "Zones parallèles max",
+    "general_default_section": "Irrigation par défaut",
+    "general_default_toggle_label": "Ouvrir cette installation par défaut",
+    "general_default_toggle_desc": "Lorsqu’elle est activée, cliquer sur Simple Irrigation dans la barre latérale ouvre cette installation.",
+    "general_default_confirm_title": "Modifier l’irrigation par défaut",
+    "general_default_confirm_body": "Définir « {name} » comme installation par défaut retirera la définition par défaut de « {other} ». Continuer ?",
+    "general_default_confirm_ok": "Définir par défaut",
+    "general_default_confirm_cancel": "Annuler",
+    "general_saving": "Enregistrement…",
+    "general_save": "Enregistrer",
+    "zones_card_title": "Zones",
+    "zones_intro": "Chaque zone possède une ou plusieurs sorties et des durées d’arrosage pour les modes Eco / Normal / Extra. Attachez les zones à des créneaux de programmation dans l’onglet Programmation. Utilisez Modifier pour changer une zone à la fois. Si vous désactivez une zone, elle est ignorée dans chaque créneau de programmation qui la contient — pratique pour sauter temporairement une zone quand le sol est encore humide.",
+    "zones_intro_automation": "Depuis des automatisations ou scripts, appelez le service simple_irrigation.set_zone_enabled avec zone_id (l’UUID interne de chaque zone — les clés sous zones dans Télécharger les diagnostics de cette intégration) et enabled true ou false. Passez config_entry_id si vous avez plus d’une installation Simple Irrigation.",
+    "zones_add_zone": "Ajouter une zone",
+    "zones_detail_disabled": "Désactivée",
+    "zones_detail_exclusive": "Exclusive",
+    "zones_detail_durations": "Eco {eco} min / Normal {normal} min / Extra {extra} min",
+    "zones_detail_added_slots_one": "Ajoutée à 1 créneau",
+    "zones_detail_added_slots_many": "Ajoutée à {n} créneaux",
+    "zones_detail_outputs_one": "1 sortie",
+    "zones_detail_outputs_many": "{n} sorties",
+    "zones_edit": "Modifier",
+    "zones_run_zone_now": "Arroser maintenant",
+    "zones_err_busy": "L’irrigation est déjà en cours.",
+    "zones_err_zone_already_queued": "Cette zone est déjà incluse dans l’exécution en cours.",
+    "zones_err_unknown_zone": "Zone inconnue.",
+    "zones_err_zone_disabled": "Cette zone est désactivée.",
+    "zones_err_zone_no_outputs": "Ajoutez au moins une sortie avant d’arroser cette zone.",
+    "zones_field_name_title": "Nom",
+    "zones_field_name_desc": "Libellé de cette zone dans l’interface et les plannings.",
+    "zones_field_zone_name": "Nom de la zone",
+    "zones_outputs_title": "Sorties d’irrigation",
+    "zones_outputs_desc": "Un ou plusieurs interrupteurs, vannes, helpers ou groupes. Choisissez-les dans le sélecteur d’entités ; ajoutez des lignes pour plusieurs sorties, ou utilisez une seule entité de groupe.",
+    "zones_output_first": "Sortie de zone (marche/arrêt)",
+    "zones_output_n": "Sortie {n}",
+    "zones_add_output": "Ajouter une sortie",
+    "zones_runtime_title": "Durée d’arrosage par mode (minutes)",
+    "zones_runtime_desc": "Durée d’arrosage de cette zone lorsque l’installation est en mode Eco, Normal ou Extra.",
+    "zones_duration_eco": "Eco",
+    "zones_duration_normal": "Normal",
+    "zones_duration_extra": "Extra",
+    "zones_behavior_title": "Comportement",
+    "zones_behavior_desc": "Désactivez une zone temporairement ou restreignez-la pour qu’elle s’exécute sans les autres.",
+    "zones_enabled": "Activée",
+    "zones_exclusive": "Exclusive (ne s’exécute jamais en parallèle avec d’autres zones)",
+    "zones_advanced_title": "Avancé",
+    "zones_advanced_summary": "Service de démarrage personnalisé avec durée",
+    "zones_advanced_desc": "À utiliser uniquement pour les intégrations qui ont besoin d’une durée dans leur service de démarrage. Laissez tout vide pour conserver le comportement de démarrage/arrêt par défaut.",
+    "zones_start_preset": "Préréglage",
+    "zones_start_preset_none": "Comportement par défaut (turn_on/open_valve)",
+    "zones_start_preset_custom": "Personnalisé",
+    "zones_start_hint_output_is_target": "Laissez la cible de démarrage vide — ce service adresse directement la sortie de la zone.",
+    "zones_start_hint_hydrawise": "Hydrawise : utilisez l’entité vanne de la zone comme sortie et son binary_sensor d’arrosage comme cible de démarrage.",
+    "zones_start_service": "Service de démarrage (domain.service)",
+    "zones_duration_field": "Nom du champ durée",
+    "zones_duration_unit_empty": "Unité de durée",
+    "zones_duration_unit_minutes": "Minutes",
+    "zones_duration_unit_seconds": "Secondes",
+    "zones_start_target_entity": "Entité cible de démarrage (facultatif)",
+    "zones_advanced_target_desc": "Uniquement utilisée pour adresser l’appel de démarrage. L’arrêt passe toujours par la sortie de la zone.",
+    "zones_dialog_new_title": "Nouvelle zone d’irrigation",
+    "zones_dialog_edit_title": "Modifier la zone : {name}",
+    "zones_cancel": "Annuler",
+    "zones_adding": "Ajout…",
+    "zones_add_zone_btn": "Ajouter une zone",
+    "zones_confirm_delete": "Supprimer cette zone ?",
+    "zones_delete_zone": "Supprimer la zone",
+    "zones_saving_changes": "Enregistrement…",
+    "zones_save_changes": "Enregistrer les modifications",
+    "schedule_card_title": "Programmation",
+    "schedule_intro": "Les créneaux sont des heures de début hebdomadaires avec une liste ordonnée de zones. Utilisez Modifier sur une ligne pour changer les zones, l’ordre et les options. Associez d’abord les zones dans l’onglet Zones.",
+    "schedule_add_slot": "Ajouter un créneau",
+    "schedule_zones_in_order_one": "1 zone dans l’ordre d’exécution",
+    "schedule_zones_in_order_many": "{n} zones dans l’ordre d’exécution",
+    "schedule_run_slot_now": "Lancer ce créneau maintenant",
+    "schedule_edit": "Modifier",
+    "schedule_dialog_new_title": "Nouveau créneau de programmation",
+    "schedule_dialog_new_hint": "Créez une heure récurrente, puis utilisez Modifier sur la ligne pour définir les zones et enregistrer.",
+    "schedule_name_optional_title": "Nom (facultatif)",
+    "schedule_name_optional_desc": "Un court libellé pour reconnaître ce créneau dans l’aperçu et lors de la sélection d’une cible.",
+    "schedule_slot_name": "Nom du créneau",
+    "schedule_weekdays_title": "Jours de la semaine",
+    "schedule_weekdays_desc": "Jours de la semaine où cette exécution démarre. Sélectionnez-en plusieurs pour arroser plusieurs jours avec un seul créneau, ou utilisez un préréglage.",
+    "schedule_preset_daily": "Tous les jours",
+    "schedule_preset_workdays": "Lun–Ven",
+    "schedule_preset_weekend": "Week-end",
+    "weekdays_summary_daily": "Quotidien",
+    "weekdays_summary_workdays": "Lun–Ven",
+    "weekdays_summary_weekend": "Week-end",
+    "schedule_err_no_weekdays": "Sélectionnez au moins un jour de la semaine.",
+    "schedule_split_slot": "Diviser en jours séparés",
+    "schedule_confirm_split": "Diviser ce créneau en un créneau par jour de la semaine ? Chacun garde la même heure, les mêmes zones et les mêmes options.",
+    "schedule_week_parity_title": "Cycle hebdomadaire",
+    "schedule_week_parity_desc": "Exécuter chaque semaine, ou seulement pendant les semaines calendaires impaires/paires (ISO). Deux créneaux sur des semaines alternées donnent un cycle toutes les deux semaines.",
+    "week_parity_every": "Chaque semaine",
+    "week_parity_odd": "Semaines calendaires impaires",
+    "week_parity_even": "Semaines calendaires paires",
+    "schedule_local_time_title": "Heure locale",
+    "schedule_local_time_desc": "Heure de début dans le fuseau horaire de votre Home Assistant. Stockée au format 24 heures (HH:MM) ; l’aperçu utilise le format horaire de votre profil (12 ou 24 heures).",
+    "schedule_time_hhmm": "Heure (HH:MM)",
+    "guards_section_title": "Conditions",
+    "guards_section_desc": "Exécuter uniquement si toutes ces conditions sont vérifiées. Laissez vide pour toujours exécuter. La liste suggère les capteurs et helpers habituels — toute autre entité peut aussi être saisie.",
+    "guards_entity_label": "Entité",
+    "guards_entity_placeholder": "Rechercher par nom ou ID d’entité",
+    "guards_operator_label": "Condition",
+    "guards_value_label": "Valeur",
+    "guards_value_needs_entity": "Choisissez d’abord une entité — ses états rempliront cette liste.",
+    "guards_add": "Ajouter une condition",
+    "guards_remove": "Supprimer",
+    "guards_count": "{n} conditions",
+    "guards_none": "Aucune condition",
+    "guards_current_value": "actuellement : {v}",
+    "guards_equals_hint": "L’égalité exacte correspond rarement à une valeur mesurée — au-dessus ou en dessous est généralement plus utile.",
+    "guard_op_above": "est supérieur à",
+    "guard_op_below": "est inférieur à",
+    "guard_op_equals": "est égal à",
+    "guard_op_state_is": "l’état est",
+    "guard_op_is_true": "est activé",
+    "guard_op_is_false": "est désactivé",
+    "guard_label_numeric": "{entity} {op} {value}",
+    "guard_label_boolean": "{entity} {op}",
+    "settings_section_guards": "Conditions",
+    "settings_guards_hint": "Elles s’appliquent à chaque exécution planifiée. Un créneau peut s’en exempter individuellement.",
+    "schedule_ignore_global_guards": "Ignorer les conditions globales",
+    "schedule_ignore_global_guards_hint": "Pour les créneaux que les conditions globales ne doivent pas affecter — par ex. une serre ne se soucie pas de la pluie.",
+    "schedule_scripts_section_title": "Scripts",
+    "schedule_scripts_section_desc": "Cette programmation utilise les scripts de l’installation. Remplacez-les quand une préparation différente est nécessaire — la pelouse renvoie la tondeuse à la maison, l’irrigation au goutte-à-goutte la laisse dehors. Gardez les zones qui nécessitent des scripts différents dans des programmations différentes ; les zones s’exécutent en parallèle, donc les scripts appartiennent à la programmation.",
+    "schedule_pre_start_script_title": "Script de pré-démarrage",
+    "schedule_post_run_script_title": "Script de post-exécution",
+    "schedule_override_pre_start_script": "Script de pré-démarrage propre",
+    "schedule_override_post_run_script": "Script de post-exécution propre",
+    "schedule_script_field": "Script",
+    "schedule_script_override_hint": "Remplace le script de l’installation pour cette programmation. Laissez vide pour n’exécuter aucun script.",
+    "schedule_script_timeout_field": "Délai d’expiration (secondes)",
+    "schedule_script_timeout_hint": "Laissez vide pour utiliser le délai d’expiration de l’installation ({n} s).",
+    "schedule_script_inherited": "Utilise le script de l’installation : {script}",
+    "schedule_script_inherited_none": "L’installation n’a aucun script configuré pour cela.",
+    "schedule_scripts_own": "Scripts propres",
+    "schedule_guards_global_off": "Conditions globales désactivées",
+    "schedule_guards_inherited": "S’applique aussi : {list}",
+    "schedule_err_guards_incomplete": "Chaque condition nécessite une entité et une valeur.",
+    "errors_invalid_guard_entity": "Choisissez une entité valide pour chaque condition.",
+    "errors_invalid_guard_operator": "Type de condition inconnu.",
+    "errors_missing_guard_value": "Cette condition nécessite une valeur.",
+    "errors_invalid_guard_value": "La valeur de la condition doit être un nombre.",
+    "errors_too_many_guards": "Trop de conditions.",
+    "errors_invalid_script": "Le script doit être une entité de script (script.…).",
+    "errors_invalid_script_timeout": "Le délai d’expiration doit être compris entre 1 et 3600 secondes.",
+    "errors_invalid_duration_service": "Le service de démarrage avancé est incomplet ou invalide.",
+    "errors_invalid_target_entity": "Entité cible de démarrage invalide.",
+    "errors_unknown_service": "Ce service n’existe pas. L’intégration est-elle installée ?",
+    "errors_unknown_entity": "Cette entité n’existe pas.",
+    "schedule_slot_enabled": "Créneau activé",
+    "schedule_adding": "Ajout…",
+    "schedule_add_slot_btn": "Ajouter un créneau",
+    "schedule_err_busy": "L’irrigation est déjà en cours.",
+    "schedule_err_empty_slot": "Ajoutez au moins une zone à ce créneau.",
+    "schedule_err_no_runnable": "Aucune zone activée à exécuter dans ce créneau.",
+    "schedule_err_unknown_slot": "Créneau inconnu.",
+    "schedule_edit_dialog_title": "Modifier le créneau · {summary}",
+    "schedule_start_time_title": "Heure de début",
+    "schedule_run_order_title": "Ordre d’exécution",
+    "schedule_run_order_desc": "Les zones s’exécutent dans l’ordre de la liste. Les libellés de phase montrent comment les exécutions se regroupent : les zones d’une même phase démarrent ensemble lorsque les règles de parallélisme le permettent ; les zones exclusives s’exécutent toujours seules. Les zones désactivées sont ignorées à l’exécution et n’apparaissent pas dans une phase.",
+    "schedule_phase_n": "Phase {n}",
+    "schedule_up": "Monter",
+    "schedule_down": "Descendre",
+    "schedule_remove": "Supprimer",
+    "schedule_add_zone_title": "Ajouter une zone",
+    "schedule_choose_zone": "Choisir une zone…",
+    "schedule_add_to_list": "Ajouter à la liste",
+    "schedule_all_zones_in_slot": "Toutes les zones sont déjà dans ce créneau.",
+    "schedule_create_zones_first": "Créez d’abord des zones dans l’onglet Zones.",
+    "schedule_confirm_delete_slot": "Supprimer ce créneau ?",
+    "schedule_delete_slot": "Supprimer le créneau",
+    "schedule_saving": "Enregistrement…",
+    "schedule_save_slot": "Enregistrer le créneau",
+    "status_card_title": "État d’exécution",
+    "status_intro": "Résumé de ce que fait le contrôleur. Rechargez le panneau ou changez d’onglet pour actualiser.",
+    "status_state_label": "État :",
+    "status_state_run_in_progress": "Exécution en cours",
+    "status_state_error": "Erreur",
+    "status_state_idle": "Inactif / en attente",
+    "status_manual_label": "Exécution manuelle :",
+    "status_manual_text": "Ce cycle a été démarré depuis le panneau (« Lancer ce créneau maintenant ») ou un service de zone, pas depuis le minuteur hebdomadaire.",
+    "status_scheduled_label": "Exécution planifiée :",
+    "status_scheduled_text": "Ce cycle a été déclenché par la programmation.",
+    "status_idle_hint": "Lorsqu’une exécution est active, cette page indique si elle est manuelle ou planifiée. manual_run dans l’état brut n’est vrai que pendant un cycle manuel.",
+    "status_active_zones": "Zones actives :",
+    "status_queued_zones": "Zones en file d’attente :",
+    "status_last_error": "Dernière erreur :",
+    "status_error_clear_hint": "Le message s’efface lorsqu’une exécution se termine avec succès, lorsque vous arrêtez l’irrigation depuis l’onglet Général, ou lorsque vous y utilisez Effacer le message d’erreur. Il reste visible après une exécution en échec jusqu’à ce que l’une de ces actions se produise. Un redémarrage de Home Assistant après une exécution interrompue peut définir un message de récupération.",
+    "status_show_raw": "Afficher l’état brut (débogage)",
+    "status_hide_raw": "Masquer l’état brut",
+    "tab_overview": "Aperçu",
+    "tab_settings": "Paramètres",
+    "overview_run_next_now": "Lancer le prochain créneau maintenant",
+    "overview_pause_48h": "Pause 48 h",
+    "overview_next_runs": "Prochaines exécutions",
+    "overview_mode_total": "Prochain arrosage ≈ {n} min au total",
+    "overview_countdown_soon": "dans moins d’une minute",
+    "overview_countdown_days": "dans {d} j {h} h",
+    "overview_countdown_hours": "dans {h} h {m} min",
+    "overview_countdown_minutes": "dans {m} min",
+    "settings_section_general": "Général",
+    "settings_section_pump": "Pompe / pré-démarrage",
+    "settings_section_watering": "Arrosage",
+    "settings_section_automations": "Pour les automatisations",
+    "settings_name_hint": "Affiché dans l’en-tête du panneau (au-dessus des onglets) et sur le sélecteur d’installations.",
+    "settings_pre_start_delay_hint": "Laisse à la pompe le temps de monter en pression avant l’ouverture d’une zone.",
+    "settings_pre_start_script_timeout_hint": "Si le script n’est pas terminé à ce moment-là, il est arrêté et l’arrosage démarre quand même — un script bloqué ne fait jamais manquer une exécution.",
+    "settings_post_run_script_timeout_hint": "Si le script n’est pas terminé à ce moment-là, il est arrêté et l’exécution est considérée comme terminée.",
+    "settings_max_parallel_hint": "Les zones exclusives s’exécutent toujours seules, quelle que soit cette limite.",
+    "settings_default_hint": "Ouvrir l’entrée de la barre latérale mène directement à cette installation.",
+    "settings_automations_summary": "Appels de service et ID",
+    "settings_automations_body": "Utilisez ces services depuis vos automatisations : set_mode, set_zone_enabled, pause_until, clear_pause, run_zone, run_schedule_slot, stop_all. L’ID d’entrée de configuration ci-dessous identifie cette installation.",
+    "settings_diagnostics_summary": "Diagnostics (état d’exécution brut)",
+    "settings_danger_title": "Zone de danger",
+    "settings_danger_desc": "Supprimer une installation efface ses zones et sa programmation. Cela se fait depuis Paramètres → Appareils et services.",
+    "settings_danger_button": "Ouvrir les paramètres de l’intégration",
+    "settings_unsaved": "Modifications non enregistrées",
+    "settings_all_saved": "Toutes les modifications sont enregistrées",
+    "zones_filter_all": "Toutes",
+    "zones_filter_enabled": "Activées",
+    "zones_filter_issues": "Problèmes",
+    "zones_issue_output_unavailable": "Sortie indisponible",
+    "zones_min_suffix": "min",
+    "zones_in_cycles_one": "dans 1 cycle",
+    "zones_in_cycles_many": "dans {n} cycles",
+    "zones_help_summary": "Qu’est-ce qu’une zone ?",
+    "zones_empty": "Aucune zone pour l’instant. Ajoutez votre première zone d’arrosage pour commencer.",
+    "zones_empty_filtered": "Aucune zone ne correspond à ce filtre.",
+    "cycle_card_title": "Programmation",
+    "cycle_quick_add_title": "Ajout rapide",
+    "cycle_new": "Nouveau cycle d’arrosage",
+    "cycle_edit_title": "Modifier le cycle",
+    "cycle_save": "Enregistrer le cycle",
+    "cycle_create": "Créer le cycle",
+    "cycle_back": "Retour",
+    "cycle_next": "Suivant",
+    "cycle_kind_daily": "Quotidien",
+    "cycle_kind_daily_desc": "Arrose une fois par jour. Idéal pour les pots et les semis récents.",
+    "cycle_kind_twice_daily": "Deux fois par jour",
+    "cycle_kind_twice_daily_desc": "Deux exécutions chaque jour — matin et soir.",
+    "cycle_kind_every_2_days": "Tous les 2 jours",
+    "cycle_kind_every_2_days_desc": "Un jour sur deux. Convient aux massifs établis.",
+    "cycle_kind_every_3_days": "Tous les 3 jours",
+    "cycle_kind_every_3_days_desc": "Environ deux fois par semaine avec un espacement régulier.",
+    "cycle_kind_n_per_week": "Définir les jours par semaine",
+    "cycle_kind_n_per_week_desc": "Choisissez les jours exacts de la semaine où il doit s’exécuter.",
+    "cycle_kind_weekly": "Hebdomadaire",
+    "cycle_kind_weekly_desc": "Une fois par semaine, le jour de votre choix.",
+    "cycle_kind_biweekly": "Toutes les 2 semaines",
+    "cycle_kind_biweekly_desc": "Une exécution toutes les deux semaines. Pour les pelouses et les arbustes.",
+    "cycle_kind_custom": "Jours personnalisés…",
+    "cycle_kind_custom_desc": "Libre choix des jours de la semaine, chaque semaine.",
+    "cycle_badge_exact": "exact",
+    "cycle_badge_approx": "approx.",
+    "cycle_badge_custom": "Personnalisé",
+    "cycle_step_how_often": "Fréquence",
+    "cycle_step_when": "Quand",
+    "cycle_step_zones": "Zones",
+    "cycle_time_title": "Heure de début",
+    "cycle_time_preset_early": "Tôt le matin",
+    "cycle_time_preset_morning": "Matin",
+    "cycle_time_preset_evening": "Soir",
+    "cycle_time_preset_late": "Tard le soir",
+    "cycle_anchor_title": "Quel jour",
+    "cycle_anchor_desc": "La cadence est ancrée sur ce jour de la semaine.",
+    "cycle_preview_title": "14 prochains jours",
+    "cycle_preview_gaps": "Exécutions avec des intervalles de {gaps} jours.",
+    "cycle_preview_first_run": "Démarre le {when}.",
+    "cycle_creates_title": "Ceci crée :",
+    "cycle_select_all": "Tout sélectionner",
+    "cycle_phase_alone": "phase {n} · seule",
+    "cycle_slots_n": "{n} créneaux",
+    "cycle_meta_zones": "{z} zones · {p} phases · ~{m} min",
+    "cycle_paused_n": "En pause · {n} créneaux",
+    "cycle_partly_enabled": "Partiellement activé",
+    "cycle_expand": "Afficher les jours",
+    "cycle_detach": "Détacher en créneaux individuels",
+    "cycle_detach_hint": "Modifier le cycle réécrit ses créneaux.",
+    "cycle_detach_confirm": "Détacher ce cycle en créneaux individuels indépendants ?",
+    "cycle_delete": "Supprimer le cycle",
+    "cycle_delete_confirm": "Supprimer ce cycle et tous ses créneaux ?",
+    "cycle_cleanup": "Optimiser les cycles",
+    "cycle_cleanup_desc": "Ces créneaux existants ressemblent à un cycle répétitif. Les fusionner en lignes de cycle ? Rien ne change dans l’exécution — seule la façon de les regrouper change.",
+    "cycle_cleanup_confirm": "Fusionner",
+    "cycle_cleanup_merge_n": "fusionne {n} créneaux",
+    "cycle_cleanup_none": "Aucun créneau à fusionner.",
+    "cycle_conflict_warning": "Ceci chevauche une autre exécution sur un jour partagé.",
+    "cycle_conflict_shift": "Décaler de +1 h",
+    "cycle_quick_daily_evening": "Tous les soirs",
+    "cycle_quick_2_per_week": "2× par semaine",
+    "cycle_quick_custom": "Jours personnalisés…",
+    "schedule_empty": "Aucune programmation pour l’instant. Ajoutez un cycle pour commencer l’arrosage automatique.",
+    "timetable_help_summary": "Comment ce tableau est-il construit ?",
+    "timetable_totals_label": "Total / jour",
+    "timetable_day_total": "Total {n} min",
+    "timetable_day_empty": "Aucune exécution ce jour.",
+    "overview_zones_queued": "{n} zones en file d’attente",
+    "overview_today": "Aujourd’hui",
+    "overview_tomorrow": "Demain",
+    "settings_manage_title": "Gérer l’installation",
+    "settings_manage_desc": "Renommer, désactiver ou supprimer cette installation depuis les paramètres d’intégration de Home Assistant.",
+    "settings_open_integration": "Ouvrir les paramètres de l’intégration"
+  }
+}

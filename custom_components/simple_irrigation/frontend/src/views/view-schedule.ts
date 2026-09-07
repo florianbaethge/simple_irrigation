@@ -18,7 +18,7 @@ import {
   scriptOverrideForSave,
   type ScriptOverride,
 } from "../script-override";
-import { defineCustomElementOnce, formatApiError } from "../helpers";
+import { apiErrorCode, defineCustomElementOnce, formatApiError } from "../helpers";
 import { stripEditSlotQueryFromUrl } from "../navigation";
 import { t } from "../i18n";
 import { formLayoutStyles } from "../form-layout-styles";
@@ -442,22 +442,25 @@ export class ViewSchedule extends LitElement {
     this._busy = true;
     this._msg = undefined;
     this.requestUpdate();
+    const map: Record<string, string> = {
+      busy: "config_panel.schedule_err_busy",
+      empty_slot: "config_panel.schedule_err_empty_slot",
+      no_runnable_zones: "config_panel.schedule_err_no_runnable",
+      unknown_slot: "config_panel.schedule_err_unknown_slot",
+    };
+    const message = (code: string | undefined, raw: unknown): string =>
+      code && map[code] ? t(this.hass, map[code]) : formatApiError(raw, this.hass);
     try {
       const res = (await runSlotNow(this.hass, this.entryId, slotId)) as { success: boolean; error?: string };
       if (!res.success) {
-        const map: Record<string, string> = {
-          busy: "config_panel.schedule_err_busy",
-          empty_slot: "config_panel.schedule_err_empty_slot",
-          no_runnable_zones: "config_panel.schedule_err_no_runnable",
-          unknown_slot: "config_panel.schedule_err_unknown_slot",
-        };
-        const err = res.error ?? "run_failed";
-        this._msg = map[err] ? t(this.hass, map[err]) : String(err);
+        const code = res.error ?? "run_failed";
+        this._msg = message(code, code);
       } else {
         this.onSaved?.();
       }
     } catch (e) {
-      this._msg = formatApiError(e, this.hass);
+      // 400/409 replies reject in callApi; the code is inside the rejection body.
+      this._msg = message(apiErrorCode(e), e);
     } finally {
       this._busy = false;
       this.requestUpdate();

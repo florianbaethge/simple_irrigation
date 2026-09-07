@@ -1,9 +1,9 @@
 import { LitElement, html, css, nothing, type TemplateResult } from "lit";
 import { state } from "lit/decorators.js";
 import { keyed } from "lit/directives/keyed.js";
-import { runZoneNow, saveZone } from "../data/api";
+import { runZoneNow, saveZone, stopZone } from "../data/api";
 import { renderNativeEntityField } from "../entity-input";
-import { defineCustomElementOnce, formatApiError } from "../helpers";
+import { apiErrorCode, defineCustomElementOnce, formatApiError } from "../helpers";
 import { t } from "../i18n";
 import { formLayoutStyles } from "../form-layout-styles";
 import { sharedStyles } from "../shared-styles";
@@ -110,6 +110,10 @@ export class ViewZones extends LitElement {
         min-height: 46px;
         margin-top: 0;
       }
+      .compact-row.running {
+        border-left-color: var(--primary-color);
+        background: color-mix(in srgb, var(--primary-color) 6%, var(--card-background-color));
+      }
       .out-line {
         margin: 8px 0 0;
         font-size: 0.8rem;
@@ -131,6 +135,34 @@ export class ViewZones extends LitElement {
   @state() private _filter: ZoneFilter = "all";
   @state() private _expanded = new Set<string>();
   private _new: ZoneRow = this._blankZone();
+  private _tick?: number;
+
+  connectedCallback(): void {
+    super.connectedCallback();
+    this._syncTick();
+  }
+
+  disconnectedCallback(): void {
+    super.disconnectedCallback();
+    this._clearTick();
+  }
+
+  updated(): void {
+    this._syncTick();
+  }
+
+  /** Second-resolution countdown while a zone is watering; nothing to redraw otherwise. */
+  private _syncTick(): void {
+    const wanted = this._activeZoneIds().length > 0;
+    if (wanted === (this._tick !== undefined)) return;
+    if (wanted) this._tick = window.setInterval(() => this.requestUpdate(), 1000);
+    else this._clearTick();
+  }
+
+  private _clearTick(): void {
+    if (this._tick !== undefined) window.clearInterval(this._tick);
+    this._tick = undefined;
+  }
 
   private _blankZone(): ZoneRow {
     return {
@@ -194,6 +226,59 @@ export class ViewZones extends LitElement {
     return String(this.installation?.mode ?? "normal");
   }
 
+  private _rs(): Record<string, unknown> {
+    return this.runState ?? {};
+  }
+
+  private _runStateWord(): string {
+    return String(this._rs().run_state ?? "idle");
+  }
+
+  private _runBusy(): boolean {
+    return ["preparing", "running", "stopping"].includes(this._runStateWord());
+  }
+
+  /** Zones watering right now. */
+  private _activeZoneIds(): string[] {
+    if (!this._runBusy()) return [];
+    const ids = this._rs().active_zone_ids;
+    return Array.isArray(ids) ? ids.map(String) : [];
+  }
+
+  /** Zones waiting for a later phase of the current run (during the pre-start
+   *  delay that is every zone of the run). */
+  private _queuedZoneIds(): string[] {
+    if (!this._runBusy()) return [];
+    const phases = this._rs().upcoming_phases;
+    if (!Array.isArray(phases)) return [];
+    const out: string[] = [];
+    for (const group of phases) {
+      if (Array.isArray(group)) for (const id of group) out.push(String(id));
+    }
+    return out;
+  }
+
+  /** Planned end of a watering zone, as pushed by the runtime. */
+  private _zoneEndsAt(zoneId: string): number | null {
+    const ends = this._rs().zone_ends_at as Record<string, string> | undefined;
+    const raw = ends?.[zoneId];
+    if (!raw) return null;
+    const ms = new Date(raw).getTime();
+    return Number.isFinite(ms) ? ms : null;
+  }
+
+  /** `m:ss` while watering — a running zone is minutes, not days, away from done. */
+  private _fmtRemaining(endsAtMs: number): string {
+    const diff = endsAtMs - Date.now();
+    if (diff <= 0) return t(this.hass, "config_panel.general_remaining_finishing");
+    const totalSec = Math.round(diff / 1000);
+    const h = Math.floor(totalSec / 3600);
+    const m = Math.floor((totalSec % 3600) / 60);
+    const s = totalSec % 60;
+    const mm = h > 0 ? String(m).padStart(2, "0") : String(m);
+    return `${h > 0 ? `${h}:` : ""}${mm}:${String(s).padStart(2, "0")}`;
+  }
+
   private _closeAddDialog(): void {
     this._addDialogOpen = false;
     this._new = this._blankZone();
@@ -241,6 +326,21 @@ export class ViewZones extends LitElement {
     this._expanded = next;
   }
 
+  /** The sentence for a run_zone / stop_zone error code; anything else goes
+   *  through the generic formatter. */
+  private _runErrorMessage(code: string | undefined, raw: unknown): string {
+    const map: Record<string, string> = {
+      busy: "config_panel.zones_err_busy",
+      zone_already_queued: "config_panel.zones_err_zone_already_queued",
+      zone_not_running: "config_panel.zones_err_zone_not_running",
+      unknown_zone: "config_panel.zones_err_unknown_zone",
+      zone_disabled: "config_panel.zones_err_zone_disabled",
+      zone_no_outputs: "config_panel.zones_err_zone_no_outputs",
+    };
+    if (code && map[code]) return t(this.hass, map[code]);
+    return formatApiError(raw, this.hass);
+  }
+
   private async _runZoneNow(zoneId: string): Promise<void> {
     this._busy = true;
     this._msg = undefined;
@@ -251,20 +351,37 @@ export class ViewZones extends LitElement {
         error?: string;
       };
       if (!res.success) {
-        const err = res.error ?? "run_failed";
-        const map: Record<string, string> = {
-          busy: "config_panel.zones_err_busy",
-          zone_already_queued: "config_panel.zones_err_zone_already_queued",
-          unknown_zone: "config_panel.zones_err_unknown_zone",
-          zone_disabled: "config_panel.zones_err_zone_disabled",
-          zone_no_outputs: "config_panel.zones_err_zone_no_outputs",
-        };
-        this._msg = map[err] ? t(this.hass, map[err]) : String(err);
+        const code = res.error ?? "run_failed";
+        this._msg = this._runErrorMessage(code, code);
       } else {
         this.onSaved?.();
       }
     } catch (e) {
-      this._msg = formatApiError(e, this.hass);
+      // The backend answers 400/409 for these codes, and callApi rejects on any
+      // non-2xx status -- so the code arrives here, inside the rejection body.
+      this._msg = this._runErrorMessage(apiErrorCode(e), e);
+    } finally {
+      this._busy = false;
+      this.requestUpdate();
+    }
+  }
+
+  /** End just this zone; the rest of the run carries on (stopping the last zone
+   *  lets the run finish normally). */
+  private async _stopZone(zoneId: string): Promise<void> {
+    this._busy = true;
+    this._msg = undefined;
+    this.requestUpdate();
+    try {
+      const res = await stopZone(this.hass, this.entryId, zoneId);
+      if (!res.success) {
+        const code = res.error ?? "stop_failed";
+        this._msg = this._runErrorMessage(code, code);
+      } else {
+        this.onSaved?.();
+      }
+    } catch (e) {
+      this._msg = this._runErrorMessage(apiErrorCode(e), e);
     } finally {
       this._busy = false;
       this.requestUpdate();
@@ -554,10 +671,26 @@ export class ViewZones extends LitElement {
   private _renderRow(z: ZoneRow, slotsPerZone: Record<string, number>): TemplateResult {
     const outs = z.switch_entity_ids.filter(Boolean);
     const issue = this._zoneIssue(z);
-    const runDisabled = this._busy || !z.enabled || outs.length === 0;
+    const active = this._activeZoneIds().includes(z.zone_id);
+    const queued = !active && this._queuedZoneIds().includes(z.zone_id);
+    const inRun = active || queued;
+    const runState = this._runStateWord();
+    // A manual run accepts more zones; a scheduled one answers "busy" -- grey the
+    // button out instead of letting the click produce that error.
+    const foreignRun = this._runBusy() && !Boolean(this._rs().manual_run);
+    const runDisabled =
+      this._busy ||
+      !z.enabled ||
+      outs.length === 0 ||
+      inRun ||
+      foreignRun ||
+      runState === "stopping";
+    const stopDisabled = this._busy || runState === "stopping";
+    const stopLabel = t(this.hass, "config_panel.zones_stop_zone");
+    const endsAt = active ? this._zoneEndsAt(z.zone_id) : null;
     const mode = this._mode();
     const slotN = slotsPerZone[z.zone_id] ?? 0;
-    const accentClass = !z.enabled ? "inactive" : issue ? "warn" : "";
+    const accentClass = !z.enabled ? "inactive" : issue ? "warn" : active ? "running" : "";
     const expanded = this._expanded.has(z.zone_id);
     const firstOut = outs[0] ?? "";
 
@@ -573,6 +706,19 @@ export class ViewZones extends LitElement {
         <ha-icon icon="mdi:play"></ha-icon>
       </button>
     `;
+    const stopBtn = html`
+      <button
+        type="button"
+        class="iconbtn danger"
+        title=${stopLabel}
+        aria-label=${stopLabel}
+        ?disabled=${stopDisabled}
+        @click=${() => this._stopZone(z.zone_id)}
+      >
+        <ha-icon icon="mdi:stop"></ha-icon>
+      </button>
+    `;
+    const primaryBtn = inRun ? stopBtn : runBtn;
     const editBtn = html`
       <button
         type="button"
@@ -603,6 +749,15 @@ export class ViewZones extends LitElement {
           <div class="compact-row-main">
             <div class="compact-row-title">
               <span class="ellipsis">${z.name || z.zone_id.slice(0, 8)}</span>
+              ${active
+                ? html`<span class="badge badge-primary badge-dot"
+                    >${t(this.hass, "config_panel.zones_badge_running")}${endsAt !== null
+                      ? html` · ${this._fmtRemaining(endsAt)}`
+                      : nothing}</span
+                  >`
+                : queued
+                  ? html`<span class="badge">${t(this.hass, "config_panel.zones_badge_queued")}</span>`
+                  : nothing}
               ${!z.enabled
                 ? html`<span class="badge">${t(this.hass, "config_panel.zones_detail_disabled")}</span>`
                 : nothing}
@@ -653,7 +808,7 @@ export class ViewZones extends LitElement {
             </div>
           </div>
           <div class="icon-group hide-narrow" role="group">
-            ${runBtn}${editBtn}
+            ${primaryBtn}${editBtn}
           </div>
           <button
             type="button"
@@ -669,9 +824,13 @@ export class ViewZones extends LitElement {
           ? html`<div class="compact-row-detail only-narrow">
               ${firstOut ? html`<p class="out-line">${outs.join(", ")}</p>` : nothing}
               <div class="drawer-actions">
-                <button type="button" class="btn-outline" ?disabled=${runDisabled} @click=${() => this._runZoneNow(z.zone_id)}>
-                  ${t(this.hass, "config_panel.zones_run_zone_now")}
-                </button>
+                ${inRun
+                  ? html`<button type="button" class="btn-outline" ?disabled=${stopDisabled} @click=${() => this._stopZone(z.zone_id)}>
+                      ${stopLabel}
+                    </button>`
+                  : html`<button type="button" class="btn-outline" ?disabled=${runDisabled} @click=${() => this._runZoneNow(z.zone_id)}>
+                      ${t(this.hass, "config_panel.zones_run_zone_now")}
+                    </button>`}
                 <button
                   type="button"
                   class="btn-outline"

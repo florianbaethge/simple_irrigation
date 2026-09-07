@@ -99,6 +99,18 @@ export const panelControl = (
     action,
   });
 
+/** End one zone of the current run; the other zones carry on. */
+export const stopZone = (
+  hass: HomeAssistant,
+  entryId: string,
+  zoneId: string
+): Promise<{ success: boolean; error?: string }> =>
+  hass.callApi("POST", "simple_irrigation/panel/control", {
+    entry_id: entryId,
+    action: "stop_zone",
+    zone_id: zoneId,
+  });
+
 export interface ConfigEntryRow {
   entry_id: string;
   title: string;

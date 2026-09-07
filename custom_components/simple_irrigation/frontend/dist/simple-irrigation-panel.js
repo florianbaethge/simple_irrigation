@@ -54,6 +54,12 @@ const panelControl = (hass, entryId, action) => hass.callApi("POST", "simple_irr
     entry_id: entryId,
     action,
 });
+/** End one zone of the current run; the other zones carry on. */
+const stopZone = (hass, entryId, zoneId) => hass.callApi("POST", "simple_irrigation/panel/control", {
+    entry_id: entryId,
+    action: "stop_zone",
+    zone_id: zoneId,
+});
 const listSimpleIrrigationEntries = (hass) => hass.callWS({
     type: "config_entries/get",
     domain: "simple_irrigation",
@@ -95,6 +101,35 @@ function t(hass, path, placeholders) {
 /** Backend error codes are snake_case identifiers, never prose. */
 const ERROR_CODE_RE = /^[a-z][a-z0-9_]*$/;
 /**
+ * The backend error code behind a failed panel call, if there is one.
+ *
+ * A 2xx reply with `success: false` carries the code in `error`. For every other
+ * status Home Assistant's `callApi` rejects with
+ * `{ error: "Response error: <status>", status_code, body }`, and the code sits in
+ * `body.error`. Reading only the top level shows the HTTP status to the user
+ * instead of the translated sentence (GitHub issue #53).
+ */
+function apiErrorCode(value) {
+    if (typeof value === "string") {
+        return ERROR_CODE_RE.test(value) ? value : undefined;
+    }
+    if (value == null || typeof value !== "object") {
+        return undefined;
+    }
+    const o = value;
+    const body = o.body;
+    if (body != null && typeof body === "object") {
+        const code = body.error;
+        if (typeof code === "string" && ERROR_CODE_RE.test(code)) {
+            return code;
+        }
+    }
+    if (typeof o.error === "string" && ERROR_CODE_RE.test(o.error)) {
+        return o.error;
+    }
+    return undefined;
+}
+/**
  * Turn a backend error code into a translated sentence.
  * Falls back to the raw code when no translation exists, so new codes degrade
  * to the previous behaviour instead of showing an empty message.
@@ -115,8 +150,12 @@ function formatApiError(value, hass) {
     if (value == null || value === "") {
         return fallback;
     }
+    const code = apiErrorCode(value);
+    if (code !== undefined) {
+        return translateErrorCode(code, hass);
+    }
     if (typeof value === "string") {
-        return translateErrorCode(value, hass);
+        return value;
     }
     if (value instanceof Error) {
         return value.message;
@@ -127,7 +166,7 @@ function formatApiError(value, hass) {
             return o.message;
         }
         if (typeof o.error === "string") {
-            return translateErrorCode(o.error, hass);
+            return o.error;
         }
         try {
             return JSON.stringify(value);
@@ -4329,24 +4368,26 @@ class ViewSchedule extends i$2 {
         this._busy = true;
         this._msg = undefined;
         this.requestUpdate();
+        const map = {
+            busy: "config_panel.schedule_err_busy",
+            empty_slot: "config_panel.schedule_err_empty_slot",
+            no_runnable_zones: "config_panel.schedule_err_no_runnable",
+            unknown_slot: "config_panel.schedule_err_unknown_slot",
+        };
+        const message = (code, raw) => code && map[code] ? t(this.hass, map[code]) : formatApiError(raw, this.hass);
         try {
             const res = (await runSlotNow(this.hass, this.entryId, slotId));
             if (!res.success) {
-                const map = {
-                    busy: "config_panel.schedule_err_busy",
-                    empty_slot: "config_panel.schedule_err_empty_slot",
-                    no_runnable_zones: "config_panel.schedule_err_no_runnable",
-                    unknown_slot: "config_panel.schedule_err_unknown_slot",
-                };
-                const err = res.error ?? "run_failed";
-                this._msg = map[err] ? t(this.hass, map[err]) : String(err);
+                const code = res.error ?? "run_failed";
+                this._msg = message(code, code);
             }
             else {
                 this.onSaved?.();
             }
         }
         catch (e) {
-            this._msg = formatApiError(e, this.hass);
+            // 400/409 replies reject in callApi; the code is inside the rejection body.
+            this._msg = message(apiErrorCode(e), e);
         }
         finally {
             this._busy = false;
@@ -6693,6 +6734,10 @@ class ViewZones extends i$2 {
         min-height: 46px;
         margin-top: 0;
       }
+      .compact-row.running {
+        border-left-color: var(--primary-color);
+        background: color-mix(in srgb, var(--primary-color) 6%, var(--card-background-color));
+      }
       .out-line {
         margin: 8px 0 0;
         font-size: 0.8rem;
@@ -6706,6 +6751,32 @@ class ViewZones extends i$2 {
       }
     `,
     ]; }
+    connectedCallback() {
+        super.connectedCallback();
+        this._syncTick();
+    }
+    disconnectedCallback() {
+        super.disconnectedCallback();
+        this._clearTick();
+    }
+    updated() {
+        this._syncTick();
+    }
+    /** Second-resolution countdown while a zone is watering; nothing to redraw otherwise. */
+    _syncTick() {
+        const wanted = this._activeZoneIds().length > 0;
+        if (wanted === (this._tick !== undefined))
+            return;
+        if (wanted)
+            this._tick = window.setInterval(() => this.requestUpdate(), 1000);
+        else
+            this._clearTick();
+    }
+    _clearTick() {
+        if (this._tick !== undefined)
+            window.clearInterval(this._tick);
+        this._tick = undefined;
+    }
     _blankZone() {
         return {
             zone_id: "",
@@ -6769,6 +6840,59 @@ class ViewZones extends i$2 {
     _mode() {
         return String(this.installation?.mode ?? "normal");
     }
+    _rs() {
+        return this.runState ?? {};
+    }
+    _runStateWord() {
+        return String(this._rs().run_state ?? "idle");
+    }
+    _runBusy() {
+        return ["preparing", "running", "stopping"].includes(this._runStateWord());
+    }
+    /** Zones watering right now. */
+    _activeZoneIds() {
+        if (!this._runBusy())
+            return [];
+        const ids = this._rs().active_zone_ids;
+        return Array.isArray(ids) ? ids.map(String) : [];
+    }
+    /** Zones waiting for a later phase of the current run (during the pre-start
+     *  delay that is every zone of the run). */
+    _queuedZoneIds() {
+        if (!this._runBusy())
+            return [];
+        const phases = this._rs().upcoming_phases;
+        if (!Array.isArray(phases))
+            return [];
+        const out = [];
+        for (const group of phases) {
+            if (Array.isArray(group))
+                for (const id of group)
+                    out.push(String(id));
+        }
+        return out;
+    }
+    /** Planned end of a watering zone, as pushed by the runtime. */
+    _zoneEndsAt(zoneId) {
+        const ends = this._rs().zone_ends_at;
+        const raw = ends?.[zoneId];
+        if (!raw)
+            return null;
+        const ms = new Date(raw).getTime();
+        return Number.isFinite(ms) ? ms : null;
+    }
+    /** `m:ss` while watering — a running zone is minutes, not days, away from done. */
+    _fmtRemaining(endsAtMs) {
+        const diff = endsAtMs - Date.now();
+        if (diff <= 0)
+            return t(this.hass, "config_panel.general_remaining_finishing");
+        const totalSec = Math.round(diff / 1000);
+        const h = Math.floor(totalSec / 3600);
+        const m = Math.floor((totalSec % 3600) / 60);
+        const s = totalSec % 60;
+        const mm = h > 0 ? String(m).padStart(2, "0") : String(m);
+        return `${h > 0 ? `${h}:` : ""}${mm}:${String(s).padStart(2, "0")}`;
+    }
     _closeAddDialog() {
         this._addDialogOpen = false;
         this._new = this._blankZone();
@@ -6811,6 +6935,21 @@ class ViewZones extends i$2 {
             next.add(id);
         this._expanded = next;
     }
+    /** The sentence for a run_zone / stop_zone error code; anything else goes
+     *  through the generic formatter. */
+    _runErrorMessage(code, raw) {
+        const map = {
+            busy: "config_panel.zones_err_busy",
+            zone_already_queued: "config_panel.zones_err_zone_already_queued",
+            zone_not_running: "config_panel.zones_err_zone_not_running",
+            unknown_zone: "config_panel.zones_err_unknown_zone",
+            zone_disabled: "config_panel.zones_err_zone_disabled",
+            zone_no_outputs: "config_panel.zones_err_zone_no_outputs",
+        };
+        if (code && map[code])
+            return t(this.hass, map[code]);
+        return formatApiError(raw, this.hass);
+    }
     async _runZoneNow(zoneId) {
         this._busy = true;
         this._msg = undefined;
@@ -6818,22 +6957,41 @@ class ViewZones extends i$2 {
         try {
             const res = (await runZoneNow(this.hass, this.entryId, zoneId));
             if (!res.success) {
-                const err = res.error ?? "run_failed";
-                const map = {
-                    busy: "config_panel.zones_err_busy",
-                    zone_already_queued: "config_panel.zones_err_zone_already_queued",
-                    unknown_zone: "config_panel.zones_err_unknown_zone",
-                    zone_disabled: "config_panel.zones_err_zone_disabled",
-                    zone_no_outputs: "config_panel.zones_err_zone_no_outputs",
-                };
-                this._msg = map[err] ? t(this.hass, map[err]) : String(err);
+                const code = res.error ?? "run_failed";
+                this._msg = this._runErrorMessage(code, code);
             }
             else {
                 this.onSaved?.();
             }
         }
         catch (e) {
-            this._msg = formatApiError(e, this.hass);
+            // The backend answers 400/409 for these codes, and callApi rejects on any
+            // non-2xx status -- so the code arrives here, inside the rejection body.
+            this._msg = this._runErrorMessage(apiErrorCode(e), e);
+        }
+        finally {
+            this._busy = false;
+            this.requestUpdate();
+        }
+    }
+    /** End just this zone; the rest of the run carries on (stopping the last zone
+     *  lets the run finish normally). */
+    async _stopZone(zoneId) {
+        this._busy = true;
+        this._msg = undefined;
+        this.requestUpdate();
+        try {
+            const res = await stopZone(this.hass, this.entryId, zoneId);
+            if (!res.success) {
+                const code = res.error ?? "stop_failed";
+                this._msg = this._runErrorMessage(code, code);
+            }
+            else {
+                this.onSaved?.();
+            }
+        }
+        catch (e) {
+            this._msg = this._runErrorMessage(apiErrorCode(e), e);
         }
         finally {
             this._busy = false;
@@ -7098,10 +7256,25 @@ class ViewZones extends i$2 {
     _renderRow(z, slotsPerZone) {
         const outs = z.switch_entity_ids.filter(Boolean);
         const issue = this._zoneIssue(z);
-        const runDisabled = this._busy || !z.enabled || outs.length === 0;
+        const active = this._activeZoneIds().includes(z.zone_id);
+        const queued = !active && this._queuedZoneIds().includes(z.zone_id);
+        const inRun = active || queued;
+        const runState = this._runStateWord();
+        // A manual run accepts more zones; a scheduled one answers "busy" -- grey the
+        // button out instead of letting the click produce that error.
+        const foreignRun = this._runBusy() && !Boolean(this._rs().manual_run);
+        const runDisabled = this._busy ||
+            !z.enabled ||
+            outs.length === 0 ||
+            inRun ||
+            foreignRun ||
+            runState === "stopping";
+        const stopDisabled = this._busy || runState === "stopping";
+        const stopLabel = t(this.hass, "config_panel.zones_stop_zone");
+        const endsAt = active ? this._zoneEndsAt(z.zone_id) : null;
         const mode = this._mode();
         const slotN = slotsPerZone[z.zone_id] ?? 0;
-        const accentClass = !z.enabled ? "inactive" : issue ? "warn" : "";
+        const accentClass = !z.enabled ? "inactive" : issue ? "warn" : active ? "running" : "";
         const expanded = this._expanded.has(z.zone_id);
         const firstOut = outs[0] ?? "";
         const runBtn = b `
@@ -7116,6 +7289,19 @@ class ViewZones extends i$2 {
         <ha-icon icon="mdi:play"></ha-icon>
       </button>
     `;
+        const stopBtn = b `
+      <button
+        type="button"
+        class="iconbtn danger"
+        title=${stopLabel}
+        aria-label=${stopLabel}
+        ?disabled=${stopDisabled}
+        @click=${() => this._stopZone(z.zone_id)}
+      >
+        <ha-icon icon="mdi:stop"></ha-icon>
+      </button>
+    `;
+        const primaryBtn = inRun ? stopBtn : runBtn;
         const editBtn = b `
       <button
         type="button"
@@ -7141,6 +7327,15 @@ class ViewZones extends i$2 {
           <div class="compact-row-main">
             <div class="compact-row-title">
               <span class="ellipsis">${z.name || z.zone_id.slice(0, 8)}</span>
+              ${active
+            ? b `<span class="badge badge-primary badge-dot"
+                    >${t(this.hass, "config_panel.zones_badge_running")}${endsAt !== null
+                ? b ` · ${this._fmtRemaining(endsAt)}`
+                : A}</span
+                  >`
+            : queued
+                ? b `<span class="badge">${t(this.hass, "config_panel.zones_badge_queued")}</span>`
+                : A}
               ${!z.enabled
             ? b `<span class="badge">${t(this.hass, "config_panel.zones_detail_disabled")}</span>`
             : A}
@@ -7184,7 +7379,7 @@ class ViewZones extends i$2 {
             </div>
           </div>
           <div class="icon-group hide-narrow" role="group">
-            ${runBtn}${editBtn}
+            ${primaryBtn}${editBtn}
           </div>
           <button
             type="button"
@@ -7200,9 +7395,13 @@ class ViewZones extends i$2 {
             ? b `<div class="compact-row-detail only-narrow">
               ${firstOut ? b `<p class="out-line">${outs.join(", ")}</p>` : A}
               <div class="drawer-actions">
-                <button type="button" class="btn-outline" ?disabled=${runDisabled} @click=${() => this._runZoneNow(z.zone_id)}>
-                  ${t(this.hass, "config_panel.zones_run_zone_now")}
-                </button>
+                ${inRun
+                ? b `<button type="button" class="btn-outline" ?disabled=${stopDisabled} @click=${() => this._stopZone(z.zone_id)}>
+                      ${stopLabel}
+                    </button>`
+                : b `<button type="button" class="btn-outline" ?disabled=${runDisabled} @click=${() => this._runZoneNow(z.zone_id)}>
+                      ${t(this.hass, "config_panel.zones_run_zone_now")}
+                    </button>`}
                 <button
                   type="button"
                   class="btn-outline"

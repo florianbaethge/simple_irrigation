@@ -162,6 +162,20 @@
         }
       }
     },
+    "stop_zone": {
+      "name": "Zone stoppen",
+      "description": "Beendet eine Zone des laufenden Durchgangs und schaltet ihre Ausgänge aus. Die übrigen Zonen laufen weiter; war es die letzte Zone, endet der Durchgang normal.",
+      "fields": {
+        "zone_id": {
+          "name": "Zonen-ID",
+          "description": "Interne Zonenkennung (siehe Diagnose / Panel)."
+        },
+        "config_entry_id": {
+          "name": "Konfigurationseintrags-ID",
+          "description": "Optional. Ziel-Installation bei mehreren Simple-Irrigation-Einträgen."
+        }
+      }
+    },
     "set_mode": {
       "name": "Modus setzen",
       "description": "Setzt den globalen Bewässerungsmodus (Eco, Normal oder Extra).",
@@ -263,7 +277,8 @@
     "entry_picker_empty": "Noch keine Installation. Fügen Sie die Integration unter Einstellungen → Geräte & Dienste → Integration hinzufügen hinzu und suchen Sie nach Simple Irrigation.",
     "entry_picker_howto": "Weiteren Plan hinzufügen (z. B. Frühling / Sommer / anderer Garten): Einstellungen → Geräte & Dienste → Integration hinzufügen → Simple Irrigation. Jeder Plan erscheint in der Liste oben.",
     "errors_request_failed": "Anfrage fehlgeschlagen",
-    "errors_not_running_skip": "Aktuell läuft nichts.",
+    "errors_not_running": "Aktuell läuft nichts.",
+    "errors_busy": "Bewässerung läuft bereits.",
     "entity_placeholder_example": "Nach Name oder Entity-ID suchen",
     "entity_placeholder_script": "Skript nach Name oder Entity-ID suchen",
     "general_card_current_run": "Aktueller Lauf",
@@ -353,6 +368,10 @@
     "zones_err_unknown_zone": "Unbekannte Zone.",
     "zones_err_zone_disabled": "Diese Zone ist deaktiviert.",
     "zones_err_zone_no_outputs": "Fügen Sie mindestens einen Ausgang hinzu, bevor Sie diese Zone starten.",
+    "zones_badge_running": "Läuft",
+    "zones_badge_queued": "Wartet",
+    "zones_stop_zone": "Zone stoppen",
+    "zones_err_zone_not_running": "Diese Zone ist nicht Teil des laufenden Durchgangs.",
     "zones_field_name_title": "Name",
     "zones_field_name_desc": "Bezeichnung dieser Zone in Oberfläche und Zeitplan.",
     "zones_field_zone_name": "Zonenname",
@@ -539,7 +558,7 @@
     "settings_max_parallel_hint": "Exklusive Zonen laufen immer allein, unabhängig von diesem Limit.",
     "settings_default_hint": "Der Seitenleisten-Eintrag öffnet direkt diese Anlage.",
     "settings_automations_summary": "Dienste & IDs",
-    "settings_automations_body": "Diese Dienste für Automationen nutzen: set_mode, set_zone_enabled, pause_until, clear_pause, run_zone, run_schedule_slot, stop_all. Die Config-Entry-ID unten identifiziert diese Anlage.",
+    "settings_automations_body": "Diese Dienste für Automationen nutzen: set_mode, set_zone_enabled, pause_until, clear_pause, run_zone, run_schedule_slot, stop_all, stop_zone. Die Config-Entry-ID unten identifiziert diese Anlage.",
     "settings_diagnostics_summary": "Diagnose (Rohzustand)",
     "settings_danger_title": "Gefahrenzone",
     "settings_danger_desc": "Das Entfernen einer Anlage löscht ihre Zonen und den Zeitplan. Das geschieht unter Einstellungen → Geräte & Dienste.",

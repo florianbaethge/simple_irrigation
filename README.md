@@ -165,13 +165,15 @@ Two deliberate behaviours:
 
 Manual runs (*Run now*, *Run zone now*) always start, regardless of conditions.
 
+**Stopping a single zone.** While a zone waters, its row in **Zones** shows the remaining time and a stop button (■); the same is available as `simple_irrigation.stop_zone`. Only that zone ends — its outputs go off, the other zones of the run carry on, and a zone still waiting its turn is taken out of the plan. Stopping the last zone simply lets the run finish normally, post-run script included. The `simple_irrigation_zone_finished` event carries `stopped: true` for a zone that was cut short.
+
 ### Modes, pre-start, pause
 
 - **Watering mode (Eco / Normal / Extra):** chosen on Overview or Settings, or via `simple_irrigation.set_mode` for weather/tank automations.
 - **Max parallel zones:** caps concurrency; exclusive zones still run alone.
 - **Pre-start / post-run scripts:** optional scripts run **before** the pre-start outputs and **after** the last one goes off — see below.
 - **Pre-start outputs & delay:** outputs turned on before any zone (pump / master valve), with an editable delay to build pressure — both configured on **Settings**.
-- **Pause / Skip today / Pause 48 h:** affect **scheduled** starts only; an already-running cycle is stopped from **Overview**.
+- **Pause / Skip today / Pause 48 h:** affect **scheduled** starts only; an already-running cycle is stopped from **Overview**, or one zone at a time from **Zones**.
 
 ### Pre-start and post-run scripts
 
@@ -365,6 +367,7 @@ All services accept an optional `config_entry_id` when you run more than one Sim
 | `simple_irrigation.run_schedule_slot` | Run one slot’s full sequence now (`slot_id`) |
 | `simple_irrigation.run_due_zones` | Trigger “what’s due now” |
 | `simple_irrigation.stop_all` | Stop the active cycle |
+| `simple_irrigation.stop_zone` | End one zone of the running cycle; the rest carries on (`zone_id`) |
 | `simple_irrigation.set_mode` | Set `eco` / `normal` / `extra` |
 | `simple_irrigation.set_zone_enabled` | Enable/disable a zone |
 | `simple_irrigation.pause_until` | Pause automatic runs until a datetime (`until` field) |

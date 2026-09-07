@@ -162,6 +162,20 @@
         }
       }
     },
+    "stop_zone": {
+      "name": "Zone stoppen",
+      "description": "Beëindigt één zone van de lopende beurt en schakelt de uitgangen uit. De andere zones gaan door; was het de laatste zone, dan eindigt de beurt normaal.",
+      "fields": {
+        "zone_id": {
+          "name": "Zone-ID",
+          "description": "Interne zone-ID van de installatie (weergegeven in diagnostiek / paneel)."
+        },
+        "config_entry_id": {
+          "name": "Config entry ID",
+          "description": "Optioneel. Installatiedoel bij meerdere Simple Irrigation entries."
+        }
+      }
+    },
     "set_mode": {
       "name": "Modus instellen",
       "description": "Stelt de globale watermodus in (Eco, Normaal of Extra).",
@@ -263,7 +277,8 @@
     "entry_picker_empty": "Nog geen installaties. Voeg de integratie toe onder Instellingen → Apparaten & services → Integratie toevoegen en zoek naar Simple Irrigation.",
     "entry_picker_howto": "Voeg nog een plan toe (bijv. lente / zomer / andere tuin): gebruik Instellingen → Apparaten & services → Integratie toevoegen → Simple Irrigation. Elk plan verschijnt in de lijst hierboven.",
     "errors_request_failed": "Aanvraag mislukt",
-    "errors_not_running_skip": "Er wordt momenteel niets uitgevoerd.",
+    "errors_not_running": "Er wordt momenteel niets uitgevoerd.",
+    "errors_busy": "Irrigatie wordt al uitgevoerd.",
     "entity_placeholder_example": "Zoek op naam of entity ID",
     "entity_placeholder_script": "Zoek een script op naam of entity ID",
     "general_card_current_run": "Huidige run",
@@ -353,6 +368,10 @@
     "zones_err_unknown_zone": "Onbekende zone.",
     "zones_err_zone_disabled": "Deze zone is uitgeschakeld.",
     "zones_err_zone_no_outputs": "Voeg minstens één uitgang toe voordat u deze zone uitvoert.",
+    "zones_badge_running": "Actief",
+    "zones_badge_queued": "In wachtrij",
+    "zones_stop_zone": "Zone stoppen",
+    "zones_err_zone_not_running": "Deze zone maakt geen deel uit van de lopende beurt.",
     "zones_field_name_title": "Naam",
     "zones_field_name_desc": "Label voor deze zone in de UI en planning.",
     "zones_field_zone_name": "Zonenaam",
@@ -539,7 +558,7 @@
     "settings_max_parallel_hint": "Exclusieve zones worden altijd alleen uitgevoerd, ongeacht deze limiet.",
     "settings_default_hint": "Het openen van de zijbalk-item springt rechtstreeks naar deze installatie.",
     "settings_automations_summary": "Serviceoproepen & ID's",
-    "settings_automations_body": "Gebruik deze services van automaties: set_mode, set_zone_enabled, pause_until, clear_pause, run_zone, run_schedule_slot, stop_all. De config entry id hieronder identificeert deze installatie.",
+    "settings_automations_body": "Gebruik deze services van automaties: set_mode, set_zone_enabled, pause_until, clear_pause, run_zone, run_schedule_slot, stop_all, stop_zone. De config entry id hieronder identificeert deze installatie.",
     "settings_diagnostics_summary": "Diagnostiek (onbewerkte run-status)",
     "settings_danger_title": "Gevaarzone",
     "settings_danger_desc": "Het verwijderen van een installatie verwijdert de zones en planning. Dit gebeurt via Instellingen → Apparaten & Services.",

@@ -54,6 +54,17 @@ stop_all:
       selector:
         text: {}
 
+stop_zone:
+  fields:
+    zone_id:
+      required: true
+      selector:
+        text: {}
+    config_entry_id:
+      required: false
+      selector:
+        text: {}
+
 set_mode:
   fields:
     mode:

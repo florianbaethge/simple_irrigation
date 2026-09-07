@@ -162,6 +162,20 @@
         }
       }
     },
+    "stop_zone": {
+      "name": "Ferma zona",
+      "description": "Termina una zona del ciclo in corso e spegne le sue uscite. Le altre zone proseguono; se era l’ultima zona, il ciclo termina normalmente.",
+      "fields": {
+        "zone_id": {
+          "name": "ID zona",
+          "description": "Identificatore interno della zona dell’installazione (mostrato in diagnostica / pannello)."
+        },
+        "config_entry_id": {
+          "name": "ID voce di configurazione",
+          "description": "Facoltativo. Usa questa installazione quando esiste più di una voce di Simple Irrigation."
+        }
+      }
+    },
     "set_mode": {
       "name": "Imposta modalità",
       "description": "Imposta la modalità globale di irrigazione (Eco, Normale o Extra).",
@@ -263,7 +277,8 @@
     "entry_picker_empty": "Nessuna installazione ancora. Aggiungi l’integrazione in Impostazioni → Dispositivi e servizi → Aggiungi integrazione, poi cerca Simple Irrigation.",
     "entry_picker_howto": "Aggiungi un altro piano (es. primavera / estate / un altro giardino): usa Impostazioni → Dispositivi e servizi → Aggiungi integrazione → Simple Irrigation. Ogni piano appare nell’elenco sopra.",
     "errors_request_failed": "Richiesta non riuscita",
-    "errors_not_running_skip": "Nessun processo è in esecuzione al momento.",
+    "errors_not_running": "Nessun processo è in esecuzione al momento.",
+    "errors_busy": "L’irrigazione è già in esecuzione.",
     "entity_placeholder_example": "Cerca per nome o ID entità",
     "entity_placeholder_script": "Cerca uno script per nome o ID entità",
     "general_card_current_run": "Esecuzione corrente",
@@ -353,6 +368,10 @@
     "zones_err_unknown_zone": "Zona sconosciuta.",
     "zones_err_zone_disabled": "Questa zona è disabilitata.",
     "zones_err_zone_no_outputs": "Aggiungi almeno un’uscita prima di eseguire questa zona.",
+    "zones_badge_running": "In esecuzione",
+    "zones_badge_queued": "In coda",
+    "zones_stop_zone": "Ferma zona",
+    "zones_err_zone_not_running": "Questa zona non fa parte del ciclo in corso.",
     "zones_field_name_title": "Nome",
     "zones_field_name_desc": "Etichetta di questa zona nell’interfaccia e nelle pianificazioni.",
     "zones_field_zone_name": "Nome zona",
@@ -528,7 +547,7 @@
     "settings_max_parallel_hint": "Le zone esclusive vengono sempre eseguite da sole, indipendentemente da questo limite.",
     "settings_default_hint": "La voce nella barra laterale apre direttamente questo impianto.",
     "settings_automations_summary": "Servizi e ID",
-    "settings_automations_body": "Usa questi servizi dalle automazioni: set_mode, set_zone_enabled, pause_until, clear_pause, run_zone, run_schedule_slot, stop_all. L'ID della config entry qui sotto identifica questo impianto.",
+    "settings_automations_body": "Usa questi servizi dalle automazioni: set_mode, set_zone_enabled, pause_until, clear_pause, run_zone, run_schedule_slot, stop_all, stop_zone. L'ID della config entry qui sotto identifica questo impianto.",
     "settings_diagnostics_summary": "Diagnostica (stato grezzo)",
     "settings_danger_title": "Zona pericolosa",
     "settings_danger_desc": "La rimozione di un impianto elimina le sue zone e la pianificazione. Si esegue da Impostazioni → Dispositivi e servizi.",

@@ -162,6 +162,20 @@
         }
       }
     },
+    "stop_zone": {
+      "name": "Arrêter la zone",
+      "description": "Termine une zone du cycle en cours et coupe ses sorties. Les autres zones continuent ; s’il s’agissait de la dernière zone, le cycle se termine normalement.",
+      "fields": {
+        "zone_id": {
+          "name": "ID de zone",
+          "description": "Identifiant interne de la zone de l’installation (affiché dans les diagnostics / le panneau)."
+        },
+        "config_entry_id": {
+          "name": "ID d’entrée de configuration",
+          "description": "Facultatif. Installation cible lorsqu’il existe plus d’une entrée Simple Irrigation."
+        }
+      }
+    },
     "set_mode": {
       "name": "Définir le mode",
       "description": "Définit le mode d’arrosage global (Eco, Normal ou Extra).",
@@ -263,7 +277,8 @@
     "entry_picker_empty": "Aucune installation pour l’instant. Ajoutez l’intégration via Paramètres → Appareils et services → Ajouter une intégration, puis recherchez Simple Irrigation.",
     "entry_picker_howto": "Ajouter un autre plan (par ex. printemps / été / un autre jardin) : utilisez Paramètres → Appareils et services → Ajouter une intégration → Simple Irrigation. Chaque plan apparaît dans la liste ci-dessus.",
     "errors_request_failed": "Échec de la requête",
-    "errors_not_running_skip": "Rien n’est en cours d’exécution pour le moment.",
+    "errors_not_running": "Rien n’est en cours d’exécution pour le moment.",
+    "errors_busy": "L’irrigation est déjà en cours.",
     "entity_placeholder_example": "Rechercher par nom ou ID d’entité",
     "entity_placeholder_script": "Rechercher un script par nom ou ID d’entité",
     "general_card_current_run": "Arrosage en cours",
@@ -353,6 +368,10 @@
     "zones_err_unknown_zone": "Zone inconnue.",
     "zones_err_zone_disabled": "Cette zone est désactivée.",
     "zones_err_zone_no_outputs": "Ajoutez au moins une sortie avant d’arroser cette zone.",
+    "zones_badge_running": "En cours",
+    "zones_badge_queued": "En attente",
+    "zones_stop_zone": "Arrêter la zone",
+    "zones_err_zone_not_running": "Cette zone ne fait pas partie du cycle en cours.",
     "zones_field_name_title": "Nom",
     "zones_field_name_desc": "Libellé de cette zone dans l’interface et les plannings.",
     "zones_field_zone_name": "Nom de la zone",
@@ -539,7 +558,7 @@
     "settings_max_parallel_hint": "Les zones exclusives s’exécutent toujours seules, quelle que soit cette limite.",
     "settings_default_hint": "Ouvrir l’entrée de la barre latérale mène directement à cette installation.",
     "settings_automations_summary": "Appels de service et ID",
-    "settings_automations_body": "Utilisez ces services depuis vos automatisations : set_mode, set_zone_enabled, pause_until, clear_pause, run_zone, run_schedule_slot, stop_all. L’ID d’entrée de configuration ci-dessous identifie cette installation.",
+    "settings_automations_body": "Utilisez ces services depuis vos automatisations : set_mode, set_zone_enabled, pause_until, clear_pause, run_zone, run_schedule_slot, stop_all, stop_zone. L’ID d’entrée de configuration ci-dessous identifie cette installation.",
     "settings_diagnostics_summary": "Diagnostics (état d’exécution brut)",
     "settings_danger_title": "Zone de danger",
     "settings_danger_desc": "Supprimer une installation efface ses zones et sa programmation. Cela se fait depuis Paramètres → Appareils et services.",

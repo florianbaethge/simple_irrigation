@@ -34,7 +34,7 @@ from .const import (
 from .grouping import compute_phases
 from .models import Guard, Installation, ScheduleSlot, Zone, normalize_weekdays
 from .cycle import CYCLE_KINDS, anchor_week_parity, generate_cycle_slots
-from .runtime import ScheduleSlotRunError, ZoneManualRunError
+from .runtime import ScheduleSlotRunError, ZoneManualRunError, ZoneStopError
 from .scheduler import compute_next_runs, phases_for_slot
 from .time_util import next_slot_fire_local_any, parse_hh_mm
 from .validation import (
@@ -951,7 +951,7 @@ class SimpleIrrigationPanelRunZoneView(HomeAssistantView):
 
 
 class SimpleIrrigationPanelControlView(HomeAssistantView):
-    """POST: stop run, skip phase, clear stale error message."""
+    """POST: stop run, stop one zone, skip phase, clear stale error message."""
 
     url = "/api/simple_irrigation/panel/control"
     name = "api:simple_irrigation:panel_control"
@@ -960,7 +960,10 @@ class SimpleIrrigationPanelControlView(HomeAssistantView):
         vol.Schema(
             {
                 vol.Required("entry_id"): cv.string,
-                vol.Required("action"): vol.In(("stop", "skip_phase", "clear_error")),
+                vol.Required("action"): vol.In(
+                    ("stop", "stop_zone", "skip_phase", "clear_error")
+                ),
+                vol.Optional("zone_id"): cv.string,
             }
         )
     )
@@ -988,6 +991,17 @@ class SimpleIrrigationPanelControlView(HomeAssistantView):
 
         if action == "stop":
             await runtime.async_stop_all()
+            return self.json({"success": True})
+
+        if action == "stop_zone":
+            zid = data.get("zone_id")
+            if not zid:
+                return self.json({"success": False, "error": "missing_zone_id"}, status_code=400)
+            try:
+                await runtime.async_stop_zone(zid)
+            except ZoneStopError as err:
+                status = 409 if err.code == "zone_not_running" else 400
+                return self.json({"success": False, "error": err.code}, status_code=status)
             return self.json({"success": True})
 
         # skip_phase

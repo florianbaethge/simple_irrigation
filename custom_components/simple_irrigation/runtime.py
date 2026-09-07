@@ -59,6 +59,14 @@ class ScheduleSlotRunError(HomeAssistantError):
         super().__init__(message)
 
 
+class ZoneStopError(HomeAssistantError):
+    """A single zone cannot be stopped; ``code`` is used by the panel HTTP API."""
+
+    def __init__(self, code: str, message: str) -> None:
+        self.code = code
+        super().__init__(message)
+
+
 class IrrigationRuntime:
     """Execute scheduled or manual irrigation runs."""
 
@@ -77,6 +85,9 @@ class IrrigationRuntime:
         self._after_phase_zone_order: list[str] = []
         self._mid_phase_extensions: list[str] = []
         self._phase_extend_event = asyncio.Event()
+        # Zones asked to end early while watering (stop_zone). The zone's wait
+        # loop polls this once a second, the rest of the run is not touched.
+        self._zone_stop_requests: set[str] = set()
         # Slots behind the current run; they may override the pipeline's scripts.
         self._run_slots: list[ScheduleSlot] = []
 
@@ -161,6 +172,7 @@ class IrrigationRuntime:
             if scheduled:
                 self._manual_zone_order.clear()
             self._phase_extend_event.clear()
+            self._zone_stop_requests.clear()
 
             rs.run_state = RUN_STATE_PREPARING
             rs.manual_run = not scheduled
@@ -227,6 +239,7 @@ class IrrigationRuntime:
             self._after_phase_zone_order.clear()
             self._mid_phase_extensions.clear()
             self._phase_queue.clear()
+            self._zone_stop_requests.clear()
             self._run_slots = []
 
     def _slots_for_ids(self, slot_ids: list[str]) -> list[ScheduleSlot]:
@@ -419,6 +432,10 @@ class IrrigationRuntime:
             zone = inst.zones.get(zid)
             if zone is None or not zone.enabled:
                 return
+            if zid in self._zone_stop_requests:
+                # Stopped in the moment between launch and first poll.
+                self._zone_stop_requests.discard(zid)
+                return
             duration = self._duration_overrides.get(
                 zid,
                 zone.duration_for_mode(mode),
@@ -532,6 +549,8 @@ class IrrigationRuntime:
                     return
                 if self._skip_phase_event.is_set():
                     return
+                if zone_id and zone_id in self._zone_stop_requests:
+                    return
                 remaining = deadline - loop.time()
                 if remaining <= 0:
                     return
@@ -573,6 +592,8 @@ class IrrigationRuntime:
             await asyncio.gather(*(self._async_switch_turn_on(eid) for eid in outputs))
             await self._async_wait_zone_duration(duration_min * 60, zone.zone_id)
             await asyncio.gather(*(self._async_switch_turn_off(eid) for eid in outputs))
+        stopped = zone.zone_id in self._zone_stop_requests
+        self._zone_stop_requests.discard(zone.zone_id)
         now = dt_util.utcnow()
         rs = self.coordinator.run_state
         rs.last_run_per_zone[zone.zone_id] = now
@@ -583,6 +604,8 @@ class IrrigationRuntime:
                 "zone_id": zone.zone_id,
                 "entity_id": first,
                 "entity_ids": outputs,
+                # True when stop_zone cut the zone short of its planned duration.
+                "stopped": stopped,
             },
         )
 
@@ -696,6 +719,7 @@ class IrrigationRuntime:
                         "Zone is already part of this irrigation run",
                     )
                 self._duration_overrides[zone_id] = dur
+                self._zone_stop_requests.discard(zone_id)
                 if rs.run_state == RUN_STATE_PREPARING:
                     self._manual_zone_order.append(zone_id)
                     self._phase_queue = compute_phases(
@@ -802,9 +826,85 @@ class IrrigationRuntime:
                 slot_ids=[s.slot_id for s in due_slots],
             )
 
+    def _upcoming_phases_snapshot(self) -> list[list[str]]:
+        """What the run still has ahead of it, in the shape the panel shows."""
+        inst = self.coordinator.installation
+        phases = [list(g) for g in self._phase_queue]
+        if self._after_phase_zone_order:
+            tail = compute_phases(
+                self._after_phase_zone_order,
+                inst.zones,
+                inst.max_parallel_zones,
+            )
+            phases.extend(list(g) for g in tail)
+        return phases
+
+    def _discard_queued_zone(self, zone_id: str) -> bool:
+        """Drop a zone that has not started yet from every place it is waiting."""
+        found = False
+        if zone_id in self._manual_zone_order:
+            self._manual_zone_order.remove(zone_id)
+            found = True
+        kept: list[list[str]] = []
+        for group in self._phase_queue:
+            if zone_id in group:
+                found = True
+                group = [z for z in group if z != zone_id]
+            if group:
+                kept.append(group)
+        self._phase_queue[:] = kept
+        if zone_id in self._after_phase_zone_order:
+            self._after_phase_zone_order.remove(zone_id)
+            found = True
+        if zone_id in self._mid_phase_extensions:
+            self._mid_phase_extensions.remove(zone_id)
+            found = True
+        return found
+
+    async def async_stop_zone(self, zone_id: str) -> None:
+        """End one zone of the current run; every other zone carries on.
+
+        A watering zone is told to stop, its outputs go off on the next poll of
+        its wait loop, and the run continues with whatever is left -- so stopping
+        the last zone simply lets the run finish (post-run script included). A
+        zone that is still queued is taken out of the plan. During the pre-start
+        phase, removing the only zone ends the run right away instead of letting
+        the pre-start outputs and script run for nothing.
+        """
+        inst = self.coordinator.installation
+        if zone_id not in inst.zones:
+            raise ZoneStopError("unknown_zone", f"Unknown zone {zone_id}")
+
+        async with self._run_lock:
+            rs = self.coordinator.run_state
+            if not self.is_busy() or rs.run_state == RUN_STATE_STOPPING:
+                raise ZoneStopError("zone_not_running", "Zone is not part of the current run")
+
+            active = zone_id in rs.active_zone_ids
+            queued = self._discard_queued_zone(zone_id)
+            if not active and not queued:
+                raise ZoneStopError("zone_not_running", "Zone is not part of the current run")
+
+            if active:
+                self._zone_stop_requests.add(zone_id)
+
+            others_active = [z for z in rs.active_zone_ids if z != zone_id]
+            nothing_left = (
+                not others_active
+                and not self._phase_queue
+                and not self._after_phase_zone_order
+                and not self._mid_phase_extensions
+            )
+            if nothing_left and rs.run_state == RUN_STATE_PREPARING:
+                self._stop_event.set()
+
+            rs.upcoming_phases = self._upcoming_phases_snapshot()
+            await self.coordinator.async_update_run_state(rs)
+
     async def async_stop_all(self) -> None:
         """Signal stop and turn off outputs."""
         self._stop_event.set()
+        self._zone_stop_requests.clear()
         if self._task and not self._task.done():
             try:
                 await asyncio.wait_for(self._task, timeout=300)

@@ -6,6 +6,36 @@ import type { HomeAssistant } from "./types";
 const ERROR_CODE_RE = /^[a-z][a-z0-9_]*$/;
 
 /**
+ * The backend error code behind a failed panel call, if there is one.
+ *
+ * A 2xx reply with `success: false` carries the code in `error`. For every other
+ * status Home Assistant's `callApi` rejects with
+ * `{ error: "Response error: <status>", status_code, body }`, and the code sits in
+ * `body.error`. Reading only the top level shows the HTTP status to the user
+ * instead of the translated sentence (GitHub issue #53).
+ */
+export function apiErrorCode(value: unknown): string | undefined {
+  if (typeof value === "string") {
+    return ERROR_CODE_RE.test(value) ? value : undefined;
+  }
+  if (value == null || typeof value !== "object") {
+    return undefined;
+  }
+  const o = value as Record<string, unknown>;
+  const body = o.body;
+  if (body != null && typeof body === "object") {
+    const code = (body as Record<string, unknown>).error;
+    if (typeof code === "string" && ERROR_CODE_RE.test(code)) {
+      return code;
+    }
+  }
+  if (typeof o.error === "string" && ERROR_CODE_RE.test(o.error)) {
+    return o.error;
+  }
+  return undefined;
+}
+
+/**
  * Turn a backend error code into a translated sentence.
  * Falls back to the raw code when no translation exists, so new codes degrade
  * to the previous behaviour instead of showing an empty message.
@@ -28,8 +58,12 @@ export function formatApiError(value: unknown, hass?: HomeAssistant): string {
   if (value == null || value === "") {
     return fallback;
   }
+  const code = apiErrorCode(value);
+  if (code !== undefined) {
+    return translateErrorCode(code, hass);
+  }
   if (typeof value === "string") {
-    return translateErrorCode(value, hass);
+    return value;
   }
   if (value instanceof Error) {
     return value.message;
@@ -40,7 +74,7 @@ export function formatApiError(value: unknown, hass?: HomeAssistant): string {
       return o.message;
     }
     if (typeof o.error === "string") {
-      return translateErrorCode(o.error, hass);
+      return o.error;
     }
     try {
       return JSON.stringify(value);

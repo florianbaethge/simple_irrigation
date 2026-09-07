@@ -162,6 +162,20 @@
         }
       }
     },
+    "stop_zone": {
+      "name": "Stop zone",
+      "description": "Ends one zone of the current run and turns its outputs off. The other zones of the run carry on; when it was the last zone, the run finishes normally.",
+      "fields": {
+        "zone_id": {
+          "name": "Zone ID",
+          "description": "Internal zone identifier from the installation (shown in diagnostics / panel)."
+        },
+        "config_entry_id": {
+          "name": "Config entry ID",
+          "description": "Optional. Target installation when more than one Simple Irrigation entry exists."
+        }
+      }
+    },
     "set_mode": {
       "name": "Set mode",
       "description": "Sets global watering mode (Eco, Normal, or Extra).",
@@ -263,7 +277,8 @@
     "entry_picker_empty": "No installations yet. Add the integration under Settings → Devices & services → Add integration, then search for Simple Irrigation.",
     "entry_picker_howto": "Add another plan (e.g. spring / summer / another garden): use Settings → Devices & services → Add integration → Simple Irrigation. Each plan appears in the list above.",
     "errors_request_failed": "Request failed",
-    "errors_not_running_skip": "Nothing is running right now.",
+    "errors_not_running": "Nothing is running right now.",
+    "errors_busy": "Irrigation is already running.",
     "entity_placeholder_example": "Search by name or entity ID",
     "entity_placeholder_script": "Search for a script by name or entity ID",
     "general_card_current_run": "Current run",
@@ -353,6 +368,10 @@
     "zones_err_unknown_zone": "Unknown zone.",
     "zones_err_zone_disabled": "This zone is disabled.",
     "zones_err_zone_no_outputs": "Add at least one output before running this zone.",
+    "zones_badge_running": "Running",
+    "zones_badge_queued": "Queued",
+    "zones_stop_zone": "Stop zone",
+    "zones_err_zone_not_running": "This zone is not part of the current run.",
     "zones_field_name_title": "Name",
     "zones_field_name_desc": "Label for this zone in the UI and schedules.",
     "zones_field_zone_name": "Zone name",
@@ -539,7 +558,7 @@
     "settings_max_parallel_hint": "Exclusive zones always run alone, regardless of this limit.",
     "settings_default_hint": "Opening the sidebar entry jumps straight to this installation.",
     "settings_automations_summary": "Service calls & IDs",
-    "settings_automations_body": "Use these services from automations: set_mode, set_zone_enabled, pause_until, clear_pause, run_zone, run_schedule_slot, stop_all. The config entry id below identifies this installation.",
+    "settings_automations_body": "Use these services from automations: set_mode, set_zone_enabled, pause_until, clear_pause, run_zone, run_schedule_slot, stop_all, stop_zone. The config entry id below identifies this installation.",
     "settings_diagnostics_summary": "Diagnostics (raw run state)",
     "settings_danger_title": "Danger zone",
     "settings_danger_desc": "Removing an installation deletes its zones and schedule. This is done from Settings → Devices & Services.",

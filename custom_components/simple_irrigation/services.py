@@ -31,6 +31,7 @@ from .const import (
     SERVICE_SET_MODE,
     SERVICE_SET_ZONE_ENABLED,
     SERVICE_STOP_ALL,
+    SERVICE_STOP_ZONE,
 )
 from .models import Installation
 
@@ -81,6 +82,11 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         data = _get_domain_data(hass, call)
         runtime = data["runtime"]
         await runtime.async_stop_all()
+
+    async def handle_stop_zone(call: ServiceCall) -> None:
+        data = _get_domain_data(hass, call)
+        runtime = data["runtime"]
+        await runtime.async_stop_zone(call.data[ATTR_ZONE_ID])
 
     async def handle_set_mode(call: ServiceCall) -> None:
         data = _get_domain_data(hass, call)
@@ -168,6 +174,17 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         SERVICE_STOP_ALL,
         handle_stop_all,
         schema=vol.Schema({vol.Optional(ATTR_CONFIG_ENTRY_ID): cv.string}),
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_STOP_ZONE,
+        handle_stop_zone,
+        schema=vol.Schema(
+            {
+                vol.Required(ATTR_ZONE_ID): cv.string,
+                vol.Optional(ATTR_CONFIG_ENTRY_ID): cv.string,
+            }
+        ),
     )
     hass.services.async_register(
         DOMAIN,

@@ -8,6 +8,8 @@ from datetime import datetime
 from typing import Any
 
 from .const import (
+    MAX_REPETITIONS,
+    MAX_SOAK_MIN,
     GUARD_BOOLEAN_OPERATORS,
     GUARD_NUMERIC_OPERATORS,
     GUARD_OP_ABOVE,
@@ -226,6 +228,22 @@ class ScheduleSlot:
     cycle_id: str | None = None  # uuid4 shared by all slots of one cycle
     cycle_kind: str = "custom"  # daily | twice_daily | every_n_days | n_per_week | weekly | biweekly | custom
     cycle_meta: dict[str, Any] | None = None  # {"n", "anchor_weekday", "times", "label"}
+    # --- Cycle & Soak --------------------------------------------------------
+    # Water in several short passes with rests in between, so the water soaks in
+    # instead of running off. One repetition with no pauses is a plain run; the
+    # runtime sees the difference only as extra steps in its phase queue.
+    repetitions: int = 1
+    soak_between_phases_min: int = 0
+    soak_between_repetitions_min: int = 0
+
+    @property
+    def cycle_soak(self) -> bool:
+        """Whether this slot repeats or rests at all."""
+        return (
+            self.repetitions > 1
+            or self.soak_between_phases_min > 0
+            or self.soak_between_repetitions_min > 0
+        )
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize to JSON-compatible dict."""
@@ -250,6 +268,9 @@ class ScheduleSlot:
             "cycle_id": self.cycle_id,
             "cycle_kind": self.cycle_kind,
             "cycle_meta": dict(self.cycle_meta) if self.cycle_meta else None,
+            "repetitions": self.repetitions,
+            "soak_between_phases_min": self.soak_between_phases_min,
+            "soak_between_repetitions_min": self.soak_between_repetitions_min,
         }
 
     @staticmethod
@@ -291,7 +312,23 @@ class ScheduleSlot:
             cycle_id=cycle_id,
             cycle_kind=cycle_kind,
             cycle_meta=cycle_meta,
+            repetitions=_clamp_int(data.get("repetitions"), 1, 1, MAX_REPETITIONS),
+            soak_between_phases_min=_clamp_int(
+                data.get("soak_between_phases_min"), 0, 0, MAX_SOAK_MIN
+            ),
+            soak_between_repetitions_min=_clamp_int(
+                data.get("soak_between_repetitions_min"), 0, 0, MAX_SOAK_MIN
+            ),
         )
+
+
+def _clamp_int(raw: Any, default: int, lo: int, hi: int) -> int:
+    """An int within [lo, hi]; ``default`` when the value is missing or junk."""
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return default
+    return max(lo, min(hi, value))
 
 
 @dataclass
@@ -411,6 +448,9 @@ class RunState:
     # countdown without polling. Written by to_dict() for the panel payload but
     # deliberately never read back in from_dict() — see there.
     zone_ends_at: dict[str, datetime] = field(default_factory=dict)
+    # End of the Cycle & Soak pause the run is resting in, so the UI can count
+    # it down; None while watering. Volatile exactly like ``zone_ends_at``.
+    soak_until: datetime | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize to JSON-compatible dict."""
@@ -448,6 +488,7 @@ class RunState:
             "zone_ends_at": {
                 k: v.isoformat() for k, v in self.zone_ends_at.items()
             },
+            "soak_until": self.soak_until.isoformat() if self.soak_until else None,
         }
 
     @staticmethod
@@ -487,7 +528,8 @@ class RunState:
             manual_run=bool(data.get("manual_run", False)),
             upcoming_phases=upcoming_phases,
             active_script=data.get("active_script") or None,
-            # zone_ends_at is intentionally NOT restored. It only means something
-            # while this process is watering; after a restart no zone is running
-            # any more and a recovered end time would render a phantom countdown.
+            # zone_ends_at and soak_until are intentionally NOT restored. They only
+            # mean something while this process is watering; after a restart no
+            # zone is running any more and a recovered end time would render a
+            # phantom countdown.
         )

@@ -14,6 +14,7 @@ from homeassistant.util import dt as dt_util
 from .grouping import compute_phases
 from .guards import guards_allow_run
 from .models import Installation, ScheduleSlot, Zone
+from .program import RunStep, expand_program
 from .time_util import next_slot_fire_local_any
 
 if TYPE_CHECKING:
@@ -70,6 +71,15 @@ def phases_for_slot(
         max_parallel,
         skip_disabled=True,
     )
+
+
+def program_for_slot(
+    slot: ScheduleSlot,
+    zones: dict[str, Zone],
+    max_parallel: int,
+) -> list[RunStep]:
+    """The slot's phases as run steps, repeated and rested per Cycle & Soak."""
+    return expand_program(phases_for_slot(slot, zones, max_parallel), slot)
 
 
 class IrrigationScheduler:
@@ -203,18 +213,20 @@ class IrrigationScheduler:
             if not due_slots:
                 return
 
-            merged_phases: list[list[str]] = []
+            # Slots due in the same minute run back to back. Each keeps its own
+            # Cycle & Soak steps; the queue is the one place they meet.
+            merged_steps: list[RunStep] = []
             for slot in due_slots:
-                merged_phases.extend(
-                    phases_for_slot(slot, inst.zones, inst.max_parallel_zones),
+                merged_steps.extend(
+                    program_for_slot(slot, inst.zones, inst.max_parallel_zones),
                 )
 
-            if not merged_phases:
+            if not merged_steps:
                 return
 
             slot_ids = [s.slot_id for s in due_slots]
             await self.runtime.async_run_phases(
-                merged_phases,
+                merged_steps,
                 scheduled=True,
                 slot_ids=slot_ids,
             )

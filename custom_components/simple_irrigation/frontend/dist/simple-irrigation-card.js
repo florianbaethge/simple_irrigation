@@ -376,6 +376,8 @@ const TRANSLATIONS = {
         state_stopping: "Stopping",
         state_paused: "Paused",
         state_error: "Error",
+        state_soaking: "Soaking",
+        soak_remaining: "Soaking · resumes in",
         // status view
         next_run: "Next run",
         no_next_run: "No run scheduled",
@@ -464,6 +466,7 @@ const TRANSLATIONS = {
         compact_idle: "{state} · next {time} · ~{duration}",
         compact_idle_no_run: "{state} · nothing scheduled",
         compact_running: "{zone} · {time} left · {index} of {total}",
+        compact_soaking: "Soaking · {time} left · {index} of {total}",
         compact_paused: "Paused until {time}",
         // badges
         badge_next: "Next {time}",
@@ -552,6 +555,8 @@ const TRANSLATIONS = {
         state_stopping: "Arrêt…",
         state_paused: "En pause",
         state_error: "Erreur",
+        state_soaking: "Pause (infiltration)",
+        soak_remaining: "Pause · reprise dans",
         // status view
         next_run: "Prochain arrosage",
         no_next_run: "Aucun arrosage planifié",
@@ -640,6 +645,7 @@ const TRANSLATIONS = {
         compact_idle: "{state} · prochain {time} · ~{duration}",
         compact_idle_no_run: "{state} · rien de planifié",
         compact_running: "{zone} · encore {time} · {index} sur {total}",
+        compact_soaking: "Pause · encore {time} · {index} sur {total}",
         compact_paused: "En pause jusqu’à {time}",
         // badges
         badge_next: "Prochain {time}",
@@ -727,6 +733,8 @@ const TRANSLATIONS = {
         state_stopping: "Wird gestoppt",
         state_paused: "Pausiert",
         state_error: "Fehler",
+        state_soaking: "Pause (Einziehen)",
+        soak_remaining: "Pause · weiter in",
         next_run: "Nächster Lauf",
         no_next_run: "Kein Lauf geplant",
         no_next_run_hint: "Lege im Simple-Irrigation-Panel einen Zeitplan an.",
@@ -807,6 +815,7 @@ const TRANSLATIONS = {
         compact_idle: "{state} · nächster Lauf {time} · ~{duration}",
         compact_idle_no_run: "{state} · nichts geplant",
         compact_running: "{zone} · noch {time} · {index} von {total}",
+        compact_soaking: "Pause · noch {time} · {index} von {total}",
         compact_paused: "Pausiert bis {time}",
         badge_next: "Nächster {time}",
         badge_paused: "Pausiert bis {time}",
@@ -889,6 +898,8 @@ const TRANSLATIONS = {
         state_stopping: "Stoppen",
         state_paused: "Gepauzeerd",
         state_error: "Fout",
+        state_soaking: "Pauze (intrekken)",
+        soak_remaining: "Pauze · verder over",
         next_run: "Volgende beurt",
         no_next_run: "Geen beurt gepland",
         no_next_run_hint: "Maak een tijdvak aan in het Simple Irrigation-paneel.",
@@ -969,6 +980,7 @@ const TRANSLATIONS = {
         compact_idle: "{state} · volgende {time} · ~{duration}",
         compact_idle_no_run: "{state} · niets gepland",
         compact_running: "{zone} · nog {time} · {index} van {total}",
+        compact_soaking: "Pauze · nog {time} · {index} van {total}",
         compact_paused: "Gepauzeerd tot {time}",
         badge_next: "Volgende {time}",
         badge_paused: "Gepauzeerd tot {time}",
@@ -1051,6 +1063,8 @@ const TRANSLATIONS = {
         state_stopping: "Arresto",
         state_paused: "In pausa",
         state_error: "Errore",
+        state_soaking: "Pausa (assorbimento)",
+        soak_remaining: "Pausa · riprende tra",
         next_run: "Prossima irrigazione",
         no_next_run: "Nessuna irrigazione programmata",
         no_next_run_hint: "Aggiungi una fascia oraria nel pannello Simple Irrigation.",
@@ -1131,6 +1145,7 @@ const TRANSLATIONS = {
         compact_idle: "{state} · prossima {time} · ~{duration}",
         compact_idle_no_run: "{state} · nulla in programma",
         compact_running: "{zone} · {time} rimanenti · {index} di {total}",
+        compact_soaking: "Pausa · {time} rimanenti · {index} di {total}",
         compact_paused: "In pausa fino a {time}",
         badge_next: "Prossima {time}",
         badge_paused: "In pausa fino a {time}",
@@ -3974,7 +3989,14 @@ let SimpleIrrigationCard = class SimpleIrrigationCard extends i$2 {
         return this._snapshot?.next_runs.find((run) => !run.skipped_by_pause);
     }
     _stateLabel() {
+        if (this._soaking())
+            return localize(this.hass, "state_soaking");
         return localize(this.hass, `state_${this._snapshot?.state ?? "idle"}`);
+    }
+    /** Resting between Cycle & Soak passes: the run is on, no zone is. */
+    _soaking() {
+        const snap = this._snapshot;
+        return snap?.state === "running" && Boolean(snap.soak_until);
     }
     _pillClass() {
         switch (this._snapshot?.state) {
@@ -4218,7 +4240,12 @@ let SimpleIrrigationCard = class SimpleIrrigationCard extends i$2 {
                 <i style=${o$1({ width: `${progress}%` })}></i>
               </div>
             `
-            : A}
+            : this._soaking()
+                ? b `
+                <div class="label">${localize(this.hass, "soak_remaining")}</div>
+                <div class="big pri">${countdown(secondsUntil(snap.soak_until))}</div>
+              `
+                : A}
         <div class="queue">
           ${active.map((zone) => b `<div class="qrow">
               <span class="qdot"></span>
@@ -4925,6 +4952,14 @@ let SimpleIrrigationCard = class SimpleIrrigationCard extends i$2 {
             stateText = localize(this.hass, "compact_running", {
                 zone: lead.name,
                 time: countdown(secondsUntil(lead.ends_at)),
+                index: snap.phase_index ?? 1,
+                total: snap.phase_total ?? 1,
+            });
+            stateCls = "pri";
+        }
+        else if (this._soaking()) {
+            stateText = localize(this.hass, "compact_soaking", {
+                time: countdown(secondsUntil(snap.soak_until)),
                 index: snap.phase_index ?? 1,
                 total: snap.phase_total ?? 1,
             });

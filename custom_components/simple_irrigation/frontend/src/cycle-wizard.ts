@@ -35,7 +35,16 @@ import {
   type CycleMeta,
   type CycleSlotSpec,
 } from "./cycle";
-import { computePhases, phaseIndexByZoneId, type ZonePhaseInput } from "./schedule-phases";
+import {
+  computePhases,
+  cycleSoakOf,
+  phaseIndexByZoneId,
+  programMinutes,
+  PLAIN_RUN,
+  type CycleSoak,
+  type ZonePhaseInput,
+} from "./schedule-phases";
+import { renderCycleSoakEditor } from "./cycle-soak-editor";
 import { durationForMode, parseTimeLocalToMinutes, minutesToTimeLocal } from "./timetable-model";
 import { formatDateTimeForDisplay } from "./date-format";
 import type { HomeAssistant } from "./types";
@@ -213,6 +222,7 @@ export class CycleWizard extends LitElement {
   @state() private _ignoreGlobalGuards = false;
   @state() private _preStartScript: ScriptOverride = EMPTY_SCRIPT_OVERRIDE;
   @state() private _postRunScript: ScriptOverride = EMPTY_SCRIPT_OVERRIDE;
+  @state() private _cycleSoak: CycleSoak = PLAIN_RUN;
   @state() private _cycleId: string | null = null;
   @state() private _busy = false;
   @state() private _msg?: string;
@@ -240,6 +250,7 @@ export class CycleWizard extends LitElement {
       this._ignoreGlobalGuards = false;
       this._preStartScript = { ...EMPTY_SCRIPT_OVERRIDE };
       this._postRunScript = { ...EMPTY_SCRIPT_OVERRIDE };
+      this._cycleSoak = { ...PLAIN_RUN };
       this._syncDefaultsForOption();
     }
     this._step = opts?.step ?? 1;
@@ -275,6 +286,7 @@ export class CycleWizard extends LitElement {
     // All members of a cycle share their scripts, so the first one speaks for all.
     this._preStartScript = normalizeScriptOverride(first, "pre_start");
     this._postRunScript = normalizeScriptOverride(first, "post_run");
+    this._cycleSoak = cycleSoakOf(first);
   }
 
   private _option(): KindOption {
@@ -352,16 +364,13 @@ export class CycleWizard extends LitElement {
     const zones = this.installation?.zones as Record<string, Record<string, unknown>> | undefined;
     if (!zones) return 0;
     const phases = computePhases(this._zoneIds, this._zonesPhaseInput(), this._maxParallel(), true);
-    let total = Math.max(0, Number(this.installation?.pre_start_delay_sec ?? 10)) / 60;
-    for (const phase of phases) {
-      let phaseMax = 0;
-      for (const zid of phase) {
-        const z = zones[zid];
-        if (z && Boolean(z.enabled ?? true)) phaseMax = Math.max(phaseMax, durationForMode(z, this._mode()));
-      }
-      total += phaseMax;
-    }
-    return Math.round(total);
+    const preStart = Math.max(0, Number(this.installation?.pre_start_delay_sec ?? 10)) / 60;
+    const mode = this._mode();
+    const minutes = programMinutes(phases, this._cycleSoak, (zid) => {
+      const z = zones[zid];
+      return z && Boolean(z.enabled ?? true) ? durationForMode(z, mode) : 0;
+    });
+    return Math.round(preStart + minutes);
   }
 
   private _close(): void {
@@ -437,6 +446,9 @@ export class CycleWizard extends LitElement {
         ignore_global_guards: this._ignoreGlobalGuards,
         ...scriptOverrideForSave(this._preStartScript, "pre_start"),
         ...scriptOverrideForSave(this._postRunScript, "post_run"),
+        repetitions: this._cycleSoak.repetitions,
+        soak_between_phases_min: this._cycleSoak.soakBetweenPhasesMin,
+        soak_between_repetitions_min: this._cycleSoak.soakBetweenRepetitionsMin,
       });
       if (!res.success) {
         this._msg = formatApiError(res.error, this.hass);
@@ -707,6 +719,10 @@ export class CycleWizard extends LitElement {
           ></ha-input>
         </div>
       </div>
+
+      ${renderCycleSoakEditor(this.hass, this._cycleSoak, this._busy, (next) => {
+        this._cycleSoak = next;
+      })}
 
       <div class="field-block">
         <span class="field-title">${t(this.hass, "config_panel.guards_section_title")}</span>

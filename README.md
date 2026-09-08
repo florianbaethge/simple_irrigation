@@ -140,6 +140,23 @@ Why the split? A slot can water on chosen weekdays and, optionally, only in **od
 - **Optimize cycles:** detects existing single-day slots that together form a known cadence and offers to merge them into one cycle — no re-entry, nothing runs differently.
 - **Run now:** *Run next slot now* (Overview), *Run this slot now* (a schedule row) and *Run zone now* (Zones) all use the same pre-start and shutdown pipeline as a scheduled run.
 
+#### Cycle & Soak
+
+Sloped lawns and clay soil cannot take twenty minutes of water at once — it runs off before it soaks in. **Schedule → edit a slot (or the cycle wizard) → Cycle & Soak** waters the slot in several short passes instead:
+
+| Setting | Effect |
+|---------|--------|
+| **Repetitions** | How often the slot's phases run, in order. `1` is a plain run. |
+| **Rest between phases** | Minutes every output stays closed between two phases of the same pass. |
+| **Rest between repetitions** | Minutes between the last phase of one pass and the first of the next. |
+
+Example — one lawn zone, 3 repetitions of its 10-minute mode duration, 15 minutes rest between repetitions: it waters 10 min, rests 15, waters 10, rests 15, waters 10. The slot's estimated duration on Schedule, Overview, Timetable and the card counts the rests, and the Timetable draws every pass.
+
+- A rest is a real pause: **every output is closed, pre-start outputs included** — a pump must not run against closed valves for a quarter of an hour. Before the next pass they come back up with the usual pre-start delay.
+- **Stop** ends the run, rests included. **Skip phase** cuts a rest short, and skipping a phase skips the rest after it too — whoever skips wants to see the next zone, not a pause.
+- Overview and the card show **Soaking** with a countdown while the run rests; `binary_sensor.<installation>_running` carries the end of the rest as its `soak_until` attribute.
+- Rests are per slot. Several slots due in the same minute run back to back, each with its own rests; a rest with nothing left to water behind it is skipped.
+
 ### Conditions
 
 A **condition** states something that must hold for a scheduled run to start — "water, but only while the soil is dry". Each one is an entity, a comparison and a value:

@@ -6,7 +6,7 @@ import { exportPath } from "../navigation";
 import { t } from "../i18n";
 import { sharedStyles } from "../shared-styles";
 import { formatTimeLocalForDisplay, weekdayLong, weekdaysSummary } from "../date-format";
-import { computePhases, type ZonePhaseInput } from "../schedule-phases";
+import { computePhases, cycleSoakOf, programMinutes, type ZonePhaseInput } from "../schedule-phases";
 import { durationForMode } from "../timetable-model";
 import { mondayBasedWeekday, weekParityMatches, type CycleMeta } from "../cycle";
 import type { HomeAssistant, ScheduleNext } from "../types";
@@ -313,27 +313,23 @@ export class ViewOverview extends LitElement {
     return Number.isFinite(n) && n >= 1 ? n : 2;
   }
 
-  private _slotEstimateMin(zoneIds: string[], mode: string): number {
+  private _slotEstimateMin(slot: Record<string, unknown> | undefined, mode: string): number {
     const zones = this._inst.zones as Record<string, Record<string, unknown>> | undefined;
-    if (!zones) return 0;
+    if (!zones || !slot) return 0;
+    const zoneIds = Array.isArray(slot.zone_ids_ordered) ? (slot.zone_ids_ordered as string[]) : [];
+    if (!zoneIds.length) return 0;
     const phases = computePhases(zoneIds, this._zonesPhaseInput(), this._maxParallel(), true);
     const preStart = Math.max(0, Number(this._inst.pre_start_delay_sec ?? 10)) / 60;
-    let total = preStart;
-    for (const phase of phases) {
-      let phaseMax = 0;
-      for (const zid of phase) {
-        const z = zones[zid];
-        if (z && Boolean(z.enabled ?? true)) phaseMax = Math.max(phaseMax, durationForMode(z, mode));
-      }
-      total += phaseMax;
-    }
-    return Math.round(total);
+    const minutes = programMinutes(phases, cycleSoakOf(slot), (zid) => {
+      const z = zones[zid];
+      return z && Boolean(z.enabled ?? true) ? durationForMode(z, mode) : 0;
+    });
+    return Math.round(preStart + minutes);
   }
 
-  private _slotZoneIds(slotId: string): string[] {
+  private _slot(slotId: string): Record<string, unknown> | undefined {
     const slots = this._inst.schedule_slots as Array<Record<string, unknown>> | undefined;
-    const s = slots?.find((x) => String(x.slot_id) === slotId);
-    return s && Array.isArray(s.zone_ids_ordered) ? (s.zone_ids_ordered as string[]) : [];
+    return slots?.find((x) => String(x.slot_id) === slotId);
   }
 
   /** Humanised cadence for a slot ("every 2 days", "weekly", or its weekday list). */
@@ -394,7 +390,7 @@ export class ViewOverview extends LitElement {
           label: String((slot.cycle_meta as CycleMeta)?.label ?? slot.name ?? "").trim(),
           kind: this._kindLabel(slot),
           zoneNames: zoneIds.map((id) => this._zoneName(id)),
-          est: this._slotEstimateMin(zoneIds, mode),
+          est: this._slotEstimateMin(slot, mode),
           slotId: String(slot.slot_id ?? ""),
         });
       }
@@ -511,6 +507,9 @@ export class ViewOverview extends LitElement {
             .filter((r): r is { name: string; endsAt: number } => r.endsAt !== null)
         : [];
     const lastErr = rs.last_error ? String(rs.last_error) : "";
+    // Resting between Cycle & Soak passes: no zone is open, but the run goes on.
+    const soakUntil = runState === "running" && rs.soak_until ? new Date(String(rs.soak_until)).getTime() : NaN;
+    const soaking = Number.isFinite(soakUntil);
     const upcoming = Array.isArray(rs.upcoming_phases) ? (rs.upcoming_phases as string[][]) : [];
     const nextZones = upcoming
       .map((g) => g.map((id) => this._zoneName(String(id))).join(", "))
@@ -524,7 +523,9 @@ export class ViewOverview extends LitElement {
         ? t(this.hass, "config_panel.general_state_preparing")
         : runState === "stopping"
           ? t(this.hass, "config_panel.general_state_stopping")
-          : t(this.hass, "config_panel.general_state_running")
+          : soaking
+            ? t(this.hass, "config_panel.general_state_soaking")
+            : t(this.hass, "config_panel.general_state_running")
       : runState === "error"
         ? t(this.hass, "config_panel.general_state_error_idle")
         : t(this.hass, "config_panel.general_state_idle");
@@ -594,9 +595,16 @@ export class ViewOverview extends LitElement {
               `
             : nothing}
 
-          ${activeIds.length || nextZones || lastErr
+          ${activeIds.length || soaking || nextZones || lastErr
             ? html`
                 <ul class="pill-list">
+                  ${soaking
+                    ? html`<li class="pill">
+                        <ha-icon icon="mdi:timer-sand"></ha-icon>
+                        <span><strong>${t(this.hass, "config_panel.general_soak_remaining")}</strong>
+                          <span class="num">${this._fmtRemaining(soakUntil)}</span></span>
+                      </li>`
+                    : nothing}
                   ${activeIds.length
                     ? html`<li class="pill">
                         <ha-icon icon="mdi:water"></ha-icon>
@@ -740,9 +748,9 @@ export class ViewOverview extends LitElement {
   private _renderMode(runs: UpcomingRun[]): TemplateResult {
     const mode = this._mode();
     const next = runs[0];
-    const zoneIds = next ? this._slotZoneIds(next.slotId) : [];
-    const eco = zoneIds.length ? this._slotEstimateMin(zoneIds, "eco") : 0;
-    const extra = zoneIds.length ? this._slotEstimateMin(zoneIds, "extra") : 0;
+    const nextSlot = next ? this._slot(next.slotId) : undefined;
+    const eco = this._slotEstimateMin(nextSlot, "eco");
+    const extra = this._slotEstimateMin(nextSlot, "extra");
     const cur = next?.est ?? 0;
     return html`
       <ha-card>

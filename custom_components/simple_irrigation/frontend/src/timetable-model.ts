@@ -1,6 +1,6 @@
 /** Weekly timetable entries from schedule slots (local wall clock, Mon=0 … Sun=6). */
 
-import { computePhases, type ZonePhaseInput } from "./schedule-phases";
+import { computePhases, cycleSoakOf, expandProgram, isSoak, type ZonePhaseInput } from "./schedule-phases";
 
 /** 0 = 00:00–08:00, 1 = 08:00–16:00, 2 = 16:00–24:00 (by segment start time). */
 export type TimetableBucket = 0 | 1 | 2;
@@ -148,11 +148,18 @@ export function buildTimetableEntries(installation: Record<string, unknown>): Ti
 
     const slotStartMin = parseTimeLocalToMinutes(timeLocal);
     const phases = computePhases(ordered, zonesById, maxParallel, false);
+    // Cycle & Soak: every pass draws its own blocks, a rest just moves the cursor.
+    const steps = expandProgram(phases, cycleSoakOf(slot));
 
     for (const weekday of weekdays) {
       let cursor = slotStartMin + preStartSec / 60;
 
-      for (const phase of phases) {
+      for (const step of steps) {
+        if (isSoak(step)) {
+          cursor += step.soakMin;
+          continue;
+        }
+        const phase = step;
         const phaseStart = cursor;
         let phaseLenMin = 0;
         for (const zid of phase) {

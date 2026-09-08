@@ -1481,6 +1481,62 @@ function phaseIndexByZoneId(orderedZoneIds, zonesById, maxParallelZones) {
     }
     return m;
 }
+const PLAIN_RUN = {
+    repetitions: 1,
+    soakBetweenPhasesMin: 0,
+    soakBetweenRepetitionsMin: 0,
+};
+/** The slot's Cycle & Soak settings as stored, tolerant of pre-feature data. */
+function cycleSoakOf(slot) {
+    const int = (raw, fallback, lo) => {
+        const n = Number(raw);
+        return Number.isFinite(n) ? Math.max(lo, Math.round(n)) : fallback;
+    };
+    return {
+        repetitions: int(slot?.repetitions, 1, 1),
+        soakBetweenPhasesMin: int(slot?.soak_between_phases_min, 0, 0),
+        soakBetweenRepetitionsMin: int(slot?.soak_between_repetitions_min, 0, 0),
+    };
+}
+function isCycleSoak(cs) {
+    return cs.repetitions > 1 || cs.soakBetweenPhasesMin > 0 || cs.soakBetweenRepetitionsMin > 0;
+}
+function isSoak(step) {
+    return !Array.isArray(step);
+}
+/**
+ * The steps a slot runs, in order. A rest of 0 minutes is left out, and a
+ * program never starts or ends on one — same rules as the backend.
+ */
+function expandProgram(phases, cs) {
+    if (!phases.length)
+        return [];
+    const steps = [];
+    for (let pass = 0; pass < Math.max(1, cs.repetitions); pass++) {
+        if (pass > 0 && cs.soakBetweenRepetitionsMin > 0)
+            steps.push({ soakMin: cs.soakBetweenRepetitionsMin });
+        phases.forEach((phase, i) => {
+            if (i > 0 && cs.soakBetweenPhasesMin > 0)
+                steps.push({ soakMin: cs.soakBetweenPhasesMin });
+            steps.push([...phase]);
+        });
+    }
+    return steps;
+}
+/**
+ * Wall-clock minutes of a slot: each phase costs its longest zone, passes
+ * repeat, rests count too. `zoneMinutes` returns 0 for zones that do not run.
+ */
+function programMinutes(phases, cs, zoneMinutes) {
+    let total = 0;
+    for (const step of expandProgram(phases, cs)) {
+        if (isSoak(step))
+            total += step.soakMin;
+        else
+            total += Math.max(0, ...step.map(zoneMinutes));
+    }
+    return total;
+}
 
 /** Weekly timetable entries from schedule slots (local wall clock, Mon=0 … Sun=6). */
 function normalizeWeekParity(raw) {
@@ -1597,9 +1653,16 @@ function buildTimetableEntries(installation) {
             : [];
         const slotStartMin = parseTimeLocalToMinutes(timeLocal);
         const phases = computePhases(ordered, zonesById, maxParallel, false);
+        // Cycle & Soak: every pass draws its own blocks, a rest just moves the cursor.
+        const steps = expandProgram(phases, cycleSoakOf(slot));
         for (const weekday of weekdays) {
             let cursor = slotStartMin + preStartSec / 60;
-            for (const phase of phases) {
+            for (const step of steps) {
+                if (isSoak(step)) {
+                    cursor += step.soakMin;
+                    continue;
+                }
+                const phase = step;
                 const phaseStart = cursor;
                 let phaseLenMin = 0;
                 for (const zid of phase) {
@@ -2185,28 +2248,24 @@ class ViewOverview extends i$2 {
         const n = Number(this._inst.max_parallel_zones ?? 2);
         return Number.isFinite(n) && n >= 1 ? n : 2;
     }
-    _slotEstimateMin(zoneIds, mode) {
+    _slotEstimateMin(slot, mode) {
         const zones = this._inst.zones;
-        if (!zones)
+        if (!zones || !slot)
+            return 0;
+        const zoneIds = Array.isArray(slot.zone_ids_ordered) ? slot.zone_ids_ordered : [];
+        if (!zoneIds.length)
             return 0;
         const phases = computePhases(zoneIds, this._zonesPhaseInput(), this._maxParallel(), true);
         const preStart = Math.max(0, Number(this._inst.pre_start_delay_sec ?? 10)) / 60;
-        let total = preStart;
-        for (const phase of phases) {
-            let phaseMax = 0;
-            for (const zid of phase) {
-                const z = zones[zid];
-                if (z && Boolean(z.enabled ?? true))
-                    phaseMax = Math.max(phaseMax, durationForMode(z, mode));
-            }
-            total += phaseMax;
-        }
-        return Math.round(total);
+        const minutes = programMinutes(phases, cycleSoakOf(slot), (zid) => {
+            const z = zones[zid];
+            return z && Boolean(z.enabled ?? true) ? durationForMode(z, mode) : 0;
+        });
+        return Math.round(preStart + minutes);
     }
-    _slotZoneIds(slotId) {
+    _slot(slotId) {
         const slots = this._inst.schedule_slots;
-        const s = slots?.find((x) => String(x.slot_id) === slotId);
-        return s && Array.isArray(s.zone_ids_ordered) ? s.zone_ids_ordered : [];
+        return slots?.find((x) => String(x.slot_id) === slotId);
     }
     /** Humanised cadence for a slot ("every 2 days", "weekly", or its weekday list). */
     _kindLabel(slot) {
@@ -2270,7 +2329,7 @@ class ViewOverview extends i$2 {
                     label: String(slot.cycle_meta?.label ?? slot.name ?? "").trim(),
                     kind: this._kindLabel(slot),
                     zoneNames: zoneIds.map((id) => this._zoneName(id)),
-                    est: this._slotEstimateMin(zoneIds, mode),
+                    est: this._slotEstimateMin(slot, mode),
                     slotId: String(slot.slot_id ?? ""),
                 });
             }
@@ -2385,6 +2444,9 @@ class ViewOverview extends i$2 {
                 .filter((r) => r.endsAt !== null)
             : [];
         const lastErr = rs.last_error ? String(rs.last_error) : "";
+        // Resting between Cycle & Soak passes: no zone is open, but the run goes on.
+        const soakUntil = runState === "running" && rs.soak_until ? new Date(String(rs.soak_until)).getTime() : NaN;
+        const soaking = Number.isFinite(soakUntil);
         const upcoming = Array.isArray(rs.upcoming_phases) ? rs.upcoming_phases : [];
         const nextZones = upcoming
             .map((g) => g.map((id) => this._zoneName(String(id))).join(", "))
@@ -2398,7 +2460,9 @@ class ViewOverview extends i$2 {
                 ? t(this.hass, "config_panel.general_state_preparing")
                 : runState === "stopping"
                     ? t(this.hass, "config_panel.general_state_stopping")
-                    : t(this.hass, "config_panel.general_state_running")
+                    : soaking
+                        ? t(this.hass, "config_panel.general_state_soaking")
+                        : t(this.hass, "config_panel.general_state_running")
             : runState === "error"
                 ? t(this.hass, "config_panel.general_state_error_idle")
                 : t(this.hass, "config_panel.general_state_idle");
@@ -2453,9 +2517,16 @@ class ViewOverview extends i$2 {
               `
             : A}
 
-          ${activeIds.length || nextZones || lastErr
+          ${activeIds.length || soaking || nextZones || lastErr
             ? b `
                 <ul class="pill-list">
+                  ${soaking
+                ? b `<li class="pill">
+                        <ha-icon icon="mdi:timer-sand"></ha-icon>
+                        <span><strong>${t(this.hass, "config_panel.general_soak_remaining")}</strong>
+                          <span class="num">${this._fmtRemaining(soakUntil)}</span></span>
+                      </li>`
+                : A}
                   ${activeIds.length
                 ? b `<li class="pill">
                         <ha-icon icon="mdi:water"></ha-icon>
@@ -2594,9 +2665,9 @@ class ViewOverview extends i$2 {
     _renderMode(runs) {
         const mode = this._mode();
         const next = runs[0];
-        const zoneIds = next ? this._slotZoneIds(next.slotId) : [];
-        const eco = zoneIds.length ? this._slotEstimateMin(zoneIds, "eco") : 0;
-        const extra = zoneIds.length ? this._slotEstimateMin(zoneIds, "extra") : 0;
+        const nextSlot = next ? this._slot(next.slotId) : undefined;
+        const eco = this._slotEstimateMin(nextSlot, "eco");
+        const extra = this._slotEstimateMin(nextSlot, "extra");
         const cur = next?.est ?? 0;
         return b `
       <ha-card>
@@ -3220,6 +3291,45 @@ const formLayoutStyles = i$5 `
   }
 `;
 
+// The same caps as the backend (MAX_REPETITIONS / MAX_SOAK_MIN in const.py).
+const MAX_REPETITIONS = 10;
+const MAX_SOAK_MIN = 240;
+/**
+ * The Cycle & Soak block of the slot editor and the cycle wizard: three
+ * numbers, one short explanation. Shared so both dialogs say the same thing.
+ */
+function renderCycleSoakEditor(hass, cs, busy, onChange) {
+    const num = (key, labelKey, min, max) => b `
+    <ha-input
+      type="number"
+      .label=${t(hass, labelKey)}
+      .value=${String(cs[key])}
+      .disabled=${busy}
+      min=${String(min)}
+      max=${String(max)}
+      @input=${(e) => {
+        const raw = parseInt(e.target.value, 10);
+        const value = Number.isFinite(raw) ? Math.max(min, Math.min(max, raw)) : min;
+        onChange({ ...cs, [key]: value });
+    }}
+    ></ha-input>
+  `;
+    return b `
+    <div class="field-block">
+      <span class="field-title">${t(hass, "config_panel.cycle_soak_section_title")}</span>
+      <p class="field-desc">${t(hass, "config_panel.cycle_soak_section_desc")}</p>
+      <div class="duration-row">
+        ${num("repetitions", "config_panel.cycle_soak_repetitions", 1, MAX_REPETITIONS)}
+        ${num("soakBetweenPhasesMin", "config_panel.cycle_soak_pause_phases", 0, MAX_SOAK_MIN)}
+        ${num("soakBetweenRepetitionsMin", "config_panel.cycle_soak_pause_repetitions", 0, MAX_SOAK_MIN)}
+      </div>
+      ${isCycleSoak(cs)
+        ? b `<p class="hint">${t(hass, "config_panel.cycle_soak_hint")}</p>`
+        : b ``}
+    </div>
+  `;
+}
+
 const KIND_OPTIONS = [
     { id: "daily", kind: "daily", multiAnchor: false, twoTimes: false },
     { id: "every_2_days", kind: "every_n_days", n: 2, multiAnchor: false, twoTimes: false },
@@ -3251,6 +3361,7 @@ class CycleWizard extends i$2 {
         this._ignoreGlobalGuards = false;
         this._preStartScript = EMPTY_SCRIPT_OVERRIDE;
         this._postRunScript = EMPTY_SCRIPT_OVERRIDE;
+        this._cycleSoak = PLAIN_RUN;
         this._cycleId = null;
         this._busy = false;
         this._seeded = false;
@@ -3399,6 +3510,7 @@ class CycleWizard extends i$2 {
             this._ignoreGlobalGuards = false;
             this._preStartScript = { ...EMPTY_SCRIPT_OVERRIDE };
             this._postRunScript = { ...EMPTY_SCRIPT_OVERRIDE };
+            this._cycleSoak = { ...PLAIN_RUN };
             this._syncDefaultsForOption();
         }
         this._step = opts?.step ?? 1;
@@ -3433,6 +3545,7 @@ class CycleWizard extends i$2 {
         // All members of a cycle share their scripts, so the first one speaks for all.
         this._preStartScript = normalizeScriptOverride(first, "pre_start");
         this._postRunScript = normalizeScriptOverride(first, "post_run");
+        this._cycleSoak = cycleSoakOf(first);
     }
     _option() {
         return KIND_OPTIONS.find((o) => o.id === this._optionId) ?? KIND_OPTIONS[0];
@@ -3504,17 +3617,13 @@ class CycleWizard extends i$2 {
         if (!zones)
             return 0;
         const phases = computePhases(this._zoneIds, this._zonesPhaseInput(), this._maxParallel(), true);
-        let total = Math.max(0, Number(this.installation?.pre_start_delay_sec ?? 10)) / 60;
-        for (const phase of phases) {
-            let phaseMax = 0;
-            for (const zid of phase) {
-                const z = zones[zid];
-                if (z && Boolean(z.enabled ?? true))
-                    phaseMax = Math.max(phaseMax, durationForMode(z, this._mode()));
-            }
-            total += phaseMax;
-        }
-        return Math.round(total);
+        const preStart = Math.max(0, Number(this.installation?.pre_start_delay_sec ?? 10)) / 60;
+        const mode = this._mode();
+        const minutes = programMinutes(phases, this._cycleSoak, (zid) => {
+            const z = zones[zid];
+            return z && Boolean(z.enabled ?? true) ? durationForMode(z, mode) : 0;
+        });
+        return Math.round(preStart + minutes);
     }
     _close() {
         this.open = false;
@@ -3590,6 +3699,9 @@ class CycleWizard extends i$2 {
                 ignore_global_guards: this._ignoreGlobalGuards,
                 ...scriptOverrideForSave(this._preStartScript, "pre_start"),
                 ...scriptOverrideForSave(this._postRunScript, "post_run"),
+                repetitions: this._cycleSoak.repetitions,
+                soak_between_phases_min: this._cycleSoak.soakBetweenPhasesMin,
+                soak_between_repetitions_min: this._cycleSoak.soakBetweenRepetitionsMin,
             });
             if (!res.success) {
                 this._msg = formatApiError(res.error, this.hass);
@@ -3849,6 +3961,10 @@ class CycleWizard extends i$2 {
         </div>
       </div>
 
+      ${renderCycleSoakEditor(this.hass, this._cycleSoak, this._busy, (next) => {
+            this._cycleSoak = next;
+        })}
+
       <div class="field-block">
         <span class="field-title">${t(this.hass, "config_panel.guards_section_title")}</span>
         <p class="field-desc">${t(this.hass, "config_panel.guards_section_desc")}</p>
@@ -4017,6 +4133,9 @@ __decorate([
 ], CycleWizard.prototype, "_postRunScript", void 0);
 __decorate([
     r()
+], CycleWizard.prototype, "_cycleSoak", void 0);
+__decorate([
+    r()
 ], CycleWizard.prototype, "_cycleId", void 0);
 __decorate([
     r()
@@ -4179,6 +4298,7 @@ class ViewSchedule extends i$2 {
                 cycle_id: rid,
                 cycle_kind: String(o.cycle_kind ?? "custom"),
                 cycle_meta: o.cycle_meta ?? null,
+                cycle_soak: cycleSoakOf(o),
             };
         });
     }
@@ -4228,6 +4348,7 @@ class ViewSchedule extends i$2 {
             guards: s.guards.map((g) => ({ ...g })),
             pre_start_script: { ...s.pre_start_script },
             post_run_script: { ...s.post_run_script },
+            cycle_soak: { ...s.cycle_soak },
         };
     }
     /** The installation's script for one phase, inherited unless a slot overrides. */
@@ -4244,6 +4365,16 @@ class ViewSchedule extends i$2 {
             return A;
         return b `<span class="meta"
       ><ha-icon icon="mdi:script-text-outline"></ha-icon>${t(this.hass, "config_panel.schedule_scripts_own")}</span
+    >`;
+    }
+    /** Read-only chip on a row that waters in passes with rests in between. */
+    _renderCycleSoakMeta(s) {
+        if (!isCycleSoak(s.cycle_soak))
+            return A;
+        return b `<span class="meta"
+      ><ha-icon icon="mdi:repeat"></ha-icon>${t(this.hass, "config_panel.cycle_soak_badge", {
+            r: s.cycle_soak.repetitions,
+        })}</span
     >`;
     }
     /** Guards defined on the installation; inherited unless a slot opts out. */
@@ -4295,22 +4426,18 @@ class ViewSchedule extends i$2 {
         }
         return out;
     }
-    _estimateMin(zoneIds) {
+    _estimateMin(zoneIds, cs) {
         const zones = this._zonesMap();
         if (!zones)
             return 0;
         const phases = computePhases(zoneIds, this._zonesPhaseInput(), this._maxParallel(), true);
-        let total = Math.max(0, Number(this.installation?.pre_start_delay_sec ?? 10)) / 60;
-        for (const phase of phases) {
-            let phaseMax = 0;
-            for (const zid of phase) {
-                const z = zones[zid];
-                if (z && Boolean(z.enabled ?? true))
-                    phaseMax = Math.max(phaseMax, durationForMode(z, this._mode()));
-            }
-            total += phaseMax;
-        }
-        return Math.round(total);
+        const preStart = Math.max(0, Number(this.installation?.pre_start_delay_sec ?? 10)) / 60;
+        const mode = this._mode();
+        const minutes = programMinutes(phases, cs, (zid) => {
+            const z = zones[zid];
+            return z && Boolean(z.enabled ?? true) ? durationForMode(z, mode) : 0;
+        });
+        return Math.round(preStart + minutes);
     }
     _phaseCount(zoneIds) {
         return computePhases(zoneIds, this._zonesPhaseInput(), this._maxParallel(), true).length;
@@ -4664,6 +4791,9 @@ class ViewSchedule extends i$2 {
             ignore_global_guards: d.ignore_global_guards,
             ...scriptOverrideForSave(d.pre_start_script, "pre_start"),
             ...scriptOverrideForSave(d.post_run_script, "post_run"),
+            repetitions: d.cycle_soak.repetitions,
+            soak_between_phases_min: d.cycle_soak.soakBetweenPhasesMin,
+            soak_between_repetitions_min: d.cycle_soak.soakBetweenRepetitionsMin,
         });
         if (ok)
             this._closeEditDialog();
@@ -4778,7 +4908,7 @@ class ViewSchedule extends i$2 {
         const anyEnabled = g.members.some((m) => m.enabled);
         const expanded = this._expanded.has(g.cycle_id);
         const zoneIds = g.members[0]?.zone_ids_ordered ?? [];
-        const est = this._estimateMin(zoneIds);
+        const est = this._estimateMin(zoneIds, g.members[0]?.cycle_soak ?? cycleSoakOf(undefined));
         const phases = this._phaseCount(zoneIds);
         const times = [...new Set(g.members.map((m) => m.time_local))].sort();
         const next = this._nextFire(g.members);
@@ -4822,7 +4952,7 @@ class ViewSchedule extends i$2 {
                 ><ha-icon icon="mdi:vector-square"></ha-icon>${t(this.hass, "config_panel.cycle_meta_zones", { z: zoneIds.length, p: phases, m: est })}</span
               >
               ${g.members[0]
-            ? b `${this._renderGuardMeta(g.members[0].guards, g.members[0].ignore_global_guards)}${this._renderScriptMeta(g.members[0])}`
+            ? b `${this._renderGuardMeta(g.members[0].guards, g.members[0].ignore_global_guards)}${this._renderScriptMeta(g.members[0])}${this._renderCycleSoakMeta(g.members[0])}`
             : A}
               ${next
             ? b `<span class="meta"
@@ -4891,7 +5021,7 @@ class ViewSchedule extends i$2 {
     `;
     }
     _renderCustomRow(s) {
-        const est = this._estimateMin(s.zone_ids_ordered);
+        const est = this._estimateMin(s.zone_ids_ordered, s.cycle_soak);
         const phases = this._phaseCount(s.zone_ids_ordered);
         const accent = s.enabled ? "" : "inactive";
         const expanded = this._expanded.has(s.slot_id);
@@ -4922,6 +5052,7 @@ class ViewSchedule extends i$2 {
               >
               ${this._renderGuardMeta(s.guards, s.ignore_global_guards)}
               ${this._renderScriptMeta(s)}
+              ${this._renderCycleSoakMeta(s)}
               ${next
             ? b `<span class="meta"
                     ><ha-icon icon="mdi:skip-next-outline"></ha-icon>${weekdayShort(this.hass, mondayBasedWeekday(next))}
@@ -5162,6 +5293,10 @@ class ViewSchedule extends i$2 {
                 ? b `<p class="hint">${t(this.hass, "config_panel.schedule_all_zones_in_slot")}</p>`
                 : b `<p class="hint">${t(this.hass, "config_panel.schedule_create_zones_first")}</p>`}
       </div>
+      ${renderCycleSoakEditor(this.hass, draft.cycle_soak, this._busy, (next) => {
+            draft.cycle_soak = next;
+            this.requestUpdate();
+        })}
     `;
     }
     render() {

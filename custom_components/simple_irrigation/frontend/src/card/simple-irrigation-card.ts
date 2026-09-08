@@ -488,7 +488,14 @@ export class SimpleIrrigationCard extends LitElement {
   }
 
   private _stateLabel(): string {
+    if (this._soaking()) return localize(this.hass, "state_soaking");
     return localize(this.hass, `state_${this._snapshot?.state ?? "idle"}`);
+  }
+
+  /** Resting between Cycle & Soak passes: the run is on, no zone is. */
+  private _soaking(): boolean {
+    const snap = this._snapshot;
+    return snap?.state === "running" && Boolean(snap.soak_until);
   }
 
   private _pillClass(): string {
@@ -760,7 +767,12 @@ export class SimpleIrrigationCard extends LitElement {
                 <i style=${styleMap({ width: `${progress}%` })}></i>
               </div>
             `
-          : nothing}
+          : this._soaking()
+            ? html`
+                <div class="label">${localize(this.hass, "soak_remaining")}</div>
+                <div class="big pri">${countdown(secondsUntil(snap.soak_until))}</div>
+              `
+            : nothing}
         <div class="queue">
           ${active.map(
             (zone) => html`<div class="qrow">
@@ -1549,6 +1561,13 @@ export class SimpleIrrigationCard extends LitElement {
       stateText = localize(this.hass, "compact_running", {
         zone: lead.name,
         time: countdown(secondsUntil(lead.ends_at)),
+        index: snap.phase_index ?? 1,
+        total: snap.phase_total ?? 1,
+      });
+      stateCls = "pri";
+    } else if (this._soaking()) {
+      stateText = localize(this.hass, "compact_soaking", {
+        time: countdown(secondsUntil(snap.soak_until)),
         index: snap.phase_index ?? 1,
         total: snap.phase_total ?? 1,
       });

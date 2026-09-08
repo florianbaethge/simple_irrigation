@@ -80,6 +80,8 @@ export interface SlotRow {
   zone_ids: string[];
   zone_names: string[];
   duration_min: number;
+  /** Cycle & Soak passes; 1 for a plain run. */
+  repetitions: number;
   cadence: Cadence;
   has_conditions: boolean;
   /** Only present on `next_runs` entries. */
@@ -130,6 +132,8 @@ export interface Snapshot {
   phase_total: number | null;
   run_started_at: string | null;
   run_ends_at: string | null;
+  /** End of the Cycle & Soak rest the run is in; null while a zone waters. */
+  soak_until: string | null;
   max_parallel_zones: number;
   zones: ZoneRow[];
   slots: SlotRow[];

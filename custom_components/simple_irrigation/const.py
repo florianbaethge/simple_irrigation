@@ -70,6 +70,12 @@ GUARD_OPERATORS: Final = (
 
 MAX_GUARDS: Final = 10
 
+# Cycle & Soak: how often a slot may repeat its phases, and how long it may
+# rest between them. Long soaks are legitimate (clay takes an hour), so the
+# cap is generous; the repetition cap keeps a typo from watering all night.
+MAX_REPETITIONS: Final = 10
+MAX_SOAK_MIN: Final = 240
+
 STORE_VERSION: Final = 1
 
 CONF_INSTALLATION_NAME: Final = "installation_name"

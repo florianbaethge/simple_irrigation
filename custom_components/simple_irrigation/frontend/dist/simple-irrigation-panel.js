@@ -1481,6 +1481,62 @@ function phaseIndexByZoneId(orderedZoneIds, zonesById, maxParallelZones) {
     }
     return m;
 }
+const PLAIN_RUN = {
+    repetitions: 1,
+    soakBetweenPhasesMin: 0,
+    soakBetweenRepetitionsMin: 0,
+};
+/** The slot's Cycle & Soak settings as stored, tolerant of pre-feature data. */
+function cycleSoakOf(slot) {
+    const int = (raw, fallback, lo) => {
+        const n = Number(raw);
+        return Number.isFinite(n) ? Math.max(lo, Math.round(n)) : fallback;
+    };
+    return {
+        repetitions: int(slot?.repetitions, 1, 1),
+        soakBetweenPhasesMin: int(slot?.soak_between_phases_min, 0, 0),
+        soakBetweenRepetitionsMin: int(slot?.soak_between_repetitions_min, 0, 0),
+    };
+}
+function isCycleSoak(cs) {
+    return cs.repetitions > 1 || cs.soakBetweenPhasesMin > 0 || cs.soakBetweenRepetitionsMin > 0;
+}
+function isSoak(step) {
+    return !Array.isArray(step);
+}
+/**
+ * The steps a slot runs, in order. A rest of 0 minutes is left out, and a
+ * program never starts or ends on one — same rules as the backend.
+ */
+function expandProgram(phases, cs) {
+    if (!phases.length)
+        return [];
+    const steps = [];
+    for (let pass = 0; pass < Math.max(1, cs.repetitions); pass++) {
+        if (pass > 0 && cs.soakBetweenRepetitionsMin > 0)
+            steps.push({ soakMin: cs.soakBetweenRepetitionsMin });
+        phases.forEach((phase, i) => {
+            if (i > 0 && cs.soakBetweenPhasesMin > 0)
+                steps.push({ soakMin: cs.soakBetweenPhasesMin });
+            steps.push([...phase]);
+        });
+    }
+    return steps;
+}
+/**
+ * Wall-clock minutes of a slot: each phase costs its longest zone, passes
+ * repeat, rests count too. `zoneMinutes` returns 0 for zones that do not run.
+ */
+function programMinutes(phases, cs, zoneMinutes) {
+    let total = 0;
+    for (const step of expandProgram(phases, cs)) {
+        if (isSoak(step))
+            total += step.soakMin;
+        else
+            total += Math.max(0, ...step.map(zoneMinutes));
+    }
+    return total;
+}
 
 /** Weekly timetable entries from schedule slots (local wall clock, Mon=0 … Sun=6). */
 function normalizeWeekParity(raw) {
@@ -1517,6 +1573,28 @@ function durationForMode(zone, mode) {
     return Math.max(0, Number(zone.duration_normal_min ?? 0));
 }
 /** Bucket by wall-clock hour of segment start ([0,8), [8,16), [16,24)). */
+/**
+ * Litres a run of these zones is expected to use in `mode`, from the zones'
+ * flow rates (`flow_rate_lpm`) times minutes times Cycle & Soak repetitions.
+ * Null when no zone has a rate -- a meter only tells afterwards.
+ */
+function plannedLitres(zoneIds, zones, mode, repetitions = 1) {
+    if (!zones)
+        return null;
+    let total = 0;
+    let known = false;
+    for (const zid of zoneIds) {
+        const z = zones[zid];
+        if (!z || !Boolean(z.enabled ?? true))
+            continue;
+        const rate = Number(z.flow_rate_lpm ?? 0);
+        if (!Number.isFinite(rate) || rate <= 0)
+            continue;
+        known = true;
+        total += rate * durationForMode(z, mode) * Math.max(1, repetitions);
+    }
+    return known ? total : null;
+}
 function bucketFromStartMin(startMin) {
     const h = Math.floor(Math.max(0, startMin) / 60);
     if (h < 8)
@@ -1597,9 +1675,16 @@ function buildTimetableEntries(installation) {
             : [];
         const slotStartMin = parseTimeLocalToMinutes(timeLocal);
         const phases = computePhases(ordered, zonesById, maxParallel, false);
+        // Cycle & Soak: every pass draws its own blocks, a rest just moves the cursor.
+        const steps = expandProgram(phases, cycleSoakOf(slot));
         for (const weekday of weekdays) {
             let cursor = slotStartMin + preStartSec / 60;
-            for (const phase of phases) {
+            for (const step of steps) {
+                if (isSoak(step)) {
+                    cursor += step.soakMin;
+                    continue;
+                }
+                const phase = step;
                 const phaseStart = cursor;
                 let phaseLenMin = 0;
                 for (const zid of phase) {
@@ -1718,6 +1803,32 @@ function slotInclusionCountPerZone(installation) {
         }
     }
     return counts;
+}
+
+/**
+ * Volume in the user's unit system. The backend keeps litres; here they turn
+ * into litres or gallons depending on what Home Assistant is set to, so a US
+ * garden reads gallons everywhere without a setting of its own.
+ */
+const LITRES_PER_GALLON = 3.785411784;
+/** "L" or "gal", from the HA unit system; litres when unknown. */
+function volumeUnit(hass) {
+    return hass?.config?.unit_system?.volume === "gal" ? "gal" : "L";
+}
+function litresToUnit(litres, unit) {
+    return unit === "gal" ? litres / LITRES_PER_GALLON : litres;
+}
+function unitToLitres(value, unit) {
+    return unit === "gal" ? value * LITRES_PER_GALLON : value;
+}
+/** A volume rounded for display: whole units above 10, one decimal below. */
+function formatVolumeNumber(value) {
+    const v = Math.max(0, value);
+    return v >= 10 ? String(Math.round(v)) : (Math.round(v * 10) / 10).toString();
+}
+/** A rate for the flow-rate field, in the display unit per minute, 2 decimals. */
+function formatRateNumber(value) {
+    return (Math.round(Math.max(0, value) * 100) / 100).toString();
 }
 
 /**
@@ -2185,28 +2296,24 @@ class ViewOverview extends i$2 {
         const n = Number(this._inst.max_parallel_zones ?? 2);
         return Number.isFinite(n) && n >= 1 ? n : 2;
     }
-    _slotEstimateMin(zoneIds, mode) {
+    _slotEstimateMin(slot, mode) {
         const zones = this._inst.zones;
-        if (!zones)
+        if (!zones || !slot)
+            return 0;
+        const zoneIds = Array.isArray(slot.zone_ids_ordered) ? slot.zone_ids_ordered : [];
+        if (!zoneIds.length)
             return 0;
         const phases = computePhases(zoneIds, this._zonesPhaseInput(), this._maxParallel(), true);
         const preStart = Math.max(0, Number(this._inst.pre_start_delay_sec ?? 10)) / 60;
-        let total = preStart;
-        for (const phase of phases) {
-            let phaseMax = 0;
-            for (const zid of phase) {
-                const z = zones[zid];
-                if (z && Boolean(z.enabled ?? true))
-                    phaseMax = Math.max(phaseMax, durationForMode(z, mode));
-            }
-            total += phaseMax;
-        }
-        return Math.round(total);
+        const minutes = programMinutes(phases, cycleSoakOf(slot), (zid) => {
+            const z = zones[zid];
+            return z && Boolean(z.enabled ?? true) ? durationForMode(z, mode) : 0;
+        });
+        return Math.round(preStart + minutes);
     }
-    _slotZoneIds(slotId) {
+    _slot(slotId) {
         const slots = this._inst.schedule_slots;
-        const s = slots?.find((x) => String(x.slot_id) === slotId);
-        return s && Array.isArray(s.zone_ids_ordered) ? s.zone_ids_ordered : [];
+        return slots?.find((x) => String(x.slot_id) === slotId);
     }
     /** Humanised cadence for a slot ("every 2 days", "weekly", or its weekday list). */
     _kindLabel(slot) {
@@ -2270,7 +2377,8 @@ class ViewOverview extends i$2 {
                     label: String(slot.cycle_meta?.label ?? slot.name ?? "").trim(),
                     kind: this._kindLabel(slot),
                     zoneNames: zoneIds.map((id) => this._zoneName(id)),
-                    est: this._slotEstimateMin(zoneIds, mode),
+                    est: this._slotEstimateMin(slot, mode),
+                    waterL: plannedLitres(zoneIds, this._inst.zones, mode, cycleSoakOf(slot).repetitions),
                     slotId: String(slot.slot_id ?? ""),
                 });
             }
@@ -2330,6 +2438,37 @@ class ViewOverview extends i$2 {
     _fmtTime(d) {
         return formatTimeLocalForDisplay(this.hass, `${d.getHours()}:${String(d.getMinutes()).padStart(2, "0")}`);
     }
+    /**
+     * Litres the run has used so far: what finished zones booked, plus what the
+     * open ones with a flow rate have used by now. Null when nothing tracks water.
+     */
+    _liveWater(activeIds) {
+        const rs = (this.runState ?? {});
+        const booked = typeof rs.run_water_l === "number" ? rs.run_water_l : null;
+        const zones = this._inst.zones;
+        const mode = this._mode();
+        let litres = booked ?? 0;
+        let known = booked !== null;
+        for (const id of activeIds) {
+            const z = zones?.[id];
+            const rate = Number(z?.flow_rate_lpm ?? 0);
+            const endsAt = this._zoneEndsAt(id);
+            if (!z || !(rate > 0) || endsAt === null)
+                continue;
+            const remainingMin = Math.max(0, (endsAt - Date.now()) / 60000);
+            litres += rate * Math.max(0, durationForMode(z, mode) - remainingMin);
+            known = true;
+        }
+        return known ? litres : null;
+    }
+    /** "~120 L" / "250 gal" in the user's unit system. */
+    _fmtWater(litres, estimated) {
+        const unit = volumeUnit(this.hass);
+        return t(this.hass, estimated ? "config_panel.water_approx" : "config_panel.water_exact", {
+            v: formatVolumeNumber(litresToUnit(litres, unit)),
+            u: unit,
+        });
+    }
     _runBusy() {
         const s = String((this.runState ?? {}).run_state ?? "idle");
         return ["preparing", "running", "stopping"].includes(s);
@@ -2385,6 +2524,9 @@ class ViewOverview extends i$2 {
                 .filter((r) => r.endsAt !== null)
             : [];
         const lastErr = rs.last_error ? String(rs.last_error) : "";
+        // Resting between Cycle & Soak passes: no zone is open, but the run goes on.
+        const soakUntil = runState === "running" && rs.soak_until ? new Date(String(rs.soak_until)).getTime() : NaN;
+        const soaking = Number.isFinite(soakUntil);
         const upcoming = Array.isArray(rs.upcoming_phases) ? rs.upcoming_phases : [];
         const nextZones = upcoming
             .map((g) => g.map((id) => this._zoneName(String(id))).join(", "))
@@ -2398,11 +2540,15 @@ class ViewOverview extends i$2 {
                 ? t(this.hass, "config_panel.general_state_preparing")
                 : runState === "stopping"
                     ? t(this.hass, "config_panel.general_state_stopping")
-                    : t(this.hass, "config_panel.general_state_running")
+                    : soaking
+                        ? t(this.hass, "config_panel.general_state_soaking")
+                        : t(this.hass, "config_panel.general_state_running")
             : runState === "error"
                 ? t(this.hass, "config_panel.general_state_error_idle")
                 : t(this.hass, "config_panel.general_state_idle");
         const showSkip = runBusy && runState !== "stopping" && (runState === "preparing" || upcoming.length > 0);
+        const runWater = this._liveWater(activeIds);
+        const lastWater = typeof rs.last_run_water_l === "number" ? rs.last_run_water_l : null;
         // A blocking script is why "Preparing" can sit there for minutes — name it.
         const activeScript = rs.active_script ? String(rs.active_script) : "";
         const scriptLine = activeScript
@@ -2449,13 +2595,31 @@ class ViewOverview extends i$2 {
                         ><span class="num">~${next.est}</span> min</span
                       >`
                 : A}
+                  ${next.waterL !== null
+                ? b `<span class="meta"
+                        ><ha-icon icon="mdi:water-outline"></ha-icon>${this._fmtWater(next.waterL, true)}</span
+                      >`
+                : A}
+                  ${lastWater !== null
+                ? b `<span class="meta"
+                        ><ha-icon icon="mdi:water-check-outline"></ha-icon>${t(this.hass, "config_panel.general_water_last_run")}
+                        ${this._fmtWater(lastWater, rs.last_run_water_source !== "measured")}</span
+                      >`
+                : A}
                 </div>
               `
             : A}
 
-          ${activeIds.length || nextZones || lastErr
+          ${activeIds.length || soaking || (runBusy && runWater !== null) || nextZones || lastErr
             ? b `
                 <ul class="pill-list">
+                  ${soaking
+                ? b `<li class="pill">
+                        <ha-icon icon="mdi:timer-sand"></ha-icon>
+                        <span><strong>${t(this.hass, "config_panel.general_soak_remaining")}</strong>
+                          <span class="num">${this._fmtRemaining(soakUntil)}</span></span>
+                      </li>`
+                : A}
                   ${activeIds.length
                 ? b `<li class="pill">
                         <ha-icon icon="mdi:water"></ha-icon>
@@ -2469,6 +2633,13 @@ class ViewOverview extends i$2 {
                         <span><strong>${t(this.hass, "config_panel.general_remaining")}</strong>
                           ${remainingRows.map((r, i) => b `${i > 0 ? ", " : ""}${r.name}
                                 <span class="num">${this._fmtRemaining(r.endsAt)}</span>`)}</span>
+                      </li>`
+                : A}
+                  ${runBusy && runWater !== null
+                ? b `<li class="pill">
+                        <ha-icon icon="mdi:water-outline"></ha-icon>
+                        <span><strong>${t(this.hass, "config_panel.general_water_so_far")}</strong>
+                          ${this._fmtWater(runWater, rs.run_water_source !== "measured" || activeIds.length > 0)}</span>
                       </li>`
                 : A}
                   ${nextZones
@@ -2571,7 +2742,9 @@ class ViewOverview extends i$2 {
                       <span class="nr-when">${this._relDay(r.when)} ${this._fmtTime(r.when)}</span>
                       <span class="nr-desc">${desc}</span>
                       ${r.est > 0
-                    ? b `<span class="nr-dur">~${r.est} min</span>`
+                    ? b `<span class="nr-dur">~${r.est} min${r.waterL !== null
+                        ? b ` · ${this._fmtWater(r.waterL, true)}`
+                        : A}</span>`
                     : A}
                     </div>
                     ${r.zoneNames.length && i < 2
@@ -2594,9 +2767,9 @@ class ViewOverview extends i$2 {
     _renderMode(runs) {
         const mode = this._mode();
         const next = runs[0];
-        const zoneIds = next ? this._slotZoneIds(next.slotId) : [];
-        const eco = zoneIds.length ? this._slotEstimateMin(zoneIds, "eco") : 0;
-        const extra = zoneIds.length ? this._slotEstimateMin(zoneIds, "extra") : 0;
+        const nextSlot = next ? this._slot(next.slotId) : undefined;
+        const eco = this._slotEstimateMin(nextSlot, "eco");
+        const extra = this._slotEstimateMin(nextSlot, "extra");
         const cur = next?.est ?? 0;
         return b `
       <ha-card>
@@ -3145,6 +3318,13 @@ const formLayoutStyles = i$5 `
     width: 100%;
     display: block;
   }
+  /* Three long labels do not fit two columns on a phone; one column keeps
+     the floating label on a single line above its value. */
+  @media (max-width: 480px) {
+    .duration-row.cycle-soak-row {
+      grid-template-columns: 1fr;
+    }
+  }
   select.field-select {
     width: 100%;
     max-width: 100%;
@@ -3220,6 +3400,59 @@ const formLayoutStyles = i$5 `
   }
 `;
 
+/**
+ * A collapsed explanation under a form section: one line to click, the
+ * paragraphs behind it. Editors and the wizard stay short on a phone; the
+ * help is one tap away rather than pushing the fields off the screen.
+ */
+function renderInlineHelp(hass, summaryKey, paragraphKeys, icon = "mdi:help-circle-outline", values = {}) {
+    return b `
+    <details class="inline-help">
+      <summary>
+        <ha-icon class="inline-help-icon" icon=${icon}></ha-icon>
+        ${t(hass, summaryKey)}
+      </summary>
+      ${paragraphKeys.map((key) => b `<p>${t(hass, key, values)}</p>`)}
+    </details>
+  `;
+}
+
+// The same caps as the backend (MAX_REPETITIONS / MAX_SOAK_MIN in const.py).
+const MAX_REPETITIONS = 10;
+const MAX_SOAK_MIN = 240;
+/**
+ * The Cycle & Soak block of the slot editor and the cycle wizard: three
+ * numbers, one short explanation. Shared so both dialogs say the same thing.
+ */
+function renderCycleSoakEditor(hass, cs, busy, onChange) {
+    const num = (key, labelKey, min, max) => b `
+    <ha-input
+      type="number"
+      .label=${t(hass, labelKey)}
+      .value=${String(cs[key])}
+      .disabled=${busy}
+      min=${String(min)}
+      max=${String(max)}
+      @input=${(e) => {
+        const raw = parseInt(e.target.value, 10);
+        const value = Number.isFinite(raw) ? Math.max(min, Math.min(max, raw)) : min;
+        onChange({ ...cs, [key]: value });
+    }}
+    ></ha-input>
+  `;
+    return b `
+    <div class="field-block">
+      <span class="field-title">${t(hass, "config_panel.cycle_soak_section_title")}</span>
+      <div class="duration-row cycle-soak-row">
+        ${num("repetitions", "config_panel.cycle_soak_repetitions", 1, MAX_REPETITIONS)}
+        ${num("soakBetweenPhasesMin", "config_panel.cycle_soak_pause_phases", 0, MAX_SOAK_MIN)}
+        ${num("soakBetweenRepetitionsMin", "config_panel.cycle_soak_pause_repetitions", 0, MAX_SOAK_MIN)}
+      </div>
+      ${renderInlineHelp(hass, "config_panel.cycle_soak_help_summary", ["config_panel.cycle_soak_section_desc", "config_panel.cycle_soak_hint"], "mdi:repeat")}
+    </div>
+  `;
+}
+
 const KIND_OPTIONS = [
     { id: "daily", kind: "daily", multiAnchor: false, twoTimes: false },
     { id: "every_2_days", kind: "every_n_days", n: 2, multiAnchor: false, twoTimes: false },
@@ -3251,6 +3484,7 @@ class CycleWizard extends i$2 {
         this._ignoreGlobalGuards = false;
         this._preStartScript = EMPTY_SCRIPT_OVERRIDE;
         this._postRunScript = EMPTY_SCRIPT_OVERRIDE;
+        this._cycleSoak = PLAIN_RUN;
         this._cycleId = null;
         this._busy = false;
         this._seeded = false;
@@ -3399,6 +3633,7 @@ class CycleWizard extends i$2 {
             this._ignoreGlobalGuards = false;
             this._preStartScript = { ...EMPTY_SCRIPT_OVERRIDE };
             this._postRunScript = { ...EMPTY_SCRIPT_OVERRIDE };
+            this._cycleSoak = { ...PLAIN_RUN };
             this._syncDefaultsForOption();
         }
         this._step = opts?.step ?? 1;
@@ -3433,6 +3668,7 @@ class CycleWizard extends i$2 {
         // All members of a cycle share their scripts, so the first one speaks for all.
         this._preStartScript = normalizeScriptOverride(first, "pre_start");
         this._postRunScript = normalizeScriptOverride(first, "post_run");
+        this._cycleSoak = cycleSoakOf(first);
     }
     _option() {
         return KIND_OPTIONS.find((o) => o.id === this._optionId) ?? KIND_OPTIONS[0];
@@ -3504,17 +3740,13 @@ class CycleWizard extends i$2 {
         if (!zones)
             return 0;
         const phases = computePhases(this._zoneIds, this._zonesPhaseInput(), this._maxParallel(), true);
-        let total = Math.max(0, Number(this.installation?.pre_start_delay_sec ?? 10)) / 60;
-        for (const phase of phases) {
-            let phaseMax = 0;
-            for (const zid of phase) {
-                const z = zones[zid];
-                if (z && Boolean(z.enabled ?? true))
-                    phaseMax = Math.max(phaseMax, durationForMode(z, this._mode()));
-            }
-            total += phaseMax;
-        }
-        return Math.round(total);
+        const preStart = Math.max(0, Number(this.installation?.pre_start_delay_sec ?? 10)) / 60;
+        const mode = this._mode();
+        const minutes = programMinutes(phases, this._cycleSoak, (zid) => {
+            const z = zones[zid];
+            return z && Boolean(z.enabled ?? true) ? durationForMode(z, mode) : 0;
+        });
+        return Math.round(preStart + minutes);
     }
     _close() {
         this.open = false;
@@ -3590,6 +3822,9 @@ class CycleWizard extends i$2 {
                 ignore_global_guards: this._ignoreGlobalGuards,
                 ...scriptOverrideForSave(this._preStartScript, "pre_start"),
                 ...scriptOverrideForSave(this._postRunScript, "post_run"),
+                repetitions: this._cycleSoak.repetitions,
+                soak_between_phases_min: this._cycleSoak.soakBetweenPhasesMin,
+                soak_between_repetitions_min: this._cycleSoak.soakBetweenRepetitionsMin,
             });
             if (!res.success) {
                 this._msg = formatApiError(res.error, this.hass);
@@ -3849,6 +4084,10 @@ class CycleWizard extends i$2 {
         </div>
       </div>
 
+      ${renderCycleSoakEditor(this.hass, this._cycleSoak, this._busy, (next) => {
+            this._cycleSoak = next;
+        })}
+
       <div class="field-block">
         <span class="field-title">${t(this.hass, "config_panel.guards_section_title")}</span>
         <p class="field-desc">${t(this.hass, "config_panel.guards_section_desc")}</p>
@@ -4017,6 +4256,9 @@ __decorate([
 ], CycleWizard.prototype, "_postRunScript", void 0);
 __decorate([
     r()
+], CycleWizard.prototype, "_cycleSoak", void 0);
+__decorate([
+    r()
 ], CycleWizard.prototype, "_cycleId", void 0);
 __decorate([
     r()
@@ -4179,6 +4421,7 @@ class ViewSchedule extends i$2 {
                 cycle_id: rid,
                 cycle_kind: String(o.cycle_kind ?? "custom"),
                 cycle_meta: o.cycle_meta ?? null,
+                cycle_soak: cycleSoakOf(o),
             };
         });
     }
@@ -4228,6 +4471,7 @@ class ViewSchedule extends i$2 {
             guards: s.guards.map((g) => ({ ...g })),
             pre_start_script: { ...s.pre_start_script },
             post_run_script: { ...s.post_run_script },
+            cycle_soak: { ...s.cycle_soak },
         };
     }
     /** The installation's script for one phase, inherited unless a slot overrides. */
@@ -4244,6 +4488,29 @@ class ViewSchedule extends i$2 {
             return A;
         return b `<span class="meta"
       ><ha-icon icon="mdi:script-text-outline"></ha-icon>${t(this.hass, "config_panel.schedule_scripts_own")}</span
+    >`;
+    }
+    /** "~120 L" for one run of the slot, from the zones' flow rates. */
+    _renderWaterMeta(s) {
+        const litres = plannedLitres(s.zone_ids_ordered, this._zonesMap(), this._mode(), s.cycle_soak.repetitions);
+        if (litres === null)
+            return A;
+        const unit = volumeUnit(this.hass);
+        return b `<span class="meta"
+      ><ha-icon icon="mdi:water-outline"></ha-icon>${t(this.hass, "config_panel.water_approx", {
+            v: formatVolumeNumber(litresToUnit(litres, unit)),
+            u: unit,
+        })}</span
+    >`;
+    }
+    /** Read-only chip on a row that waters in passes with rests in between. */
+    _renderCycleSoakMeta(s) {
+        if (!isCycleSoak(s.cycle_soak))
+            return A;
+        return b `<span class="meta"
+      ><ha-icon icon="mdi:repeat"></ha-icon>${t(this.hass, "config_panel.cycle_soak_badge", {
+            r: s.cycle_soak.repetitions,
+        })}</span
     >`;
     }
     /** Guards defined on the installation; inherited unless a slot opts out. */
@@ -4295,22 +4562,18 @@ class ViewSchedule extends i$2 {
         }
         return out;
     }
-    _estimateMin(zoneIds) {
+    _estimateMin(zoneIds, cs) {
         const zones = this._zonesMap();
         if (!zones)
             return 0;
         const phases = computePhases(zoneIds, this._zonesPhaseInput(), this._maxParallel(), true);
-        let total = Math.max(0, Number(this.installation?.pre_start_delay_sec ?? 10)) / 60;
-        for (const phase of phases) {
-            let phaseMax = 0;
-            for (const zid of phase) {
-                const z = zones[zid];
-                if (z && Boolean(z.enabled ?? true))
-                    phaseMax = Math.max(phaseMax, durationForMode(z, this._mode()));
-            }
-            total += phaseMax;
-        }
-        return Math.round(total);
+        const preStart = Math.max(0, Number(this.installation?.pre_start_delay_sec ?? 10)) / 60;
+        const mode = this._mode();
+        const minutes = programMinutes(phases, cs, (zid) => {
+            const z = zones[zid];
+            return z && Boolean(z.enabled ?? true) ? durationForMode(z, mode) : 0;
+        });
+        return Math.round(preStart + minutes);
     }
     _phaseCount(zoneIds) {
         return computePhases(zoneIds, this._zonesPhaseInput(), this._maxParallel(), true).length;
@@ -4664,6 +4927,9 @@ class ViewSchedule extends i$2 {
             ignore_global_guards: d.ignore_global_guards,
             ...scriptOverrideForSave(d.pre_start_script, "pre_start"),
             ...scriptOverrideForSave(d.post_run_script, "post_run"),
+            repetitions: d.cycle_soak.repetitions,
+            soak_between_phases_min: d.cycle_soak.soakBetweenPhasesMin,
+            soak_between_repetitions_min: d.cycle_soak.soakBetweenRepetitionsMin,
         });
         if (ok)
             this._closeEditDialog();
@@ -4778,7 +5044,7 @@ class ViewSchedule extends i$2 {
         const anyEnabled = g.members.some((m) => m.enabled);
         const expanded = this._expanded.has(g.cycle_id);
         const zoneIds = g.members[0]?.zone_ids_ordered ?? [];
-        const est = this._estimateMin(zoneIds);
+        const est = this._estimateMin(zoneIds, g.members[0]?.cycle_soak ?? cycleSoakOf(undefined));
         const phases = this._phaseCount(zoneIds);
         const times = [...new Set(g.members.map((m) => m.time_local))].sort();
         const next = this._nextFire(g.members);
@@ -4822,7 +5088,7 @@ class ViewSchedule extends i$2 {
                 ><ha-icon icon="mdi:vector-square"></ha-icon>${t(this.hass, "config_panel.cycle_meta_zones", { z: zoneIds.length, p: phases, m: est })}</span
               >
               ${g.members[0]
-            ? b `${this._renderGuardMeta(g.members[0].guards, g.members[0].ignore_global_guards)}${this._renderScriptMeta(g.members[0])}`
+            ? b `${this._renderGuardMeta(g.members[0].guards, g.members[0].ignore_global_guards)}${this._renderScriptMeta(g.members[0])}${this._renderCycleSoakMeta(g.members[0])}${this._renderWaterMeta(g.members[0])}`
             : A}
               ${next
             ? b `<span class="meta"
@@ -4891,7 +5157,7 @@ class ViewSchedule extends i$2 {
     `;
     }
     _renderCustomRow(s) {
-        const est = this._estimateMin(s.zone_ids_ordered);
+        const est = this._estimateMin(s.zone_ids_ordered, s.cycle_soak);
         const phases = this._phaseCount(s.zone_ids_ordered);
         const accent = s.enabled ? "" : "inactive";
         const expanded = this._expanded.has(s.slot_id);
@@ -4922,6 +5188,8 @@ class ViewSchedule extends i$2 {
               >
               ${this._renderGuardMeta(s.guards, s.ignore_global_guards)}
               ${this._renderScriptMeta(s)}
+              ${this._renderCycleSoakMeta(s)}
+              ${this._renderWaterMeta(s)}
               ${next
             ? b `<span class="meta"
                     ><ha-icon icon="mdi:skip-next-outline"></ha-icon>${weekdayShort(this.hass, mondayBasedWeekday(next))}
@@ -5162,6 +5430,10 @@ class ViewSchedule extends i$2 {
                 ? b `<p class="hint">${t(this.hass, "config_panel.schedule_all_zones_in_slot")}</p>`
                 : b `<p class="hint">${t(this.hass, "config_panel.schedule_create_zones_first")}</p>`}
       </div>
+      ${renderCycleSoakEditor(this.hass, draft.cycle_soak, this._busy, (next) => {
+            draft.cycle_soak = next;
+            this.requestUpdate();
+        })}
     `;
     }
     render() {
@@ -5337,6 +5609,7 @@ class ViewSettings extends i$2 {
         this._mode = "normal";
         this._maxParallel = 2;
         this._preStart = [];
+        this._waterMeter = "";
         this._preStartDelaySec = 10;
         this._preStartScript = "";
         this._preStartScriptTimeoutSec = 300;
@@ -5410,6 +5683,7 @@ class ViewSettings extends i$2 {
             ? inst.pre_start_switches.filter(Boolean)
             : [];
         this._preStart = ps.length ? [...ps] : [""];
+        this._waterMeter = String(inst.water_meter_entity_id ?? "");
         const d = Number(inst.pre_start_delay_sec ?? 10);
         this._preStartDelaySec = Number.isFinite(d) ? Math.max(0, Math.min(3600, Math.round(d))) : 10;
         this._preStartScript = String(inst.pre_start_script ?? "");
@@ -5460,6 +5734,7 @@ class ViewSettings extends i$2 {
                 max_parallel_zones: this._maxParallel,
                 is_default: this._isDefault,
                 guards: guardsForSave(this._guards),
+                water_meter_entity_id: this._waterMeter.trim(),
             });
             if (!res.success) {
                 this._msg = formatApiError(res.error, this.hass);
@@ -5726,6 +6001,18 @@ class ViewSettings extends i$2 {
               ></ha-input>
             </div>
             <p class="hint">${t(this.hass, "config_panel.settings_max_parallel_hint")}</p>
+          </div>
+
+          <div class="section-title">${t(this.hass, "config_panel.settings_section_water")}</div>
+          <div class="field-block">
+            <div class="field-row">
+              ${renderNativeEntityField(this.hass, ["sensor"], t(this.hass, "config_panel.settings_water_meter_label"), this._waterMeter, (v) => {
+            this._waterMeter = v;
+            this._markDirty();
+            this.requestUpdate();
+        }, { placeholderKey: "config_panel.water_meter_placeholder" })}
+            </div>
+            ${renderInlineHelp(this.hass, "config_panel.settings_water_help_summary", ["config_panel.settings_water_meter_hint"], "mdi:water-outline")}
           </div>
 
           <div class="section-title">${t(this.hass, "config_panel.settings_section_guards")}</div>
@@ -6791,6 +7078,8 @@ class ViewZones extends i$2 {
             duration_field: "",
             duration_unit: "",
             start_entity_id: "",
+            water_meter_entity_id: "",
+            flow_rate_lpm: 0,
         };
     }
     _cloneZone(z) {
@@ -6822,8 +7111,32 @@ class ViewZones extends i$2 {
                 duration_field: String(o.duration_field ?? ""),
                 duration_unit: String(o.duration_unit ?? ""),
                 start_entity_id: String(o.start_entity_id ?? ""),
+                water_meter_entity_id: String(o.water_meter_entity_id ?? ""),
+                flow_rate_lpm: Math.max(0, Number(o.flow_rate_lpm ?? 0) || 0),
             };
         });
+    }
+    /** "~120 L" for one run of the zone in the active mode; "" without a rate. */
+    _waterPerRun(z) {
+        if (z.flow_rate_lpm <= 0)
+            return "";
+        const minutes = durationForMode({ duration_eco_min: z.duration_eco_min, duration_normal_min: z.duration_normal_min, duration_extra_min: z.duration_extra_min }, this._mode());
+        const unit = volumeUnit(this.hass);
+        return t(this.hass, "config_panel.water_approx", {
+            v: formatVolumeNumber(litresToUnit(z.flow_rate_lpm * minutes, unit)),
+            u: unit,
+        });
+    }
+    /** What the zone used last time, from the run state; "" when it tracks none. */
+    _waterLastRun(z) {
+        const rs = this._rs();
+        const last = rs.water_last_run_l?.[z.zone_id];
+        if (last === undefined || last === null)
+            return "";
+        const source = rs.water_source?.[z.zone_id];
+        const unit = volumeUnit(this.hass);
+        const key = source === "measured" ? "config_panel.water_exact" : "config_panel.water_approx";
+        return t(this.hass, key, { v: formatVolumeNumber(litresToUnit(Number(last), unit)), u: unit });
     }
     /** A zone has an "issue" when an output entity is missing or unavailable. */
     _zoneIssue(z) {
@@ -7024,6 +7337,8 @@ class ViewZones extends i$2 {
                     duration_field: zone.duration_field.trim(),
                     duration_unit: zone.duration_unit.trim(),
                     start_entity_id: zone.start_entity_id.trim(),
+                    water_meter_entity_id: zone.water_meter_entity_id.trim(),
+                    flow_rate_lpm: zone.flow_rate_lpm,
                 };
             }
             const res = await saveZone(this.hass, this.entryId, body);
@@ -7163,6 +7478,35 @@ class ViewZones extends i$2 {
           </div>
         </div>
         <p class="hint">${t(this.hass, "config_panel.zones_behavior_desc")}</p>
+      </div>
+
+      <div class="section-title">${t(this.hass, "config_panel.zones_water_title")}</div>
+      <div class="field-block">
+        <div class="field-row">
+          ${renderNativeEntityField(this.hass, ["sensor"], t(this.hass, "config_panel.zones_water_meter_label"), z.water_meter_entity_id, (v) => {
+            z.water_meter_entity_id = v;
+            this.requestUpdate();
+        }, { placeholderKey: "config_panel.water_meter_placeholder" })}
+        </div>
+        <div class="field-row">
+          <ha-input
+            type="number"
+            .label=${t(this.hass, "config_panel.zones_flow_rate_label", { unit: volumeUnit(this.hass) })}
+            .value=${z.flow_rate_lpm > 0 ? formatRateNumber(litresToUnit(z.flow_rate_lpm, volumeUnit(this.hass))) : ""}
+            min="0"
+            max="1000"
+            step="0.1"
+            @input=${(e) => {
+            const raw = parseFloat(e.target.value);
+            z.flow_rate_lpm = Number.isFinite(raw) && raw > 0 ? unitToLitres(raw, volumeUnit(this.hass)) : 0;
+        }}
+          ></ha-input>
+        </div>
+        ${renderInlineHelp(this.hass, "config_panel.zones_water_help_summary", [
+            "config_panel.zones_water_desc",
+            "config_panel.zones_water_meter_hint",
+            "config_panel.zones_flow_rate_hint",
+        ], "mdi:water-outline")}
       </div>
 
       <div class="section-title">${t(this.hass, "config_panel.zones_advanced_title")}</div>
@@ -7364,6 +7708,18 @@ class ViewZones extends i$2 {
         })}
                 ${" "}${t(this.hass, "config_panel.zones_min_suffix")}
               </span>
+              ${this._waterPerRun(z)
+            ? b `<span class="meta"
+                    ><ha-icon icon="mdi:water-outline"></ha-icon>${this._waterPerRun(z)}
+                    ${t(this.hass, "config_panel.water_per_run")}</span
+                  >`
+            : A}
+              ${this._waterLastRun(z)
+            ? b `<span class="meta"
+                    ><ha-icon icon="mdi:water-check-outline"></ha-icon>${t(this.hass, "config_panel.general_water_last_run")}
+                    ${this._waterLastRun(z)}</span
+                  >`
+            : A}
               ${slotN > 0
             ? b `<span class="meta"
                     ><ha-icon icon="mdi:format-list-bulleted"></ha-icon>${slotN === 1
@@ -7606,7 +7962,7 @@ __decorate([
 ], ViewZones.prototype, "_expanded", void 0);
 defineCustomElementOnce("si-view-zones", ViewZones);
 
-const VERSION = "1.10.0";
+const VERSION = "1.11.0";
 const PANEL_PAGES = ["overview", "zones", "schedule", "timetable", "settings"];
 /** Legacy path aliases so existing links / deep links keep working. */
 const PAGE_ALIASES = {

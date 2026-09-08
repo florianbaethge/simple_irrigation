@@ -8,6 +8,8 @@ from datetime import datetime
 from typing import Any
 
 from .const import (
+    MAX_REPETITIONS,
+    MAX_SOAK_MIN,
     GUARD_BOOLEAN_OPERATORS,
     GUARD_NUMERIC_OPERATORS,
     GUARD_OP_ABOVE,
@@ -105,6 +107,18 @@ class Zone:
     duration_field: str = ""
     duration_unit: str = ""
     start_entity_id: str = ""
+    # --- Water ---------------------------------------------------------------
+    # How much this zone uses. A meter entity on the zone's own line measures
+    # it; a flow rate in litres per minute (read off the house meter once)
+    # estimates it. The meter wins when both are set; neither means the zone
+    # reports no water at all — never a guess it cannot back up.
+    water_meter_entity_id: str = ""
+    flow_rate_lpm: float = 0.0
+
+    @property
+    def tracks_water(self) -> bool:
+        """Whether this zone can report litres, measured or estimated."""
+        return bool(self.water_meter_entity_id.strip()) or self.flow_rate_lpm > 0
 
     def duration_for_mode(self, mode: str) -> int:
         """Return duration in minutes for the given global mode."""
@@ -131,6 +145,8 @@ class Zone:
             "duration_field": self.duration_field,
             "duration_unit": self.duration_unit,
             "start_entity_id": self.start_entity_id,
+            "water_meter_entity_id": self.water_meter_entity_id,
+            "flow_rate_lpm": self.flow_rate_lpm,
         }
 
     @staticmethod
@@ -160,6 +176,8 @@ class Zone:
             duration_field=str(data.get("duration_field") or "").strip(),
             duration_unit=str(data.get("duration_unit") or "").strip(),
             start_entity_id=str(data.get("start_entity_id") or "").strip(),
+            water_meter_entity_id=str(data.get("water_meter_entity_id") or "").strip(),
+            flow_rate_lpm=_non_negative_float(data.get("flow_rate_lpm")),
         )
 
 
@@ -226,6 +244,22 @@ class ScheduleSlot:
     cycle_id: str | None = None  # uuid4 shared by all slots of one cycle
     cycle_kind: str = "custom"  # daily | twice_daily | every_n_days | n_per_week | weekly | biweekly | custom
     cycle_meta: dict[str, Any] | None = None  # {"n", "anchor_weekday", "times", "label"}
+    # --- Cycle & Soak --------------------------------------------------------
+    # Water in several short passes with rests in between, so the water soaks in
+    # instead of running off. One repetition with no pauses is a plain run; the
+    # runtime sees the difference only as extra steps in its phase queue.
+    repetitions: int = 1
+    soak_between_phases_min: int = 0
+    soak_between_repetitions_min: int = 0
+
+    @property
+    def cycle_soak(self) -> bool:
+        """Whether this slot repeats or rests at all."""
+        return (
+            self.repetitions > 1
+            or self.soak_between_phases_min > 0
+            or self.soak_between_repetitions_min > 0
+        )
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize to JSON-compatible dict."""
@@ -250,6 +284,9 @@ class ScheduleSlot:
             "cycle_id": self.cycle_id,
             "cycle_kind": self.cycle_kind,
             "cycle_meta": dict(self.cycle_meta) if self.cycle_meta else None,
+            "repetitions": self.repetitions,
+            "soak_between_phases_min": self.soak_between_phases_min,
+            "soak_between_repetitions_min": self.soak_between_repetitions_min,
         }
 
     @staticmethod
@@ -291,7 +328,32 @@ class ScheduleSlot:
             cycle_id=cycle_id,
             cycle_kind=cycle_kind,
             cycle_meta=cycle_meta,
+            repetitions=_clamp_int(data.get("repetitions"), 1, 1, MAX_REPETITIONS),
+            soak_between_phases_min=_clamp_int(
+                data.get("soak_between_phases_min"), 0, 0, MAX_SOAK_MIN
+            ),
+            soak_between_repetitions_min=_clamp_int(
+                data.get("soak_between_repetitions_min"), 0, 0, MAX_SOAK_MIN
+            ),
         )
+
+
+def _non_negative_float(raw: Any) -> float:
+    """A float >= 0; 0.0 when the value is missing or junk."""
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        return 0.0
+    return value if value > 0 else 0.0
+
+
+def _clamp_int(raw: Any, default: int, lo: int, hi: int) -> int:
+    """An int within [lo, hi]; ``default`` when the value is missing or junk."""
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return default
+    return max(lo, min(hi, value))
 
 
 @dataclass
@@ -313,6 +375,8 @@ class Installation:
     pause_until: datetime | None = None
     max_parallel_zones: int = 2
     is_default: bool = False
+    # Water meter on the supply line: measures a whole run, whatever ran in it.
+    water_meter_entity_id: str = ""
     # Conditions applied to every scheduled run unless a slot opts out.
     guards: list[Guard] = field(default_factory=list)
     zones: dict[str, Zone] = field(default_factory=dict)
@@ -334,6 +398,7 @@ class Installation:
             "pause_until": self.pause_until.isoformat() if self.pause_until else None,
             "max_parallel_zones": self.max_parallel_zones,
             "is_default": self.is_default,
+            "water_meter_entity_id": self.water_meter_entity_id,
             "guards": [g.to_dict() for g in self.guards],
             "zones": {k: v.to_dict() for k, v in self.zones.items()},
             "schedule_slots": [s.to_dict() for s in self.schedule_slots],
@@ -374,6 +439,7 @@ class Installation:
             pause_until=pause_until,
             max_parallel_zones=max(1, int(data.get("max_parallel_zones", 2))),
             is_default=bool(data.get("is_default", False)),
+            water_meter_entity_id=str(data.get("water_meter_entity_id") or "").strip(),
             guards=parse_guards(data.get("guards")),
             zones=zones,
             schedule_slots=schedule_slots,
@@ -411,6 +477,23 @@ class RunState:
     # countdown without polling. Written by to_dict() for the panel payload but
     # deliberately never read back in from_dict() — see there.
     zone_ends_at: dict[str, datetime] = field(default_factory=dict)
+    # End of the Cycle & Soak pause the run is resting in, so the UI can count
+    # it down; None while watering. Volatile exactly like ``zone_ends_at``.
+    soak_until: datetime | None = None
+    # --- Water ---------------------------------------------------------------
+    # Litres per zone: running total (what the water sensors report), the last
+    # run, and whether that came from a meter ("measured") or a flow rate
+    # ("estimated"). Zones that track no water simply have no entry.
+    water_total_l: dict[str, float] = field(default_factory=dict)
+    water_last_run_l: dict[str, float] = field(default_factory=dict)
+    water_source: dict[str, str] = field(default_factory=dict)
+    # The whole installation: the run in flight (None until a zone reports),
+    # the last finished run, and the running total behind the water sensor.
+    run_water_l: float | None = None
+    run_water_source: str = ""
+    last_run_water_l: float | None = None
+    last_run_water_source: str = ""
+    water_total_installation_l: float = 0.0
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize to JSON-compatible dict."""
@@ -448,6 +531,17 @@ class RunState:
             "zone_ends_at": {
                 k: v.isoformat() for k, v in self.zone_ends_at.items()
             },
+            "soak_until": self.soak_until.isoformat() if self.soak_until else None,
+            "water_total_l": {k: round(v, 3) for k, v in self.water_total_l.items()},
+            "water_last_run_l": {k: round(v, 3) for k, v in self.water_last_run_l.items()},
+            "water_source": dict(self.water_source),
+            "run_water_l": round(self.run_water_l, 3) if self.run_water_l is not None else None,
+            "run_water_source": self.run_water_source,
+            "last_run_water_l": (
+                round(self.last_run_water_l, 3) if self.last_run_water_l is not None else None
+            ),
+            "last_run_water_source": self.last_run_water_source,
+            "water_total_installation_l": round(self.water_total_installation_l, 3),
         }
 
     @staticmethod
@@ -474,6 +568,27 @@ class RunState:
                 if isinstance(grp, list):
                     upcoming_phases.append([str(x) for x in grp])
 
+        def _float_map(raw: Any) -> dict[str, float]:
+            out: dict[str, float] = {}
+            if isinstance(raw, dict):
+                for k, v in raw.items():
+                    try:
+                        out[str(k)] = float(v)
+                    except (TypeError, ValueError):
+                        continue
+            return out
+
+        def _opt_float(raw: Any) -> float | None:
+            try:
+                return float(raw) if raw is not None else None
+            except (TypeError, ValueError):
+                return None
+
+        raw_source = data.get("water_source")
+        water_source = (
+            {str(k): str(v) for k, v in raw_source.items()} if isinstance(raw_source, dict) else {}
+        )
+
         return RunState(
             run_state=str(data.get("run_state", RUN_STATE_IDLE)),
             active_zone_ids=list(data.get("active_zone_ids", [])),
@@ -487,7 +602,16 @@ class RunState:
             manual_run=bool(data.get("manual_run", False)),
             upcoming_phases=upcoming_phases,
             active_script=data.get("active_script") or None,
-            # zone_ends_at is intentionally NOT restored. It only means something
-            # while this process is watering; after a restart no zone is running
-            # any more and a recovered end time would render a phantom countdown.
+            water_total_l=_float_map(data.get("water_total_l")),
+            water_last_run_l=_float_map(data.get("water_last_run_l")),
+            water_source=water_source,
+            # A run cannot survive a restart, so what it used so far is dropped
+            # with it; the last finished run and the totals stay.
+            last_run_water_l=_opt_float(data.get("last_run_water_l")),
+            last_run_water_source=str(data.get("last_run_water_source") or ""),
+            water_total_installation_l=_opt_float(data.get("water_total_installation_l")) or 0.0,
+            # zone_ends_at and soak_until are intentionally NOT restored. They only
+            # mean something while this process is watering; after a restart no
+            # zone is running any more and a recovered end time would render a
+            # phantom countdown.
         )

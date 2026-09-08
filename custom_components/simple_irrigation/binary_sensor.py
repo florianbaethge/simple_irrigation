@@ -65,6 +65,7 @@ class RunningBinarySensor(SimpleIrrigationEntity, BinarySensorEntity):
             "run_state": rs.run_state,
             "active_zone_ids": list(rs.active_zone_ids),
             "active_script": rs.active_script,
+            "soak_until": rs.soak_until.isoformat() if rs.soak_until else None,
         }
 
 

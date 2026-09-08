@@ -37,6 +37,7 @@ import {
   duration,
   leadTime,
   secondsUntil,
+  water,
   weekdayNames,
 } from "./format";
 import { localize, localizeCount } from "./i18n";
@@ -488,7 +489,32 @@ export class SimpleIrrigationCard extends LitElement {
   }
 
   private _stateLabel(): string {
+    if (this._soaking()) return localize(this.hass, "state_soaking");
     return localize(this.hass, `state_${this._snapshot?.state ?? "idle"}`);
+  }
+
+  /** "~42 L so far": booked zones plus what the open ones have used by now. */
+  private _waterSoFar(): string {
+    const snap = this._snapshot;
+    if (!snap?.tracks_water) return "";
+    let litres = snap.run_water_l ?? 0;
+    let known = snap.run_water_l !== null && snap.run_water_l !== undefined;
+    let estimated = snap.run_water_source !== "measured";
+    for (const zone of snap.zones) {
+      if (!zone.active || zone.flow_lpm <= 0 || !zone.ends_at) continue;
+      const elapsedMin = Math.max(0, zone.duration_min - secondsUntil(zone.ends_at) / 60);
+      litres += zone.flow_lpm * elapsedMin;
+      known = true;
+      estimated = true;
+    }
+    if (!known) return "";
+    return localize(this.hass, "water_so_far", { v: water(this.hass, litres, estimated) });
+  }
+
+  /** Resting between Cycle & Soak passes: the run is on, no zone is. */
+  private _soaking(): boolean {
+    const snap = this._snapshot;
+    return snap?.state === "running" && Boolean(snap.soak_until);
   }
 
   private _pillClass(): string {
@@ -622,6 +648,24 @@ export class SimpleIrrigationCard extends LitElement {
                     <strong>~${next.duration_min}</strong>
                     ${localize(this.hass, "unit_minute_short")}
                   </span>
+                  ${next.water_l !== null && next.water_l !== undefined
+                    ? html`<span>
+                        <ha-icon icon="mdi:water-outline"></ha-icon>
+                        ${water(this.hass, next.water_l, true)}
+                      </span>`
+                    : nothing}
+                  ${snap.last_run_water_l !== null && snap.last_run_water_l !== undefined
+                    ? html`<span>
+                        <ha-icon icon="mdi:water-check-outline"></ha-icon>
+                        ${localize(this.hass, "water_last_run", {
+                          v: water(
+                            this.hass,
+                            snap.last_run_water_l,
+                            snap.last_run_water_source !== "measured"
+                          ),
+                        })}
+                      </span>`
+                    : nothing}
                 </div>
               `
             : html`
@@ -745,6 +789,7 @@ export class SimpleIrrigationCard extends LitElement {
             time: clock(this.hass, snap.run_ends_at),
           })
         : "",
+      this._waterSoFar(),
     ].filter(Boolean);
 
     return html`
@@ -760,7 +805,12 @@ export class SimpleIrrigationCard extends LitElement {
                 <i style=${styleMap({ width: `${progress}%` })}></i>
               </div>
             `
-          : nothing}
+          : this._soaking()
+            ? html`
+                <div class="label">${localize(this.hass, "soak_remaining")}</div>
+                <div class="big pri">${countdown(secondsUntil(snap.soak_until))}</div>
+              `
+            : nothing}
         <div class="queue">
           ${active.map(
             (zone) => html`<div class="qrow">
@@ -1549,6 +1599,13 @@ export class SimpleIrrigationCard extends LitElement {
       stateText = localize(this.hass, "compact_running", {
         zone: lead.name,
         time: countdown(secondsUntil(lead.ends_at)),
+        index: snap.phase_index ?? 1,
+        total: snap.phase_total ?? 1,
+      });
+      stateCls = "pri";
+    } else if (this._soaking()) {
+      stateText = localize(this.hass, "compact_soaking", {
+        time: countdown(secondsUntil(snap.soak_until)),
         index: snap.phase_index ?? 1,
         total: snap.phase_total ?? 1,
       });

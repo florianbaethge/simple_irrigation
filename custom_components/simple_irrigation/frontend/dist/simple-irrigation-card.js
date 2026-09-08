@@ -376,6 +376,8 @@ const TRANSLATIONS = {
         state_stopping: "Stopping",
         state_paused: "Paused",
         state_error: "Error",
+        state_soaking: "Soaking",
+        soak_remaining: "Soaking · resumes in",
         // status view
         next_run: "Next run",
         no_next_run: "No run scheduled",
@@ -464,6 +466,7 @@ const TRANSLATIONS = {
         compact_idle: "{state} · next {time} · ~{duration}",
         compact_idle_no_run: "{state} · nothing scheduled",
         compact_running: "{zone} · {time} left · {index} of {total}",
+        compact_soaking: "Soaking · {time} left · {index} of {total}",
         compact_paused: "Paused until {time}",
         // badges
         badge_next: "Next {time}",
@@ -473,6 +476,12 @@ const TRANSLATIONS = {
         // shared
         unit_hour_short: "h",
         unit_minute_short: "min",
+        unit_litre_short: "L",
+        unit_gallon_short: "gal",
+        water_approx: "~{v} {u}",
+        water_exact: "{v} {u}",
+        water_so_far: "{v} so far",
+        water_last_run: "last run {v}",
         in_time: "in {time}",
         today: "Today",
         tomorrow: "Tomorrow",
@@ -552,6 +561,8 @@ const TRANSLATIONS = {
         state_stopping: "Arrêt…",
         state_paused: "En pause",
         state_error: "Erreur",
+        state_soaking: "Pause (infiltration)",
+        soak_remaining: "Pause · reprise dans",
         // status view
         next_run: "Prochain arrosage",
         no_next_run: "Aucun arrosage planifié",
@@ -640,6 +651,7 @@ const TRANSLATIONS = {
         compact_idle: "{state} · prochain {time} · ~{duration}",
         compact_idle_no_run: "{state} · rien de planifié",
         compact_running: "{zone} · encore {time} · {index} sur {total}",
+        compact_soaking: "Pause · encore {time} · {index} sur {total}",
         compact_paused: "En pause jusqu’à {time}",
         // badges
         badge_next: "Prochain {time}",
@@ -649,6 +661,12 @@ const TRANSLATIONS = {
         // shared
         unit_hour_short: "h",
         unit_minute_short: "min",
+        unit_litre_short: "L",
+        unit_gallon_short: "gal",
+        water_approx: "~{v} {u}",
+        water_exact: "{v} {u}",
+        water_so_far: "{v} jusqu'ici",
+        water_last_run: "dernier arrosage {v}",
         in_time: "dans {time}",
         today: "Aujourd’hui",
         tomorrow: "Demain",
@@ -727,6 +745,8 @@ const TRANSLATIONS = {
         state_stopping: "Wird gestoppt",
         state_paused: "Pausiert",
         state_error: "Fehler",
+        state_soaking: "Pause (Einziehen)",
+        soak_remaining: "Pause · weiter in",
         next_run: "Nächster Lauf",
         no_next_run: "Kein Lauf geplant",
         no_next_run_hint: "Lege im Simple-Irrigation-Panel einen Zeitplan an.",
@@ -807,6 +827,7 @@ const TRANSLATIONS = {
         compact_idle: "{state} · nächster Lauf {time} · ~{duration}",
         compact_idle_no_run: "{state} · nichts geplant",
         compact_running: "{zone} · noch {time} · {index} von {total}",
+        compact_soaking: "Pause · noch {time} · {index} von {total}",
         compact_paused: "Pausiert bis {time}",
         badge_next: "Nächster {time}",
         badge_paused: "Pausiert bis {time}",
@@ -814,6 +835,12 @@ const TRANSLATIONS = {
         badge_issues_one: "1 Zonenproblem",
         unit_hour_short: "Std.",
         unit_minute_short: "Min.",
+        unit_litre_short: "L",
+        unit_gallon_short: "gal",
+        water_approx: "~{v} {u}",
+        water_exact: "{v} {u}",
+        water_so_far: "bisher {v}",
+        water_last_run: "letzter Lauf {v}",
         in_time: "in {time}",
         today: "Heute",
         tomorrow: "Morgen",
@@ -889,6 +916,8 @@ const TRANSLATIONS = {
         state_stopping: "Stoppen",
         state_paused: "Gepauzeerd",
         state_error: "Fout",
+        state_soaking: "Pauze (intrekken)",
+        soak_remaining: "Pauze · verder over",
         next_run: "Volgende beurt",
         no_next_run: "Geen beurt gepland",
         no_next_run_hint: "Maak een tijdvak aan in het Simple Irrigation-paneel.",
@@ -969,6 +998,7 @@ const TRANSLATIONS = {
         compact_idle: "{state} · volgende {time} · ~{duration}",
         compact_idle_no_run: "{state} · niets gepland",
         compact_running: "{zone} · nog {time} · {index} van {total}",
+        compact_soaking: "Pauze · nog {time} · {index} van {total}",
         compact_paused: "Gepauzeerd tot {time}",
         badge_next: "Volgende {time}",
         badge_paused: "Gepauzeerd tot {time}",
@@ -976,6 +1006,12 @@ const TRANSLATIONS = {
         badge_issues_one: "1 zoneprobleem",
         unit_hour_short: "u",
         unit_minute_short: "min",
+        unit_litre_short: "L",
+        unit_gallon_short: "gal",
+        water_approx: "~{v} {u}",
+        water_exact: "{v} {u}",
+        water_so_far: "tot nu toe {v}",
+        water_last_run: "laatste beurt {v}",
         in_time: "over {time}",
         today: "Vandaag",
         tomorrow: "Morgen",
@@ -1051,6 +1087,8 @@ const TRANSLATIONS = {
         state_stopping: "Arresto",
         state_paused: "In pausa",
         state_error: "Errore",
+        state_soaking: "Pausa (assorbimento)",
+        soak_remaining: "Pausa · riprende tra",
         next_run: "Prossima irrigazione",
         no_next_run: "Nessuna irrigazione programmata",
         no_next_run_hint: "Aggiungi una fascia oraria nel pannello Simple Irrigation.",
@@ -1131,6 +1169,7 @@ const TRANSLATIONS = {
         compact_idle: "{state} · prossima {time} · ~{duration}",
         compact_idle_no_run: "{state} · nulla in programma",
         compact_running: "{zone} · {time} rimanenti · {index} di {total}",
+        compact_soaking: "Pausa · {time} rimanenti · {index} di {total}",
         compact_paused: "In pausa fino a {time}",
         badge_next: "Prossima {time}",
         badge_paused: "In pausa fino a {time}",
@@ -1138,6 +1177,12 @@ const TRANSLATIONS = {
         badge_issues_one: "1 problema di zona",
         unit_hour_short: "h",
         unit_minute_short: "min",
+        unit_litre_short: "L",
+        unit_gallon_short: "gal",
+        water_approx: "~{v} {u}",
+        water_exact: "{v} {u}",
+        water_so_far: "finora {v}",
+        water_last_run: "ultima irrigazione {v}",
         in_time: "tra {time}",
         today: "Oggi",
         tomorrow: "Domani",
@@ -1226,6 +1271,25 @@ function localizeCount(hass, key, count, vars) {
     const table = TRANSLATIONS[language(hass)] ?? TRANSLATIONS.en;
     const useSingular = count === 1 && (table[singular] !== undefined || TRANSLATIONS.en[singular]);
     return localize(hass, useSingular ? singular : key, { count, ...vars });
+}
+
+/**
+ * Volume in the user's unit system. The backend keeps litres; here they turn
+ * into litres or gallons depending on what Home Assistant is set to, so a US
+ * garden reads gallons everywhere without a setting of its own.
+ */
+const LITRES_PER_GALLON = 3.785411784;
+/** "L" or "gal", from the HA unit system; litres when unknown. */
+function volumeUnit(hass) {
+    return hass?.config?.unit_system?.volume === "gal" ? "gal" : "L";
+}
+function litresToUnit(litres, unit) {
+    return unit === "gal" ? litres / LITRES_PER_GALLON : litres;
+}
+/** A volume rounded for display: whole units above 10, one decimal below. */
+function formatVolumeNumber(value) {
+    const v = Math.max(0, value);
+    return v >= 10 ? String(Math.round(v)) : (Math.round(v * 10) / 10).toString();
 }
 
 /**
@@ -1403,6 +1467,13 @@ function cadenceLabel(hass, cadence) {
 /** "~40 min" — an estimate, flagged as one. */
 function approxMinutes(hass, minutes) {
     return localize(hass, "approx_minutes", { n: Math.round(minutes) });
+}
+/** "~120 L" / "32 gal" — litres in the user's unit system, tilde for estimates. */
+function water(hass, litres, estimated) {
+    const unit = volumeUnit(hass);
+    const v = formatVolumeNumber(litresToUnit(litres, unit));
+    const u = localize(hass, unit === "gal" ? "unit_gallon_short" : "unit_litre_short");
+    return localize(hass, estimated ? "water_approx" : "water_exact", { v, u });
 }
 
 /**
@@ -3974,7 +4045,34 @@ let SimpleIrrigationCard = class SimpleIrrigationCard extends i$2 {
         return this._snapshot?.next_runs.find((run) => !run.skipped_by_pause);
     }
     _stateLabel() {
+        if (this._soaking())
+            return localize(this.hass, "state_soaking");
         return localize(this.hass, `state_${this._snapshot?.state ?? "idle"}`);
+    }
+    /** "~42 L so far": booked zones plus what the open ones have used by now. */
+    _waterSoFar() {
+        const snap = this._snapshot;
+        if (!snap?.tracks_water)
+            return "";
+        let litres = snap.run_water_l ?? 0;
+        let known = snap.run_water_l !== null && snap.run_water_l !== undefined;
+        let estimated = snap.run_water_source !== "measured";
+        for (const zone of snap.zones) {
+            if (!zone.active || zone.flow_lpm <= 0 || !zone.ends_at)
+                continue;
+            const elapsedMin = Math.max(0, zone.duration_min - secondsUntil(zone.ends_at) / 60);
+            litres += zone.flow_lpm * elapsedMin;
+            known = true;
+            estimated = true;
+        }
+        if (!known)
+            return "";
+        return localize(this.hass, "water_so_far", { v: water(this.hass, litres, estimated) });
+    }
+    /** Resting between Cycle & Soak passes: the run is on, no zone is. */
+    _soaking() {
+        const snap = this._snapshot;
+        return snap?.state === "running" && Boolean(snap.soak_until);
     }
     _pillClass() {
         switch (this._snapshot?.state) {
@@ -4063,7 +4161,7 @@ let SimpleIrrigationCard = class SimpleIrrigationCard extends i$2 {
     </div>`;
     }
     _renderIdle() {
-        this._snapshot;
+        const snap = this._snapshot;
         const next = this._nextRun();
         return b `
       ${this._renderHeader()}
@@ -4094,6 +4192,20 @@ let SimpleIrrigationCard = class SimpleIrrigationCard extends i$2 {
                     <strong>~${next.duration_min}</strong>
                     ${localize(this.hass, "unit_minute_short")}
                   </span>
+                  ${next.water_l !== null && next.water_l !== undefined
+                ? b `<span>
+                        <ha-icon icon="mdi:water-outline"></ha-icon>
+                        ${water(this.hass, next.water_l, true)}
+                      </span>`
+                : A}
+                  ${snap.last_run_water_l !== null && snap.last_run_water_l !== undefined
+                ? b `<span>
+                        <ha-icon icon="mdi:water-check-outline"></ha-icon>
+                        ${localize(this.hass, "water_last_run", {
+                    v: water(this.hass, snap.last_run_water_l, snap.last_run_water_source !== "measured"),
+                })}
+                      </span>`
+                : A}
                 </div>
               `
             : b `
@@ -4204,6 +4316,7 @@ let SimpleIrrigationCard = class SimpleIrrigationCard extends i$2 {
                     time: clock(this.hass, snap.run_ends_at),
                 })
                 : "",
+            this._waterSoFar(),
         ].filter(Boolean);
         return b `
       ${this._renderHeader()}
@@ -4218,7 +4331,12 @@ let SimpleIrrigationCard = class SimpleIrrigationCard extends i$2 {
                 <i style=${o$1({ width: `${progress}%` })}></i>
               </div>
             `
-            : A}
+            : this._soaking()
+                ? b `
+                <div class="label">${localize(this.hass, "soak_remaining")}</div>
+                <div class="big pri">${countdown(secondsUntil(snap.soak_until))}</div>
+              `
+                : A}
         <div class="queue">
           ${active.map((zone) => b `<div class="qrow">
               <span class="qdot"></span>
@@ -4930,6 +5048,14 @@ let SimpleIrrigationCard = class SimpleIrrigationCard extends i$2 {
             });
             stateCls = "pri";
         }
+        else if (this._soaking()) {
+            stateText = localize(this.hass, "compact_soaking", {
+                time: countdown(secondsUntil(snap.soak_until)),
+                index: snap.phase_index ?? 1,
+                total: snap.phase_total ?? 1,
+            });
+            stateCls = "pri";
+        }
         else if (paused && snap.paused_until) {
             stateText = localize(this.hass, "compact_paused", {
                 time: dayTime(this.hass, snap.paused_until),
@@ -5117,7 +5243,7 @@ window.customCards.push({
     documentationURL: "https://github.com/florianbaethge/simple_irrigation",
 });
 // eslint-disable-next-line no-console
-console.info(`%c SIMPLE-IRRIGATION-CARD %c ${"1.10.0"} `, "color: #fff; background: #03a9f4; font-weight: 700;", "color: #03a9f4; background: #fff; font-weight: 700;");
+console.info(`%c SIMPLE-IRRIGATION-CARD %c ${"1.11.0"} `, "color: #fff; background: #03a9f4; font-weight: 700;", "color: #03a9f4; background: #fff; font-weight: 700;");
 
 export { SimpleIrrigationCard };
 //# sourceMappingURL=simple-irrigation-card.js.map

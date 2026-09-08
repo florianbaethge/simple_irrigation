@@ -2,8 +2,15 @@
 
 from __future__ import annotations
 
-from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
+from typing import Any
+
+from homeassistant.components.sensor import (
+    SensorDeviceClass,
+    SensorEntity,
+    SensorStateClass,
+)
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import UnitOfVolume
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -24,12 +31,94 @@ async def async_setup_entry(
         NextRunSensor(coordinator),
         PauseUntilSensor(coordinator),
         CurrentRunEndsAtSensor(coordinator),
+        WaterSensor(coordinator),
     ]
     for zid, zone in coordinator.installation.zones.items():
         entities.append(ZoneNextRunSensor(coordinator, zid, zone.name))
         entities.append(ZoneLastRunSensor(coordinator, zid, zone.name))
         entities.append(ZoneEndsAtSensor(coordinator, zid, zone.name))
+        entities.append(ZoneWaterSensor(coordinator, zid, zone.name))
     async_add_entities(entities)
+
+
+class WaterSensor(SimpleIrrigationEntity, SensorEntity):
+    """Litres the installation has used, as a running total.
+
+    A ``total_increasing`` water sensor is all Home Assistant needs: long-term
+    statistics, history graphs, the Energy dashboard's water section and a
+    Utility Meter for monthly figures all come for free. The integration keeps
+    no history of its own. ``source`` says whether the figure was measured by a
+    meter or estimated from flow rates; the last finished run is an attribute.
+    Unknown until the first run reports water, so an installation that tracks
+    none never shows a bogus zero.
+    """
+
+    _attr_translation_key = "water_total"
+    _attr_icon = "mdi:water"
+    _attr_device_class = SensorDeviceClass.WATER
+    _attr_state_class = SensorStateClass.TOTAL_INCREASING
+    _attr_native_unit_of_measurement = UnitOfVolume.LITERS
+    _attr_suggested_display_precision = 0
+
+    def __init__(self, coordinator: SimpleIrrigationCoordinator) -> None:
+        """Initialize."""
+        super().__init__(coordinator, "water_total")
+
+    @property
+    def native_value(self) -> float | None:
+        """Running total in litres."""
+        rs = self.coordinator.run_state
+        if rs.last_run_water_l is None and rs.water_total_installation_l <= 0:
+            return None
+        return rs.water_total_installation_l
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """The last finished run and where the numbers come from."""
+        rs = self.coordinator.run_state
+        return {
+            "source": rs.last_run_water_source or None,
+            "last_run_l": (
+                round(rs.last_run_water_l, 1) if rs.last_run_water_l is not None else None
+            ),
+        }
+
+
+class ZoneWaterSensor(SimpleIrrigationEntity, SensorEntity):
+    """Litres one zone has used, as a running total (see WaterSensor)."""
+
+    _attr_icon = "mdi:water"
+    _attr_device_class = SensorDeviceClass.WATER
+    _attr_state_class = SensorStateClass.TOTAL_INCREASING
+    _attr_native_unit_of_measurement = UnitOfVolume.LITERS
+    _attr_suggested_display_precision = 0
+
+    def __init__(
+        self,
+        coordinator: SimpleIrrigationCoordinator,
+        zone_id: str,
+        zone_name: str,
+    ) -> None:
+        """Initialize."""
+        super().__init__(coordinator, f"zone_{zone_id}_water")
+        self._zone_id = zone_id
+        self._attr_translation_key = "zone_water"
+        self._attr_translation_placeholders = {"zone_name": zone_name}
+
+    @property
+    def native_value(self) -> float | None:
+        """Running total in litres; unknown until the zone reports water."""
+        return self.coordinator.run_state.water_total_l.get(self._zone_id)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """The last run and where the number comes from."""
+        rs = self.coordinator.run_state
+        last = rs.water_last_run_l.get(self._zone_id)
+        return {
+            "source": rs.water_source.get(self._zone_id),
+            "last_run_l": round(last, 1) if last is not None else None,
+        }
 
 
 class ActiveZonesSensor(SimpleIrrigationEntity, SensorEntity):

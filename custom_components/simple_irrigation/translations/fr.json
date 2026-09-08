@@ -59,6 +59,12 @@
       },
       "zone_ends_at": {
         "name": "Arrosage de {zone_name} jusqu’à"
+      },
+      "water_total": {
+        "name": "Eau"
+      },
+      "zone_water": {
+        "name": "{zone_name} eau"
       }
     },
     "binary_sensor": {
@@ -446,6 +452,35 @@
     "schedule_time_hhmm": "Heure (HH:MM)",
     "guards_section_title": "Conditions",
     "guards_section_desc": "Exécuter uniquement si toutes ces conditions sont vérifiées. Laissez vide pour toujours exécuter. La liste suggère les capteurs et helpers habituels — toute autre entité peut aussi être saisie.",
+    "cycle_soak_section_title": "Cycle & Soak",
+    "cycle_soak_section_desc": "Arroser en plusieurs passes courtes avec des pauses entre elles, pour que l'eau s'infiltre au lieu de ruisseler. 1 répétition et 0 minute donnent un arrosage normal.",
+    "cycle_soak_repetitions": "Répétitions",
+    "cycle_soak_pause_phases": "Pause entre les phases (min)",
+    "cycle_soak_pause_repetitions": "Pause entre les répétitions (min)",
+    "cycle_soak_hint": "Pendant une pause, toutes les sorties sont fermées, pompe et vanne principale comprises. Arrêter termine l'arrosage, « Phase suivante » écourte la pause.",
+    "cycle_soak_badge": "{r}× Cycle & Soak",
+    "errors_invalid_water_meter": "Le compteur d'eau doit être un capteur avec une unité de volume (L, m³, gal, ft³).",
+    "errors_invalid_flow_rate": "Le débit doit être un nombre entre 0 et 1000 par minute.",
+    "zones_water_title": "Eau",
+    "zones_water_desc": "Facultatif. Indiquez ce que consomme cette zone et Simple Irrigation affiche les litres par arrosage — mesurés par un compteur sur la ligne de la zone, ou estimés d'après un débit mesuré une fois.",
+    "zones_water_meter_label": "Compteur d'eau (facultatif)",
+    "zones_water_meter_hint": "Un capteur qui compte le volume sur la ligne de cette zone. Il est lu à l'ouverture et à la fermeture de la zone ; la différence est la consommation. Prime sur le débit.",
+    "zones_flow_rate_label": "Débit ({unit} par minute)",
+    "zones_flow_rate_hint": "Pour le mesurer : faites tourner cette zone seule pendant 10 minutes, relevez le compteur d'eau avant et après, divisez la différence par 10. Certains systèmes d'arrosage dépendent de la pression et donnent un débit différent avec une autre alimentation — mesurez à nouveau après un tel changement, ou gardez des conditions constantes, par exemple avec un réducteur de pression. Les valeurs issues d'un débit sont marquées comme estimations (~).",
+    "settings_section_water": "Eau",
+    "settings_water_meter_label": "Compteur d'eau sur l'alimentation (facultatif)",
+    "settings_water_meter_hint": "Un capteur qui compte le volume de toute l'installation. Il mesure chaque arrosage dans son ensemble, zones parallèles comprises, et remplace les valeurs des zones pour le total. Les totaux cumulés sont sur les capteurs d'eau ; ajoutez un Utility Meter pour des chiffres mensuels.",
+    "general_water_so_far": "Eau jusqu'ici",
+    "general_water_last_run": "Dernier arrosage",
+    "water_approx": "~{v} {u}",
+    "water_exact": "{v} {u}",
+    "water_per_run": "par arrosage",
+    "water_meter_placeholder": "p. ex. sensor.compteur_eau_jardin",
+    "zones_water_help_summary": "Comment fonctionne le suivi de l'eau",
+    "settings_water_help_summary": "Comment le compteur d'alimentation est utilisé",
+    "cycle_soak_help_summary": "Comment fonctionne Cycle & Soak",
+    "general_state_soaking": "Pause (infiltration)",
+    "general_soak_remaining": "Pause",
     "guards_entity_label": "Entité",
     "guards_entity_placeholder": "Rechercher par nom ou ID d’entité",
     "guards_operator_label": "Condition",

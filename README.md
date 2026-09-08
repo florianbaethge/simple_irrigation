@@ -15,6 +15,8 @@
 - **Watering cycles, not raw cron** — a guided wizard turns *“every 2 days, evenings”* into a working schedule; the panel previews the **next 14 days** live before you save.
 - **Three watering modes** — Eco / Normal / Extra, switchable by hand or from automations (weather, tank level, season …).
 - **Smart runs** — ordered zones grouped into **phases**, configurable parallelism, and **exclusive** zones that always run alone.
+- **Cycle & Soak** — a slot can water in several short passes with rests in between, so the water soaks in instead of running off. Every output is closed while it rests.
+- **Water use, honestly** — litres per run from a meter on the line or a flow rate you measured once, marked as measured or estimated, handed to Home Assistant's statistics and Energy dashboard through plain water sensors.
 - **Everything in the UI** — Overview · Zones · Schedule · Timetable · Settings. No YAML for zones or schedules.
 - **Multiple gardens** — add several installations for different plots or seasonal plans.
 
@@ -28,11 +30,11 @@ Outputs can be any mix of `switch`, `input_boolean`, `group` and `valve` entitie
 
 | Tab | What it does |
 |-----|----------------|
-| **Overview** | Live run state with a countdown to the next run, the next few upcoming runs, the active watering mode, and quick actions: *Run next slot now*, *Skip today*, *Pause 48 h* (plus *Stop* / *Skip phase* while running). |
-| **Zones** | Named zones with one or more output entities, Eco / Normal / Extra runtimes, an **enabled** toggle and **exclusive** flag. Advanced settings support integration-specific start services that receive the runtime. Filter by **All / Enabled / Issues**, run a zone now, see how many cycles use it. |
-| **Schedule** | Your watering **cycles** and single slots. A guided **New irrigation cycle** wizard (daily, every 2/3 days, x-per-week, weekly, every 2 weeks, custom). Every row expands to a **14-day run strip**; multi-slot cycles show their members and can be detached. Per-slot **conditions** gate a run on soil moisture, rain, tank level or any other entity, and per-slot **scripts** override the installation's pre-start / post-run script. |
-| **Timetable** | Week-at-a-glance grid (zones × weekdays, morning / daytime / evening) with per-day totals, using the same phase and mode timing as a real run. On phones it becomes a per-day list. Click a run to jump straight to its editor. |
-| **Settings** | Installation name (shown in the panel header), optional **pre-start** and **post-run scripts**, pre-start outputs & delay, watering mode, max parallel zones, global **conditions**, default installation, service reference and raw diagnostics. |
+| **Overview** | Live run state with a countdown to the next run, the next few upcoming runs (duration and expected litres), the active watering mode, water used so far while running, and quick actions: *Run next slot now*, *Skip today*, *Pause 48 h* (plus *Stop* / *Skip phase* while running). Shows **Soaking** with a countdown while a run rests. |
+| **Zones** | Named zones with one or more output entities, Eco / Normal / Extra runtimes, an **enabled** toggle and **exclusive** flag. Optional **water** tracking per zone: a meter entity or a flow rate, shown as litres per run and last run. Advanced settings support integration-specific start services that receive the runtime. Filter by **All / Enabled / Issues**, run a zone now, see how many cycles use it. |
+| **Schedule** | Your watering **cycles** and single slots. A guided **New irrigation cycle** wizard (daily, every 2/3 days, x-per-week, weekly, every 2 weeks, custom). Every row expands to a **14-day run strip**; multi-slot cycles show their members and can be detached. Per-slot **conditions** gate a run on soil moisture, rain, tank level or any other entity, per-slot **scripts** override the installation's pre-start / post-run script, and **Cycle & Soak** repeats the slot's phases with rests in between. |
+| **Timetable** | Week-at-a-glance grid (zones × weekdays, morning / daytime / evening) with per-day totals, using the same phase and mode timing as a real run — every Cycle & Soak pass is drawn. On phones it becomes a per-day list. Click a run to jump straight to its editor. |
+| **Settings** | Installation name (shown in the panel header), optional **pre-start** and **post-run scripts**, pre-start outputs & delay, watering mode, max parallel zones, an optional **water meter** on the supply line, global **conditions**, default installation, service reference and raw diagnostics. |
 
 ---
 
@@ -48,6 +50,8 @@ Outputs can be any mix of `switch`, `input_boolean`, `group` and `valve` entitie
 
 ![Edit zone — outputs, per-mode runtimes, exclusive](https://raw.githubusercontent.com/florianbaethge/simple_irrigation/main/screenshots/zone_edit.png)
 
+![Edit zone — Water section with meter entity, flow rate and how to measure it](https://raw.githubusercontent.com/florianbaethge/simple_irrigation/main/screenshots/zone_edit_water.png)
+
 ### Schedule & cycles
 
 ![Schedule tab — cycles and slots, with a cycle expanded to its 14-day strip](https://raw.githubusercontent.com/florianbaethge/simple_irrigation/main/screenshots/schedule.png)
@@ -55,6 +59,8 @@ Outputs can be any mix of `switch`, `input_boolean`, `group` and `valve` entitie
 ![New irrigation cycle wizard — live 14-day preview](https://raw.githubusercontent.com/florianbaethge/simple_irrigation/main/screenshots/cycle_wizard.png)
 
 ![Edit slot — weekday picker, week cycle, run order and phases](https://raw.githubusercontent.com/florianbaethge/simple_irrigation/main/screenshots/schedule_edit.png)
+
+![Edit slot — Cycle & Soak: repetitions and rests, with the help expanded](https://raw.githubusercontent.com/florianbaethge/simple_irrigation/main/screenshots/schedule_edit_cycle_soak.png)
 
 ### Timetable
 
@@ -139,6 +145,47 @@ Why the split? A slot can water on chosen weekdays and, optionally, only in **od
 - **Run order & phases:** the ordered zone list is grouped into **phases** by the *max parallel* limit and *exclusive* flags. The editor shows the phase breakdown live.
 - **Optimize cycles:** detects existing single-day slots that together form a known cadence and offers to merge them into one cycle — no re-entry, nothing runs differently.
 - **Run now:** *Run next slot now* (Overview), *Run this slot now* (a schedule row) and *Run zone now* (Zones) all use the same pre-start and shutdown pipeline as a scheduled run.
+
+#### Cycle & Soak
+
+Sloped lawns and clay soil cannot take twenty minutes of water at once — it runs off before it soaks in. **Schedule → edit a slot (or the cycle wizard) → Cycle & Soak** waters the slot in several short passes instead:
+
+![Edit slot — Cycle & Soak: repetitions and rests, with the help expanded](https://raw.githubusercontent.com/florianbaethge/simple_irrigation/main/screenshots/schedule_edit_cycle_soak.png)
+
+| Setting | Effect |
+|---------|--------|
+| **Repetitions** | How often the slot's phases run, in order. `1` is a plain run. |
+| **Rest between phases** | Minutes every output stays closed between two phases of the same pass. |
+| **Rest between repetitions** | Minutes between the last phase of one pass and the first of the next. |
+
+Example — one lawn zone, 3 repetitions of its 10-minute mode duration, 15 minutes rest between repetitions: it waters 10 min, rests 15, waters 10, rests 15, waters 10. The slot's estimated duration on Schedule, Overview, Timetable and the card counts the rests, and the Timetable draws every pass.
+
+- A rest is a real pause: **every output is closed, pre-start outputs included** — a pump must not run against closed valves for a quarter of an hour. Before the next pass they come back up with the usual pre-start delay.
+- **Stop** ends the run, rests included. **Skip phase** cuts a rest short, and skipping a phase skips the rest after it too — whoever skips wants to see the next zone, not a pause.
+- Overview and the card show **Soaking** with a countdown while the run rests; `binary_sensor.<installation>_running` carries the end of the rest as its `soak_until` attribute.
+- Rests are per slot. Several slots due in the same minute run back to back, each with its own rests; a rest with nothing left to water behind it is skipped.
+
+### Water use
+
+Optional, and honest by design: Simple Irrigation reports litres only where it can back them up. Two sources, per zone under **Zones → edit → Water**, and one for the whole installation under **Settings → Water**:
+
+| Source | What it does |
+|--------|--------------|
+| **Flow rate** (per zone) | Litres per minute you measured once. Every run of the zone is **estimated** from its actual watering time and shown with a tilde (`~120 L`). |
+| **Water meter** (per zone) | A volume sensor on the zone's own line. Read when the zone opens and closes; the difference is **measured** and wins over the rate. |
+| **Water meter** (installation) | A volume sensor on the supply line. Measures each run as a whole, parallel zones included, and replaces the zones' sum for the run total. |
+
+![Edit zone — Water section with meter entity, flow rate and how to measure it](https://raw.githubusercontent.com/florianbaethge/simple_irrigation/main/screenshots/zone_edit_water.png)
+
+Any sensor with a volume unit works (`L`, `m³`, `gal`, `ft³`, …); values are converted. Everything is stored in litres and shown in your Home Assistant unit system — gallons in the US, including the flow-rate field.
+
+**How to measure a flow rate:** run the zone alone for 10 minutes, read the water meter before and after, divide the difference by 10. Some irrigation systems depend on water pressure and deliver a different flow with a different supply — measure again after such a change, or keep the conditions constant, for example with a pressure regulator. A rate is only as good as the setup it was measured in.
+
+**Where the numbers go.** No history of its own, no extra tab: the integration books what a run used and hands it to Home Assistant.
+
+- `sensor.<installation>_water` and `sensor.<zone>_water` are `total_increasing` **water** sensors (running totals, attributes `source` and `last_run_l`). That gives you history graphs, long-term statistics, the **Energy dashboard's water section** and a **Utility Meter** for daily or monthly figures — the same tools you use for the rest of the house. Both stay *unknown* until the first run reports water, so nothing shows a bogus zero.
+- The panel shows the forecast per zone, schedule slot and next run (`~120 L per run`), what the current run has used so far, and the last run. The card shows the forecast for the next run, the last run, and a live figure while watering.
+- Zones without a rate or meter contribute nothing — a forecast for a slot is only shown when at least one of its zones can estimate, and a run total is marked as an estimate as soon as one zone's figure is.
 
 ### Conditions
 
@@ -244,7 +291,7 @@ type: custom:simple-irrigation-card
 
 | `view` | Shows |
 |--------|-------|
-| `status` *(default)* | What happens next, how long it takes, and the two or three actions worth reaching for. While a run is active it leads with the remaining time of the open zone and lists the queue. |
+| `status` *(default)* | What happens next, how long it takes, and the two or three actions worth reaching for. While a run is active it leads with the remaining time of the open zone and lists the queue; during a Cycle & Soak rest it shows **Soaking** with the countdown. With water tracking it adds the expected litres of the next run, the last run, and a live figure while watering. |
 | `zones` | Every zone with its runtime for the active mode: what is open, what is next, what is broken. |
 | `schedule` | The next runs resolved into real dates — no cron rules to decode. |
 | `week` | The current week as a timetable; bar height is the run's duration, position its time of day. |
@@ -405,6 +452,17 @@ entities:
 
 The panel’s **Overview** tab shows the same information as a `m:ss` countdown per active zone.
 
+### Water sensors
+
+With [water use](#water-use) configured, two `total_increasing` sensors per installation hand the litres to Home Assistant:
+
+| Entity | Value |
+|--------|-------|
+| `sensor.<installation>_water` | Running total of the installation, in litres (attributes `source`, `last_run_l`) |
+| `sensor.<zone>_water` | Running total of that zone (same attributes) |
+
+Both are **water** sensors, so they appear in the Energy dashboard's water section, in long-term statistics and in a **Utility Meter** without further setup. They stay `unknown` until the first run reports water. `binary_sensor.<installation>_running` carries `soak_until` while a Cycle & Soak run rests.
+
 ---
 
 ## Logs and debugging
@@ -466,3 +524,9 @@ This updates `VERSION`, `manifest.json`, `frontend/package.json`, the panel Type
 
 - **Issues:** [GitHub Issues](https://github.com/florianbaethge/simple_irrigation/issues)
 - **License:** [MIT](LICENSE)
+
+### Contributors
+
+Ideas, prototypes and bug reports shape this integration as much as code does. Thank you to:
+
+- [@Kohle93](https://github.com/Kohle93) — asked for **Cycle & Soak** and built a working prototype of it and of water tracking on a fork ([#52](https://github.com/florianbaethge/simple_irrigation/issues/52)). Both features in this repository were written fresh, but they exist because of that groundwork.

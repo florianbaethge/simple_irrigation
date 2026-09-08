@@ -30,8 +30,18 @@ import {
   weekdayShort,
   weekdaysSummary,
 } from "../date-format";
-import { phaseIndexByZoneId, computePhases, type ZonePhaseInput } from "../schedule-phases";
-import { durationForMode } from "../timetable-model";
+import {
+  computePhases,
+  cycleSoakOf,
+  isCycleSoak,
+  phaseIndexByZoneId,
+  programMinutes,
+  type CycleSoak,
+  type ZonePhaseInput,
+} from "../schedule-phases";
+import { durationForMode, plannedLitres } from "../timetable-model";
+import { renderCycleSoakEditor } from "../cycle-soak-editor";
+import { formatVolumeNumber, litresToUnit, volumeUnit } from "../units";
 import {
   mondayBasedWeekday,
   previewStrip,
@@ -61,6 +71,7 @@ interface SlotRow {
   cycle_id: string | null;
   cycle_kind: string;
   cycle_meta: CycleMeta | null;
+  cycle_soak: CycleSoak;
 }
 
 interface CycleGroup {
@@ -240,6 +251,7 @@ export class ViewSchedule extends LitElement {
         cycle_id: rid,
         cycle_kind: String(o.cycle_kind ?? "custom"),
         cycle_meta: (o.cycle_meta as CycleMeta) ?? null,
+        cycle_soak: cycleSoakOf(o),
       };
     });
   }
@@ -289,6 +301,7 @@ export class ViewSchedule extends LitElement {
       guards: s.guards.map((g) => ({ ...g })),
       pre_start_script: { ...s.pre_start_script },
       post_run_script: { ...s.post_run_script },
+      cycle_soak: { ...s.cycle_soak },
     };
   }
 
@@ -310,6 +323,29 @@ export class ViewSchedule extends LitElement {
         this.hass,
         "config_panel.schedule_scripts_own"
       )}</span
+    >`;
+  }
+
+  /** "~120 L" for one run of the slot, from the zones' flow rates. */
+  private _renderWaterMeta(s: SlotRow): TemplateResult | typeof nothing {
+    const litres = plannedLitres(s.zone_ids_ordered, this._zonesMap(), this._mode(), s.cycle_soak.repetitions);
+    if (litres === null) return nothing;
+    const unit = volumeUnit(this.hass);
+    return html`<span class="meta"
+      ><ha-icon icon="mdi:water-outline"></ha-icon>${t(this.hass, "config_panel.water_approx", {
+        v: formatVolumeNumber(litresToUnit(litres, unit)),
+        u: unit,
+      })}</span
+    >`;
+  }
+
+  /** Read-only chip on a row that waters in passes with rests in between. */
+  private _renderCycleSoakMeta(s: SlotRow): TemplateResult | typeof nothing {
+    if (!isCycleSoak(s.cycle_soak)) return nothing;
+    return html`<span class="meta"
+      ><ha-icon icon="mdi:repeat"></ha-icon>${t(this.hass, "config_panel.cycle_soak_badge", {
+        r: s.cycle_soak.repetitions,
+      })}</span
     >`;
   }
 
@@ -372,20 +408,17 @@ export class ViewSchedule extends LitElement {
     return out;
   }
 
-  private _estimateMin(zoneIds: string[]): number {
+  private _estimateMin(zoneIds: string[], cs: CycleSoak): number {
     const zones = this._zonesMap();
     if (!zones) return 0;
     const phases = computePhases(zoneIds, this._zonesPhaseInput(), this._maxParallel(), true);
-    let total = Math.max(0, Number(this.installation?.pre_start_delay_sec ?? 10)) / 60;
-    for (const phase of phases) {
-      let phaseMax = 0;
-      for (const zid of phase) {
-        const z = zones[zid];
-        if (z && Boolean(z.enabled ?? true)) phaseMax = Math.max(phaseMax, durationForMode(z, this._mode()));
-      }
-      total += phaseMax;
-    }
-    return Math.round(total);
+    const preStart = Math.max(0, Number(this.installation?.pre_start_delay_sec ?? 10)) / 60;
+    const mode = this._mode();
+    const minutes = programMinutes(phases, cs, (zid) => {
+      const z = zones[zid];
+      return z && Boolean(z.enabled ?? true) ? durationForMode(z, mode) : 0;
+    });
+    return Math.round(preStart + minutes);
   }
 
   private _phaseCount(zoneIds: string[]): number {
@@ -743,6 +776,9 @@ export class ViewSchedule extends LitElement {
       ignore_global_guards: d.ignore_global_guards,
       ...scriptOverrideForSave(d.pre_start_script, "pre_start"),
       ...scriptOverrideForSave(d.post_run_script, "post_run"),
+      repetitions: d.cycle_soak.repetitions,
+      soak_between_phases_min: d.cycle_soak.soakBetweenPhasesMin,
+      soak_between_repetitions_min: d.cycle_soak.soakBetweenRepetitionsMin,
     });
     if (ok) this._closeEditDialog();
   }
@@ -859,7 +895,7 @@ export class ViewSchedule extends LitElement {
     const anyEnabled = g.members.some((m) => m.enabled);
     const expanded = this._expanded.has(g.cycle_id);
     const zoneIds = g.members[0]?.zone_ids_ordered ?? [];
-    const est = this._estimateMin(zoneIds);
+    const est = this._estimateMin(zoneIds, g.members[0]?.cycle_soak ?? cycleSoakOf(undefined));
     const phases = this._phaseCount(zoneIds);
     const times = [...new Set(g.members.map((m) => m.time_local))].sort();
     const next = this._nextFire(g.members);
@@ -919,7 +955,9 @@ export class ViewSchedule extends LitElement {
                 ? html`${this._renderGuardMeta(
                     g.members[0].guards,
                     g.members[0].ignore_global_guards
-                  )}${this._renderScriptMeta(g.members[0])}`
+                  )}${this._renderScriptMeta(g.members[0])}${this._renderCycleSoakMeta(
+                    g.members[0]
+                  )}${this._renderWaterMeta(g.members[0])}`
                 : nothing}
               ${next
                 ? html`<span class="meta"
@@ -998,7 +1036,7 @@ export class ViewSchedule extends LitElement {
   }
 
   private _renderCustomRow(s: SlotRow): TemplateResult {
-    const est = this._estimateMin(s.zone_ids_ordered);
+    const est = this._estimateMin(s.zone_ids_ordered, s.cycle_soak);
     const phases = this._phaseCount(s.zone_ids_ordered);
     const accent = s.enabled ? "" : "inactive";
     const expanded = this._expanded.has(s.slot_id);
@@ -1042,6 +1080,8 @@ export class ViewSchedule extends LitElement {
               >
               ${this._renderGuardMeta(s.guards, s.ignore_global_guards)}
               ${this._renderScriptMeta(s)}
+              ${this._renderCycleSoakMeta(s)}
+              ${this._renderWaterMeta(s)}
               ${next
                 ? html`<span class="meta"
                     ><ha-icon icon="mdi:skip-next-outline"></ha-icon>${weekdayShort(
@@ -1312,6 +1352,10 @@ export class ViewSchedule extends LitElement {
             ? html`<p class="hint">${t(this.hass, "config_panel.schedule_all_zones_in_slot")}</p>`
             : html`<p class="hint">${t(this.hass, "config_panel.schedule_create_zones_first")}</p>`}
       </div>
+      ${renderCycleSoakEditor(this.hass, draft.cycle_soak, this._busy, (next) => {
+        draft.cycle_soak = next;
+        this.requestUpdate();
+      })}
     `;
   }
 

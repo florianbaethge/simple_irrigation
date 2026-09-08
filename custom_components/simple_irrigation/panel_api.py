@@ -20,6 +20,8 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.util import dt as dt_util
 
 from .const import (
+    MAX_REPETITIONS,
+    MAX_SOAK_MIN,
     DOMAIN,
     GUARD_OPERATORS,
     MAX_SCRIPT_TIMEOUT_SEC,
@@ -45,6 +47,7 @@ from .validation import (
     validate_pre_start_entities,
     validate_script_entity,
     validate_script_timeout,
+    validate_water_meter_entity,
     validate_zone_payload,
 )
 
@@ -68,6 +71,29 @@ GUARD_LIST_SCHEMA = [GUARD_SCHEMA]
 SLOT_SCRIPT_TIMEOUT_SCHEMA = vol.Any(
     None, vol.All(cv.positive_int, vol.Range(min=1, max=MAX_SCRIPT_TIMEOUT_SEC))
 )
+
+
+# Cycle & Soak fields as the panel sends them. Zero minutes is a valid soak
+# ("none"), so these are plain ranges rather than positive_int.
+SLOT_REPETITIONS_SCHEMA = vol.All(int, vol.Range(min=1, max=MAX_REPETITIONS))
+SLOT_SOAK_SCHEMA = vol.All(int, vol.Range(min=0, max=MAX_SOAK_MIN))
+
+
+def _copy_slot_cycle_soak(src: ScheduleSlot, dst: ScheduleSlot) -> None:
+    """Carry Cycle & Soak over to a slot derived from ``src`` (split, cycle)."""
+    dst.repetitions = src.repetitions
+    dst.soak_between_phases_min = src.soak_between_phases_min
+    dst.soak_between_repetitions_min = src.soak_between_repetitions_min
+
+
+def _apply_slot_cycle_soak(slot: ScheduleSlot, data: dict[str, Any]) -> None:
+    """Copy the payload's Cycle & Soak fields onto a slot; absent keys keep theirs."""
+    if "repetitions" in data:
+        slot.repetitions = int(data["repetitions"])
+    if "soak_between_phases_min" in data:
+        slot.soak_between_phases_min = int(data["soak_between_phases_min"])
+    if "soak_between_repetitions_min" in data:
+        slot.soak_between_repetitions_min = int(data["soak_between_repetitions_min"])
 
 
 def _copy_slot_script_overrides(src: ScheduleSlot, dst: ScheduleSlot) -> None:
@@ -327,6 +353,7 @@ class SimpleIrrigationPanelGlobalView(HomeAssistantView):
                 vol.Optional("is_default"): cv.boolean,
                 vol.Optional("pause_until"): vol.Any(cv.string, None),
                 vol.Optional("guards"): GUARD_LIST_SCHEMA,
+                vol.Optional("water_meter_entity_id"): vol.Any(cv.string, None),
             }
         )
     )
@@ -388,6 +415,12 @@ class SimpleIrrigationPanelGlobalView(HomeAssistantView):
             if guard_err:
                 return self.json({"success": False, "error": guard_err}, status_code=400)
             inst.guards = guards
+        if "water_meter_entity_id" in data:
+            meter = str(data["water_meter_entity_id"] or "").strip()
+            err = validate_water_meter_entity(hass, meter)
+            if err:
+                return self.json({"success": False, "error": err}, status_code=400)
+            inst.water_meter_entity_id = meter
         if "pause_until" in data:
             raw = data["pause_until"]
             if raw in (None, ""):
@@ -441,6 +474,8 @@ class SimpleIrrigationPanelZoneView(HomeAssistantView):
                         vol.Optional("duration_field"): vol.Any(cv.string, None),
                         vol.Optional("duration_unit"): vol.Any(cv.string, None),
                         vol.Optional("start_entity_id"): vol.Any(cv.string, None),
+                        vol.Optional("water_meter_entity_id"): vol.Any(cv.string, None),
+                        vol.Optional("flow_rate_lpm"): vol.Any(float, int, None),
                     }
                 ),
             }
@@ -472,6 +507,8 @@ class SimpleIrrigationPanelZoneView(HomeAssistantView):
                 "duration_field": zone_data.get("duration_field", ""),
                 "duration_unit": zone_data.get("duration_unit", ""),
                 "start_entity_id": zone_data.get("start_entity_id", ""),
+                "water_meter_entity_id": zone_data.get("water_meter_entity_id", ""),
+                "flow_rate_lpm": zone_data.get("flow_rate_lpm", 0),
             }
             err = validate_zone_payload(hass, payload)
             if err:
@@ -491,6 +528,8 @@ class SimpleIrrigationPanelZoneView(HomeAssistantView):
                 duration_field=str(payload["duration_field"] or "").strip(),
                 duration_unit=str(payload["duration_unit"] or "").strip(),
                 start_entity_id=str(payload["start_entity_id"] or "").strip(),
+                water_meter_entity_id=str(payload["water_meter_entity_id"] or "").strip(),
+                flow_rate_lpm=float(payload["flow_rate_lpm"] or 0),
             )
             await coord.async_update_installation(inst)
             return self.json({"success": True, "zone_id": zid})
@@ -533,6 +572,10 @@ class SimpleIrrigationPanelZoneView(HomeAssistantView):
             "duration_field": zone_data.get("duration_field", zone.duration_field),
             "duration_unit": zone_data.get("duration_unit", zone.duration_unit),
             "start_entity_id": zone_data.get("start_entity_id", zone.start_entity_id),
+            "water_meter_entity_id": zone_data.get(
+                "water_meter_entity_id", zone.water_meter_entity_id
+            ),
+            "flow_rate_lpm": zone_data.get("flow_rate_lpm", zone.flow_rate_lpm),
         }
         err = validate_zone_payload(hass, merged)
         if err:
@@ -548,6 +591,8 @@ class SimpleIrrigationPanelZoneView(HomeAssistantView):
         zone.duration_field = str(merged["duration_field"] or "").strip()
         zone.duration_unit = str(merged["duration_unit"] or "").strip()
         zone.start_entity_id = str(merged["start_entity_id"] or "").strip()
+        zone.water_meter_entity_id = str(merged["water_meter_entity_id"] or "").strip()
+        zone.flow_rate_lpm = float(merged["flow_rate_lpm"] or 0)
         await coord.async_update_installation(inst)
         return self.json({"success": True})
 
@@ -592,6 +637,9 @@ class SimpleIrrigationPanelSlotView(HomeAssistantView):
                 vol.Optional("override_post_run_script"): cv.boolean,
                 vol.Optional("post_run_script"): vol.Any(cv.string, None),
                 vol.Optional("post_run_script_timeout_sec"): SLOT_SCRIPT_TIMEOUT_SCHEMA,
+                vol.Optional("repetitions"): SLOT_REPETITIONS_SCHEMA,
+                vol.Optional("soak_between_phases_min"): SLOT_SOAK_SCHEMA,
+                vol.Optional("soak_between_repetitions_min"): SLOT_SOAK_SCHEMA,
                 vol.Optional("cycle_id"): vol.Any(cv.string, None),
                 vol.Optional("cycle_kind"): vol.In(CYCLE_KINDS),
                 vol.Optional("cycle_meta"): vol.Schema(
@@ -653,6 +701,7 @@ class SimpleIrrigationPanelSlotView(HomeAssistantView):
             script_err = _apply_slot_script_overrides(hass, slot, data)
             if script_err:
                 return self.json({"success": False, "error": script_err}, status_code=400)
+            _apply_slot_cycle_soak(slot, data)
             inst.schedule_slots.append(slot)
             await coord.async_update_installation(inst)
             return self.json({"success": True, "slot_id": slot.slot_id})
@@ -730,9 +779,11 @@ class SimpleIrrigationPanelSlotView(HomeAssistantView):
             for member in new_members:
                 if existing:
                     _copy_slot_script_overrides(existing[0], member)
+                    _copy_slot_cycle_soak(existing[0], member)
                 script_err = _apply_slot_script_overrides(hass, member, data)
                 if script_err:
                     return self.json({"success": False, "error": script_err}, status_code=400)
+                _apply_slot_cycle_soak(member, data)
             # Rebuild the slot list, replacing the previous group's members (matched
             # by the incoming id) in place; append at the end when brand new.
             result: list[ScheduleSlot] = []
@@ -799,6 +850,7 @@ class SimpleIrrigationPanelSlotView(HomeAssistantView):
             ]
             for new_slot in new_slots:
                 _copy_slot_script_overrides(slot, new_slot)
+                _copy_slot_cycle_soak(slot, new_slot)
             inst.schedule_slots[idx : idx + 1] = new_slots
             await coord.async_update_installation(inst)
             return self.json(
@@ -844,6 +896,7 @@ class SimpleIrrigationPanelSlotView(HomeAssistantView):
             script_err = _apply_slot_script_overrides(hass, slot, data)
             if script_err:
                 return self.json({"success": False, "error": script_err}, status_code=400)
+            _apply_slot_cycle_soak(slot, data)
             if "cycle_id" in data:
                 slot.cycle_id = str(data["cycle_id"]) if data["cycle_id"] else None
             if "cycle_kind" in data:

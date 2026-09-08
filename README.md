@@ -524,3 +524,9 @@ This updates `VERSION`, `manifest.json`, `frontend/package.json`, the panel Type
 
 - **Issues:** [GitHub Issues](https://github.com/florianbaethge/simple_irrigation/issues)
 - **License:** [MIT](LICENSE)
+
+### Contributors
+
+Ideas, prototypes and bug reports shape this integration as much as code does. Thank you to:
+
+- [@Kohle93](https://github.com/Kohle93) — asked for **Cycle & Soak** and built a working prototype of it and of water tracking on a fork ([#52](https://github.com/florianbaethge/simple_irrigation/issues/52)). Both features in this repository were written fresh, but they exist because of that groundwork.

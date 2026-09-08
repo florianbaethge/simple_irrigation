@@ -150,6 +150,13 @@ export const formLayoutStyles = css`
     width: 100%;
     display: block;
   }
+  /* Three long labels do not fit two columns on a phone; one column keeps
+     the floating label on a single line above its value. */
+  @media (max-width: 480px) {
+    .duration-row.cycle-soak-row {
+      grid-template-columns: 1fr;
+    }
+  }
   select.field-select {
     width: 100%;
     max-width: 100%;

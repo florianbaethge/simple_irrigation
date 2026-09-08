@@ -3318,6 +3318,13 @@ const formLayoutStyles = i$5 `
     width: 100%;
     display: block;
   }
+  /* Three long labels do not fit two columns on a phone; one column keeps
+     the floating label on a single line above its value. */
+  @media (max-width: 480px) {
+    .duration-row.cycle-soak-row {
+      grid-template-columns: 1fr;
+    }
+  }
   select.field-select {
     width: 100%;
     max-width: 100%;
@@ -3393,6 +3400,23 @@ const formLayoutStyles = i$5 `
   }
 `;
 
+/**
+ * A collapsed explanation under a form section: one line to click, the
+ * paragraphs behind it. Editors and the wizard stay short on a phone; the
+ * help is one tap away rather than pushing the fields off the screen.
+ */
+function renderInlineHelp(hass, summaryKey, paragraphKeys, icon = "mdi:help-circle-outline", values = {}) {
+    return b `
+    <details class="inline-help">
+      <summary>
+        <ha-icon class="inline-help-icon" icon=${icon}></ha-icon>
+        ${t(hass, summaryKey)}
+      </summary>
+      ${paragraphKeys.map((key) => b `<p>${t(hass, key, values)}</p>`)}
+    </details>
+  `;
+}
+
 // The same caps as the backend (MAX_REPETITIONS / MAX_SOAK_MIN in const.py).
 const MAX_REPETITIONS = 10;
 const MAX_SOAK_MIN = 240;
@@ -3419,15 +3443,12 @@ function renderCycleSoakEditor(hass, cs, busy, onChange) {
     return b `
     <div class="field-block">
       <span class="field-title">${t(hass, "config_panel.cycle_soak_section_title")}</span>
-      <p class="field-desc">${t(hass, "config_panel.cycle_soak_section_desc")}</p>
-      <div class="duration-row">
+      <div class="duration-row cycle-soak-row">
         ${num("repetitions", "config_panel.cycle_soak_repetitions", 1, MAX_REPETITIONS)}
         ${num("soakBetweenPhasesMin", "config_panel.cycle_soak_pause_phases", 0, MAX_SOAK_MIN)}
         ${num("soakBetweenRepetitionsMin", "config_panel.cycle_soak_pause_repetitions", 0, MAX_SOAK_MIN)}
       </div>
-      ${isCycleSoak(cs)
-        ? b `<p class="hint">${t(hass, "config_panel.cycle_soak_hint")}</p>`
-        : b ``}
+      ${renderInlineHelp(hass, "config_panel.cycle_soak_help_summary", ["config_panel.cycle_soak_section_desc", "config_panel.cycle_soak_hint"], "mdi:repeat")}
     </div>
   `;
 }
@@ -5991,7 +6012,7 @@ class ViewSettings extends i$2 {
             this.requestUpdate();
         }, { placeholderKey: "config_panel.water_meter_placeholder" })}
             </div>
-            <p class="hint">${t(this.hass, "config_panel.settings_water_meter_hint")}</p>
+            ${renderInlineHelp(this.hass, "config_panel.settings_water_help_summary", ["config_panel.settings_water_meter_hint"], "mdi:water-outline")}
           </div>
 
           <div class="section-title">${t(this.hass, "config_panel.settings_section_guards")}</div>
@@ -7461,14 +7482,12 @@ class ViewZones extends i$2 {
 
       <div class="section-title">${t(this.hass, "config_panel.zones_water_title")}</div>
       <div class="field-block">
-        <p class="field-desc">${t(this.hass, "config_panel.zones_water_desc")}</p>
         <div class="field-row">
           ${renderNativeEntityField(this.hass, ["sensor"], t(this.hass, "config_panel.zones_water_meter_label"), z.water_meter_entity_id, (v) => {
             z.water_meter_entity_id = v;
             this.requestUpdate();
         }, { placeholderKey: "config_panel.water_meter_placeholder" })}
         </div>
-        <p class="hint">${t(this.hass, "config_panel.zones_water_meter_hint")}</p>
         <div class="field-row">
           <ha-input
             type="number"
@@ -7483,7 +7502,11 @@ class ViewZones extends i$2 {
         }}
           ></ha-input>
         </div>
-        <p class="hint">${t(this.hass, "config_panel.zones_flow_rate_hint")}</p>
+        ${renderInlineHelp(this.hass, "config_panel.zones_water_help_summary", [
+            "config_panel.zones_water_desc",
+            "config_panel.zones_water_meter_hint",
+            "config_panel.zones_flow_rate_hint",
+        ], "mdi:water-outline")}
       </div>
 
       <div class="section-title">${t(this.hass, "config_panel.zones_advanced_title")}</div>

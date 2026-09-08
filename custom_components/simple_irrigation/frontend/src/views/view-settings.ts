@@ -6,6 +6,7 @@ import {
   saveGlobal,
 } from "../data/api";
 import { renderNativeEntityField } from "../entity-input";
+import { renderInlineHelp } from "../inline-help";
 import {
   GUARD_ENTITY_DOMAINS,
   guardsForSave,
@@ -491,7 +492,12 @@ export class ViewSettings extends LitElement {
                 { placeholderKey: "config_panel.water_meter_placeholder" }
               )}
             </div>
-            <p class="hint">${t(this.hass, "config_panel.settings_water_meter_hint")}</p>
+            ${renderInlineHelp(
+              this.hass,
+              "config_panel.settings_water_help_summary",
+              ["config_panel.settings_water_meter_hint"],
+              "mdi:water-outline"
+            )}
           </div>
 
           <div class="section-title">${t(this.hass, "config_panel.settings_section_guards")}</div>

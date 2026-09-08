@@ -1,7 +1,8 @@
 import { html, type TemplateResult } from "lit";
 
 import { t } from "./i18n";
-import { isCycleSoak, type CycleSoak } from "./schedule-phases";
+import { renderInlineHelp } from "./inline-help";
+import { type CycleSoak } from "./schedule-phases";
 import type { HomeAssistant } from "./types";
 
 // The same caps as the backend (MAX_REPETITIONS / MAX_SOAK_MIN in const.py).
@@ -41,15 +42,17 @@ export function renderCycleSoakEditor(
   return html`
     <div class="field-block">
       <span class="field-title">${t(hass, "config_panel.cycle_soak_section_title")}</span>
-      <p class="field-desc">${t(hass, "config_panel.cycle_soak_section_desc")}</p>
-      <div class="duration-row">
+      <div class="duration-row cycle-soak-row">
         ${num("repetitions", "config_panel.cycle_soak_repetitions", 1, MAX_REPETITIONS)}
         ${num("soakBetweenPhasesMin", "config_panel.cycle_soak_pause_phases", 0, MAX_SOAK_MIN)}
         ${num("soakBetweenRepetitionsMin", "config_panel.cycle_soak_pause_repetitions", 0, MAX_SOAK_MIN)}
       </div>
-      ${isCycleSoak(cs)
-        ? html`<p class="hint">${t(hass, "config_panel.cycle_soak_hint")}</p>`
-        : html``}
+      ${renderInlineHelp(
+        hass,
+        "config_panel.cycle_soak_help_summary",
+        ["config_panel.cycle_soak_section_desc", "config_panel.cycle_soak_hint"],
+        "mdi:repeat"
+      )}
     </div>
   `;
 }

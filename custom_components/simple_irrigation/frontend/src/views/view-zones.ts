@@ -3,6 +3,7 @@ import { state } from "lit/decorators.js";
 import { keyed } from "lit/directives/keyed.js";
 import { runZoneNow, saveZone, stopZone } from "../data/api";
 import { renderNativeEntityField } from "../entity-input";
+import { renderInlineHelp } from "../inline-help";
 import { durationForMode } from "../timetable-model";
 import {
   formatRateNumber,
@@ -608,7 +609,6 @@ export class ViewZones extends LitElement {
 
       <div class="section-title">${t(this.hass, "config_panel.zones_water_title")}</div>
       <div class="field-block">
-        <p class="field-desc">${t(this.hass, "config_panel.zones_water_desc")}</p>
         <div class="field-row">
           ${renderNativeEntityField(
             this.hass,
@@ -622,7 +622,6 @@ export class ViewZones extends LitElement {
             { placeholderKey: "config_panel.water_meter_placeholder" }
           )}
         </div>
-        <p class="hint">${t(this.hass, "config_panel.zones_water_meter_hint")}</p>
         <div class="field-row">
           <ha-input
             type="number"
@@ -637,7 +636,16 @@ export class ViewZones extends LitElement {
             }}
           ></ha-input>
         </div>
-        <p class="hint">${t(this.hass, "config_panel.zones_flow_rate_hint")}</p>
+        ${renderInlineHelp(
+          this.hass,
+          "config_panel.zones_water_help_summary",
+          [
+            "config_panel.zones_water_desc",
+            "config_panel.zones_water_meter_hint",
+            "config_panel.zones_flow_rate_hint",
+          ],
+          "mdi:water-outline"
+        )}
       </div>
 
       <div class="section-title">${t(this.hass, "config_panel.zones_advanced_title")}</div>

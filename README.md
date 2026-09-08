@@ -169,7 +169,7 @@ Optional, and honest by design: Simple Irrigation reports litres only where it c
 
 Any sensor with a volume unit works (`L`, `m³`, `gal`, `ft³`, …); values are converted. Everything is stored in litres and shown in your Home Assistant unit system — gallons in the US, including the flow-rate field.
 
-**How to measure a flow rate:** run the zone alone for 10 minutes with your usual supply, read the house water meter before and after, divide the difference by 10. Measure again if you switch between mains and a cistern pump — the pressure changes the flow, and a rate is only as good as the setup it was measured in.
+**How to measure a flow rate:** run the zone alone for 10 minutes, read the water meter before and after, divide the difference by 10. Some irrigation systems depend on water pressure and deliver a different flow with a different supply — measure again after such a change, or keep the conditions constant, for example with a pressure regulator. A rate is only as good as the setup it was measured in.
 
 **Where the numbers go.** No history of its own, no extra tab: the integration books what a run used and hands it to Home Assistant.
 

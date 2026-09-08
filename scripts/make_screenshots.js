@@ -240,6 +240,27 @@ async function gotoTab(page, tab, view, w = 1180, h = 1100) {
     JSON.stringify(await clipToDialog(page, "zone_edit_advanced.png"))
   );
 
+  // --- Zone editor, Water section with its help expanded -----------------
+  await gotoTab(page, "zones", "SI-VIEW-ZONES", 1180, 2200);
+  await page.evaluate((ws) => {
+    eval(ws);
+    let view = null;
+    for (const e of walk(document)) if (e.tagName === "SI-VIEW-ZONES") view = e;
+    const rows = view._zonesFromInstallation();
+    const z = rows.find((r) => r.name === "Front Lawn") || rows[0];
+    view._editDraft = view._cloneZone(z);
+    view.requestUpdate();
+  }, walkSrc);
+  await sleep(1000);
+  await page.evaluate((ws) => {
+    eval(ws);
+    for (const e of walk(document)) {
+      if (e.tagName === "DETAILS" && /water tracking/i.test(e.textContent) && e.offsetHeight > 0) e.open = true;
+    }
+  }, walkSrc);
+  await sleep(600);
+  console.log("zone_edit_water.png", JSON.stringify(await clipToDialog(page, "zone_edit_water.png")));
+
   // --- Schedule slot editor (Morning lawns: weekday picker + run order) --
   await gotoTab(page, "schedule", "SI-VIEW-SCHEDULE", 1180, 2200);
   await page.evaluate((ws) => {
@@ -253,6 +274,30 @@ async function gotoTab(page, tab, view, w = 1180, h = 1100) {
   }, walkSrc);
   await sleep(1000);
   console.log("schedule_edit.png", JSON.stringify(await clipToDialog(page, "schedule_edit.png")));
+
+  // --- Slot editor, Cycle & Soak (Weekly deep soak: 3 passes, 15 min rest) --
+  await gotoTab(page, "schedule", "SI-VIEW-SCHEDULE", 1180, 2200);
+  await page.evaluate((ws) => {
+    eval(ws);
+    let view = null;
+    for (const e of walk(document)) if (e.tagName === "SI-VIEW-SCHEDULE") view = e;
+    const s = view._slots().find((x) => x.name === "Weekly deep soak") || view._slots()[0];
+    view._addZonePick = "";
+    view._slotEditDraft = view._cloneSlot(s);
+    view.requestUpdate();
+  }, walkSrc);
+  await sleep(1000);
+  await page.evaluate((ws) => {
+    eval(ws);
+    for (const e of walk(document)) {
+      if (e.tagName === "DETAILS" && /Cycle & Soak works/i.test(e.textContent) && e.offsetHeight > 0) e.open = true;
+    }
+  }, walkSrc);
+  await sleep(600);
+  console.log(
+    "schedule_edit_cycle_soak.png",
+    JSON.stringify(await clipToDialog(page, "schedule_edit_cycle_soak.png"))
+  );
 
   // --- Cycle wizard (step 2 with the live 14-day strip) ------------------
   await gotoTab(page, "schedule", "SI-VIEW-SCHEDULE", 1180, 2200);

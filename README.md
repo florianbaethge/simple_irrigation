@@ -157,6 +157,26 @@ Example — one lawn zone, 3 repetitions of its 10-minute mode duration, 15 minu
 - Overview and the card show **Soaking** with a countdown while the run rests; `binary_sensor.<installation>_running` carries the end of the rest as its `soak_until` attribute.
 - Rests are per slot. Several slots due in the same minute run back to back, each with its own rests; a rest with nothing left to water behind it is skipped.
 
+### Water use
+
+Optional, and honest by design: Simple Irrigation reports litres only where it can back them up. Two sources, per zone under **Zones → edit → Water**, and one for the whole installation under **Settings → Water**:
+
+| Source | What it does |
+|--------|--------------|
+| **Flow rate** (per zone) | Litres per minute you measured once. Every run of the zone is **estimated** from its actual watering time and shown with a tilde (`~120 L`). |
+| **Water meter** (per zone) | A volume sensor on the zone's own line. Read when the zone opens and closes; the difference is **measured** and wins over the rate. |
+| **Water meter** (installation) | A volume sensor on the supply line. Measures each run as a whole, parallel zones included, and replaces the zones' sum for the run total. |
+
+Any sensor with a volume unit works (`L`, `m³`, `gal`, `ft³`, …); values are converted. Everything is stored in litres and shown in your Home Assistant unit system — gallons in the US, including the flow-rate field.
+
+**How to measure a flow rate:** run the zone alone for 10 minutes with your usual supply, read the house water meter before and after, divide the difference by 10. Measure again if you switch between mains and a cistern pump — the pressure changes the flow, and a rate is only as good as the setup it was measured in.
+
+**Where the numbers go.** No history of its own, no extra tab: the integration books what a run used and hands it to Home Assistant.
+
+- `sensor.<installation>_water` and `sensor.<zone>_water` are `total_increasing` **water** sensors (running totals, attributes `source` and `last_run_l`). That gives you history graphs, long-term statistics, the **Energy dashboard's water section** and a **Utility Meter** for daily or monthly figures — the same tools you use for the rest of the house. Both stay *unknown* until the first run reports water, so nothing shows a bogus zero.
+- The panel shows the forecast per zone, schedule slot and next run (`~120 L per run`), what the current run has used so far, and the last run. The card shows the forecast for the next run, the last run, and a live figure while watering.
+- Zones without a rate or meter contribute nothing — a forecast for a slot is only shown when at least one of its zones can estimate, and a run total is marked as an estimate as soon as one zone's figure is.
+
 ### Conditions
 
 A **condition** states something that must hold for a scheduled run to start — "water, but only while the soil is dry". Each one is an entity, a comparison and a value:

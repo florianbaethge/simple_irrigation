@@ -1,4 +1,5 @@
 import { language, localize } from "./i18n";
+import { formatVolumeNumber, litresToUnit, volumeUnit } from "../units";
 import type { Cadence, HomeAssistant } from "./types";
 
 /**
@@ -195,4 +196,16 @@ export function approxMinutes(
   minutes: number
 ): string {
   return localize(hass, "approx_minutes", { n: Math.round(minutes) });
+}
+
+/** "~120 L" / "32 gal" — litres in the user's unit system, tilde for estimates. */
+export function water(
+  hass: HomeAssistant | undefined,
+  litres: number,
+  estimated: boolean
+): string {
+  const unit = volumeUnit(hass);
+  const v = formatVolumeNumber(litresToUnit(litres, unit));
+  const u = localize(hass, unit === "gal" ? "unit_gallon_short" : "unit_litre_short");
+  return localize(hass, estimated ? "water_approx" : "water_exact", { v, u });
 }

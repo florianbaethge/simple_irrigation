@@ -180,7 +180,45 @@ def validate_zone_payload(hass: Any, user_input: dict[str, Any]) -> str | None:
         if hass.states.get(target_entity_id) is None:
             return "unknown_entity"
 
+    if "flow_rate_lpm" in user_input:
+        err = validate_flow_rate(user_input.get("flow_rate_lpm"))
+        if err:
+            return err
+    if "water_meter_entity_id" in user_input:
+        err = validate_water_meter_entity(hass, user_input.get("water_meter_entity_id"))
+        if err:
+            return err
+
     return None
+
+
+# A garden line does not deliver more than this; anything above is a typo.
+MAX_FLOW_RATE_LPM = 1000.0
+
+
+def validate_flow_rate(value: Any) -> str | None:
+    """A flow rate in litres per minute; empty or 0 means "no estimate"."""
+    if value in (None, ""):
+        return None
+    try:
+        rate = float(value)
+    except (TypeError, ValueError):
+        return "invalid_flow_rate"
+    if rate < 0 or rate > MAX_FLOW_RATE_LPM:
+        return "invalid_flow_rate"
+    return None
+
+
+def validate_water_meter_entity(hass: Any, entity_id: str | None) -> str | None:
+    """Return error key or None; empty means "no meter"."""
+    from .water import meter_unit_error
+
+    entity_id = str(entity_id or "").strip()
+    if not entity_id:
+        return None
+    if "." not in entity_id:
+        return "invalid_water_meter"
+    return meter_unit_error(hass, entity_id)
 
 
 def validate_pre_start_entities(hass: Any, entity_ids: list[str] | None) -> str | None:

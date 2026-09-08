@@ -59,6 +59,12 @@
       },
       "zone_ends_at": {
         "name": "{zone_name} Bewässerung bis"
+      },
+      "water_total": {
+        "name": "Wasser"
+      },
+      "zone_water": {
+        "name": "{zone_name} Wasser"
       }
     },
     "binary_sensor": {
@@ -453,6 +459,23 @@
     "cycle_soak_pause_repetitions": "Pause zwischen Durchgängen (Min.)",
     "cycle_soak_hint": "Während einer Pause sind alle Ausgänge geschlossen, auch Pumpe und Hauptventil. Stopp beendet den Lauf, „Zur nächsten Phase“ kürzt die Pause ab.",
     "cycle_soak_badge": "{r}× Cycle & Soak",
+    "errors_invalid_water_meter": "Der Wasserzähler muss ein Sensor mit Volumeneinheit sein (L, m³, gal, ft³).",
+    "errors_invalid_flow_rate": "Die Durchflussrate muss eine Zahl zwischen 0 und 1000 pro Minute sein.",
+    "zones_water_title": "Wasser",
+    "zones_water_desc": "Optional. Gib an, wie viel diese Zone verbraucht, und Simple Irrigation zeigt Liter pro Lauf — gemessen von einem Zähler an der Zonenleitung oder geschätzt aus einer einmal gemessenen Durchflussrate.",
+    "zones_water_meter_label": "Wasserzähler (optional)",
+    "zones_water_meter_hint": "Ein Sensor, der das Volumen an dieser Zonenleitung zählt. Er wird beim Öffnen und Schließen der Zone gelesen; die Differenz ist der Verbrauch. Geht der Durchflussrate vor.",
+    "zones_flow_rate_label": "Durchflussrate ({unit} pro Minute)",
+    "zones_flow_rate_hint": "So misst du sie: Zone 10 Minuten allein laufen lassen, mit der üblichen Wasserquelle. Hauswasserzähler vorher und nachher ablesen, Differenz durch 10 teilen. Neu messen, wenn du zwischen Leitungswasser und Zisternenpumpe wechselst — der Druck ändert den Durchfluss. Werte aus einer Durchflussrate sind als Schätzung markiert (~).",
+    "settings_section_water": "Wasser",
+    "settings_water_meter_label": "Wasserzähler an der Zuleitung (optional)",
+    "settings_water_meter_hint": "Ein Sensor, der das Volumen der ganzen Anlage zählt. Er misst jeden Lauf als Ganzes, auch parallele Zonen, und ersetzt für die Laufsumme die Werte der Zonen. Die Gesamtstände stehen auf den Wasser-Sensoren; für Monatswerte einen Utility Meter anlegen.",
+    "general_water_so_far": "Wasser bisher",
+    "general_water_last_run": "Letzter Lauf",
+    "water_approx": "~{v} {u}",
+    "water_exact": "{v} {u}",
+    "water_per_run": "pro Lauf",
+    "water_meter_placeholder": "z. B. sensor.gartenwasserzaehler",
     "general_state_soaking": "Pause (Einziehen)",
     "general_soak_remaining": "Pause",
     "guards_entity_label": "Entität",

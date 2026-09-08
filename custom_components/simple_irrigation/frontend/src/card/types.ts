@@ -16,6 +16,7 @@ export interface HomeAssistant {
   };
   themes?: { darkMode?: boolean };
   user?: { is_admin?: boolean };
+  config?: { unit_system?: { volume?: string } };
   callWS<T>(msg: Record<string, unknown>): Promise<T>;
   callService(
     domain: string,
@@ -59,6 +60,11 @@ export interface ZoneRow {
   next_run: string | null;
   last_run: string | null;
   issue: ZoneIssue | null;
+  /** Litres per minute the zone was given; 0 when it estimates nothing. */
+  flow_lpm: number;
+  has_meter: boolean;
+  last_run_l: number | null;
+  water_source: "measured" | "estimated" | null;
   entity_id: string;
 }
 
@@ -82,6 +88,8 @@ export interface SlotRow {
   duration_min: number;
   /** Cycle & Soak passes; 1 for a plain run. */
   repetitions: number;
+  /** Forecast in litres from flow rates; null when no zone has one. */
+  water_l: number | null;
   cadence: Cadence;
   has_conditions: boolean;
   /** Only present on `next_runs` entries. */
@@ -134,6 +142,12 @@ export interface Snapshot {
   run_ends_at: string | null;
   /** End of the Cycle & Soak rest the run is in; null while a zone waters. */
   soak_until: string | null;
+  /** Water, always in litres; the card converts to the unit system. */
+  tracks_water: boolean;
+  run_water_l: number | null;
+  run_water_source: "measured" | "estimated" | null;
+  last_run_water_l: number | null;
+  last_run_water_source: "measured" | "estimated" | null;
   max_parallel_zones: number;
   zones: ZoneRow[];
   slots: SlotRow[];

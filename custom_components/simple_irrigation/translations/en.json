@@ -59,6 +59,12 @@
       },
       "zone_ends_at": {
         "name": "{zone_name} watering until"
+      },
+      "water_total": {
+        "name": "Water"
+      },
+      "zone_water": {
+        "name": "{zone_name} water"
       }
     },
     "binary_sensor": {
@@ -453,6 +459,23 @@
     "cycle_soak_pause_repetitions": "Rest between repetitions (min)",
     "cycle_soak_hint": "During a rest every output is closed, pump and master valve included. Stop ends the run, Skip phase cuts the rest short.",
     "cycle_soak_badge": "{r}× Cycle & Soak",
+    "errors_invalid_water_meter": "The water meter must be a sensor with a volume unit (L, m³, gal, ft³).",
+    "errors_invalid_flow_rate": "The flow rate must be a number between 0 and 1000 per minute.",
+    "zones_water_title": "Water",
+    "zones_water_desc": "Optional. Say how much this zone uses and Simple Irrigation reports litres per run — measured by a meter on the zone's line, or estimated from a flow rate you measured once.",
+    "zones_water_meter_label": "Water meter (optional)",
+    "zones_water_meter_hint": "A sensor that counts volume on this zone's line. It is read when the zone opens and closes; the difference is what flowed. Wins over the flow rate.",
+    "zones_flow_rate_label": "Flow rate ({unit} per minute)",
+    "zones_flow_rate_hint": "How to measure: run this zone alone for 10 minutes with your usual supply, read the house water meter before and after, divide the difference by 10. Measure again if you switch between mains and a cistern pump — the pressure changes the flow. Figures from a flow rate are marked as estimates (~).",
+    "settings_section_water": "Water",
+    "settings_water_meter_label": "Water meter on the supply line (optional)",
+    "settings_water_meter_hint": "A sensor that counts volume for the whole installation. It measures every run as a whole, parallel zones included, and replaces the zones' own figures for the run total. The running totals live on the water sensors; add a Utility Meter for monthly figures.",
+    "general_water_so_far": "Water so far",
+    "general_water_last_run": "Last run",
+    "water_approx": "~{v} {u}",
+    "water_exact": "{v} {u}",
+    "water_per_run": "per run",
+    "water_meter_placeholder": "e.g. sensor.garden_water_meter",
     "general_state_soaking": "Soaking",
     "general_soak_remaining": "Rest",
     "guards_entity_label": "Entity",

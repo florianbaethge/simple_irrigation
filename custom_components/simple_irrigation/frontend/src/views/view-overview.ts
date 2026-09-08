@@ -7,7 +7,8 @@ import { t } from "../i18n";
 import { sharedStyles } from "../shared-styles";
 import { formatTimeLocalForDisplay, weekdayLong, weekdaysSummary } from "../date-format";
 import { computePhases, cycleSoakOf, programMinutes, type ZonePhaseInput } from "../schedule-phases";
-import { durationForMode } from "../timetable-model";
+import { durationForMode, plannedLitres } from "../timetable-model";
+import { formatVolumeNumber, litresToUnit, volumeUnit } from "../units";
 import { mondayBasedWeekday, weekParityMatches, type CycleMeta } from "../cycle";
 import type { HomeAssistant, ScheduleNext } from "../types";
 
@@ -20,6 +21,8 @@ interface UpcomingRun {
   kind: string;
   zoneNames: string[];
   est: number;
+  /** Forecast in litres from the zones' flow rates; null when none has one. */
+  waterL: number | null;
   slotId: string;
 }
 
@@ -391,6 +394,12 @@ export class ViewOverview extends LitElement {
           kind: this._kindLabel(slot),
           zoneNames: zoneIds.map((id) => this._zoneName(id)),
           est: this._slotEstimateMin(slot, mode),
+          waterL: plannedLitres(
+            zoneIds,
+            this._inst.zones as Record<string, Record<string, unknown>> | undefined,
+            mode,
+            cycleSoakOf(slot).repetitions
+          ),
           slotId: String(slot.slot_id ?? ""),
         });
       }
@@ -449,6 +458,38 @@ export class ViewOverview extends LitElement {
       this.hass,
       `${d.getHours()}:${String(d.getMinutes()).padStart(2, "0")}`
     );
+  }
+
+  /**
+   * Litres the run has used so far: what finished zones booked, plus what the
+   * open ones with a flow rate have used by now. Null when nothing tracks water.
+   */
+  private _liveWater(activeIds: string[]): number | null {
+    const rs = (this.runState ?? {}) as Record<string, unknown>;
+    const booked = typeof rs.run_water_l === "number" ? (rs.run_water_l as number) : null;
+    const zones = this._inst.zones as Record<string, Record<string, unknown>> | undefined;
+    const mode = this._mode();
+    let litres = booked ?? 0;
+    let known = booked !== null;
+    for (const id of activeIds) {
+      const z = zones?.[id];
+      const rate = Number(z?.flow_rate_lpm ?? 0);
+      const endsAt = this._zoneEndsAt(id);
+      if (!z || !(rate > 0) || endsAt === null) continue;
+      const remainingMin = Math.max(0, (endsAt - Date.now()) / 60000);
+      litres += rate * Math.max(0, durationForMode(z, mode) - remainingMin);
+      known = true;
+    }
+    return known ? litres : null;
+  }
+
+  /** "~120 L" / "250 gal" in the user's unit system. */
+  private _fmtWater(litres: number, estimated: boolean): string {
+    const unit = volumeUnit(this.hass);
+    return t(this.hass, estimated ? "config_panel.water_approx" : "config_panel.water_exact", {
+      v: formatVolumeNumber(litresToUnit(litres, unit)),
+      u: unit,
+    });
   }
 
   private _runBusy(): boolean {
@@ -531,6 +572,8 @@ export class ViewOverview extends LitElement {
         : t(this.hass, "config_panel.general_state_idle");
     const showSkip =
       runBusy && runState !== "stopping" && (runState === "preparing" || upcoming.length > 0);
+    const runWater = this._liveWater(activeIds);
+    const lastWater = typeof rs.last_run_water_l === "number" ? (rs.last_run_water_l as number) : null;
     // A blocking script is why "Preparing" can sit there for minutes — name it.
     const activeScript = rs.active_script ? String(rs.active_script) : "";
     const scriptLine = activeScript
@@ -591,11 +634,25 @@ export class ViewOverview extends LitElement {
                         ><span class="num">~${next.est}</span> min</span
                       >`
                     : nothing}
+                  ${next.waterL !== null
+                    ? html`<span class="meta"
+                        ><ha-icon icon="mdi:water-outline"></ha-icon>${this._fmtWater(next.waterL, true)}</span
+                      >`
+                    : nothing}
+                  ${lastWater !== null
+                    ? html`<span class="meta"
+                        ><ha-icon icon="mdi:water-check-outline"></ha-icon>${t(
+                          this.hass,
+                          "config_panel.general_water_last_run"
+                        )}
+                        ${this._fmtWater(lastWater, rs.last_run_water_source !== "measured")}</span
+                      >`
+                    : nothing}
                 </div>
               `
             : nothing}
 
-          ${activeIds.length || soaking || nextZones || lastErr
+          ${activeIds.length || soaking || (runBusy && runWater !== null) || nextZones || lastErr
             ? html`
                 <ul class="pill-list">
                   ${soaking
@@ -620,6 +677,16 @@ export class ViewOverview extends LitElement {
                             (r, i) =>
                               html`${i > 0 ? ", " : ""}${r.name}
                                 <span class="num">${this._fmtRemaining(r.endsAt)}</span>`
+                          )}</span>
+                      </li>`
+                    : nothing}
+                  ${runBusy && runWater !== null
+                    ? html`<li class="pill">
+                        <ha-icon icon="mdi:water-outline"></ha-icon>
+                        <span><strong>${t(this.hass, "config_panel.general_water_so_far")}</strong>
+                          ${this._fmtWater(
+                            runWater,
+                            rs.run_water_source !== "measured" || activeIds.length > 0
                           )}</span>
                       </li>`
                     : nothing}
@@ -724,7 +791,9 @@ export class ViewOverview extends LitElement {
                       <span class="nr-when">${this._relDay(r.when)} ${this._fmtTime(r.when)}</span>
                       <span class="nr-desc">${desc}</span>
                       ${r.est > 0
-                        ? html`<span class="nr-dur">~${r.est} min</span>`
+                        ? html`<span class="nr-dur">~${r.est} min${r.waterL !== null
+                            ? html` · ${this._fmtWater(r.waterL, true)}`
+                            : nothing}</span>`
                         : nothing}
                     </div>
                     ${r.zoneNames.length && i < 2

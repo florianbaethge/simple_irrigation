@@ -1573,6 +1573,28 @@ function durationForMode(zone, mode) {
     return Math.max(0, Number(zone.duration_normal_min ?? 0));
 }
 /** Bucket by wall-clock hour of segment start ([0,8), [8,16), [16,24)). */
+/**
+ * Litres a run of these zones is expected to use in `mode`, from the zones'
+ * flow rates (`flow_rate_lpm`) times minutes times Cycle & Soak repetitions.
+ * Null when no zone has a rate -- a meter only tells afterwards.
+ */
+function plannedLitres(zoneIds, zones, mode, repetitions = 1) {
+    if (!zones)
+        return null;
+    let total = 0;
+    let known = false;
+    for (const zid of zoneIds) {
+        const z = zones[zid];
+        if (!z || !Boolean(z.enabled ?? true))
+            continue;
+        const rate = Number(z.flow_rate_lpm ?? 0);
+        if (!Number.isFinite(rate) || rate <= 0)
+            continue;
+        known = true;
+        total += rate * durationForMode(z, mode) * Math.max(1, repetitions);
+    }
+    return known ? total : null;
+}
 function bucketFromStartMin(startMin) {
     const h = Math.floor(Math.max(0, startMin) / 60);
     if (h < 8)
@@ -1781,6 +1803,32 @@ function slotInclusionCountPerZone(installation) {
         }
     }
     return counts;
+}
+
+/**
+ * Volume in the user's unit system. The backend keeps litres; here they turn
+ * into litres or gallons depending on what Home Assistant is set to, so a US
+ * garden reads gallons everywhere without a setting of its own.
+ */
+const LITRES_PER_GALLON = 3.785411784;
+/** "L" or "gal", from the HA unit system; litres when unknown. */
+function volumeUnit(hass) {
+    return hass?.config?.unit_system?.volume === "gal" ? "gal" : "L";
+}
+function litresToUnit(litres, unit) {
+    return unit === "gal" ? litres / LITRES_PER_GALLON : litres;
+}
+function unitToLitres(value, unit) {
+    return unit === "gal" ? value * LITRES_PER_GALLON : value;
+}
+/** A volume rounded for display: whole units above 10, one decimal below. */
+function formatVolumeNumber(value) {
+    const v = Math.max(0, value);
+    return v >= 10 ? String(Math.round(v)) : (Math.round(v * 10) / 10).toString();
+}
+/** A rate for the flow-rate field, in the display unit per minute, 2 decimals. */
+function formatRateNumber(value) {
+    return (Math.round(Math.max(0, value) * 100) / 100).toString();
 }
 
 /**
@@ -2330,6 +2378,7 @@ class ViewOverview extends i$2 {
                     kind: this._kindLabel(slot),
                     zoneNames: zoneIds.map((id) => this._zoneName(id)),
                     est: this._slotEstimateMin(slot, mode),
+                    waterL: plannedLitres(zoneIds, this._inst.zones, mode, cycleSoakOf(slot).repetitions),
                     slotId: String(slot.slot_id ?? ""),
                 });
             }
@@ -2388,6 +2437,37 @@ class ViewOverview extends i$2 {
     }
     _fmtTime(d) {
         return formatTimeLocalForDisplay(this.hass, `${d.getHours()}:${String(d.getMinutes()).padStart(2, "0")}`);
+    }
+    /**
+     * Litres the run has used so far: what finished zones booked, plus what the
+     * open ones with a flow rate have used by now. Null when nothing tracks water.
+     */
+    _liveWater(activeIds) {
+        const rs = (this.runState ?? {});
+        const booked = typeof rs.run_water_l === "number" ? rs.run_water_l : null;
+        const zones = this._inst.zones;
+        const mode = this._mode();
+        let litres = booked ?? 0;
+        let known = booked !== null;
+        for (const id of activeIds) {
+            const z = zones?.[id];
+            const rate = Number(z?.flow_rate_lpm ?? 0);
+            const endsAt = this._zoneEndsAt(id);
+            if (!z || !(rate > 0) || endsAt === null)
+                continue;
+            const remainingMin = Math.max(0, (endsAt - Date.now()) / 60000);
+            litres += rate * Math.max(0, durationForMode(z, mode) - remainingMin);
+            known = true;
+        }
+        return known ? litres : null;
+    }
+    /** "~120 L" / "250 gal" in the user's unit system. */
+    _fmtWater(litres, estimated) {
+        const unit = volumeUnit(this.hass);
+        return t(this.hass, estimated ? "config_panel.water_approx" : "config_panel.water_exact", {
+            v: formatVolumeNumber(litresToUnit(litres, unit)),
+            u: unit,
+        });
     }
     _runBusy() {
         const s = String((this.runState ?? {}).run_state ?? "idle");
@@ -2467,6 +2547,8 @@ class ViewOverview extends i$2 {
                 ? t(this.hass, "config_panel.general_state_error_idle")
                 : t(this.hass, "config_panel.general_state_idle");
         const showSkip = runBusy && runState !== "stopping" && (runState === "preparing" || upcoming.length > 0);
+        const runWater = this._liveWater(activeIds);
+        const lastWater = typeof rs.last_run_water_l === "number" ? rs.last_run_water_l : null;
         // A blocking script is why "Preparing" can sit there for minutes — name it.
         const activeScript = rs.active_script ? String(rs.active_script) : "";
         const scriptLine = activeScript
@@ -2513,11 +2595,22 @@ class ViewOverview extends i$2 {
                         ><span class="num">~${next.est}</span> min</span
                       >`
                 : A}
+                  ${next.waterL !== null
+                ? b `<span class="meta"
+                        ><ha-icon icon="mdi:water-outline"></ha-icon>${this._fmtWater(next.waterL, true)}</span
+                      >`
+                : A}
+                  ${lastWater !== null
+                ? b `<span class="meta"
+                        ><ha-icon icon="mdi:water-check-outline"></ha-icon>${t(this.hass, "config_panel.general_water_last_run")}
+                        ${this._fmtWater(lastWater, rs.last_run_water_source !== "measured")}</span
+                      >`
+                : A}
                 </div>
               `
             : A}
 
-          ${activeIds.length || soaking || nextZones || lastErr
+          ${activeIds.length || soaking || (runBusy && runWater !== null) || nextZones || lastErr
             ? b `
                 <ul class="pill-list">
                   ${soaking
@@ -2540,6 +2633,13 @@ class ViewOverview extends i$2 {
                         <span><strong>${t(this.hass, "config_panel.general_remaining")}</strong>
                           ${remainingRows.map((r, i) => b `${i > 0 ? ", " : ""}${r.name}
                                 <span class="num">${this._fmtRemaining(r.endsAt)}</span>`)}</span>
+                      </li>`
+                : A}
+                  ${runBusy && runWater !== null
+                ? b `<li class="pill">
+                        <ha-icon icon="mdi:water-outline"></ha-icon>
+                        <span><strong>${t(this.hass, "config_panel.general_water_so_far")}</strong>
+                          ${this._fmtWater(runWater, rs.run_water_source !== "measured" || activeIds.length > 0)}</span>
                       </li>`
                 : A}
                   ${nextZones
@@ -2642,7 +2742,9 @@ class ViewOverview extends i$2 {
                       <span class="nr-when">${this._relDay(r.when)} ${this._fmtTime(r.when)}</span>
                       <span class="nr-desc">${desc}</span>
                       ${r.est > 0
-                    ? b `<span class="nr-dur">~${r.est} min</span>`
+                    ? b `<span class="nr-dur">~${r.est} min${r.waterL !== null
+                        ? b ` · ${this._fmtWater(r.waterL, true)}`
+                        : A}</span>`
                     : A}
                     </div>
                     ${r.zoneNames.length && i < 2
@@ -4367,6 +4469,19 @@ class ViewSchedule extends i$2 {
       ><ha-icon icon="mdi:script-text-outline"></ha-icon>${t(this.hass, "config_panel.schedule_scripts_own")}</span
     >`;
     }
+    /** "~120 L" for one run of the slot, from the zones' flow rates. */
+    _renderWaterMeta(s) {
+        const litres = plannedLitres(s.zone_ids_ordered, this._zonesMap(), this._mode(), s.cycle_soak.repetitions);
+        if (litres === null)
+            return A;
+        const unit = volumeUnit(this.hass);
+        return b `<span class="meta"
+      ><ha-icon icon="mdi:water-outline"></ha-icon>${t(this.hass, "config_panel.water_approx", {
+            v: formatVolumeNumber(litresToUnit(litres, unit)),
+            u: unit,
+        })}</span
+    >`;
+    }
     /** Read-only chip on a row that waters in passes with rests in between. */
     _renderCycleSoakMeta(s) {
         if (!isCycleSoak(s.cycle_soak))
@@ -4952,7 +5067,7 @@ class ViewSchedule extends i$2 {
                 ><ha-icon icon="mdi:vector-square"></ha-icon>${t(this.hass, "config_panel.cycle_meta_zones", { z: zoneIds.length, p: phases, m: est })}</span
               >
               ${g.members[0]
-            ? b `${this._renderGuardMeta(g.members[0].guards, g.members[0].ignore_global_guards)}${this._renderScriptMeta(g.members[0])}${this._renderCycleSoakMeta(g.members[0])}`
+            ? b `${this._renderGuardMeta(g.members[0].guards, g.members[0].ignore_global_guards)}${this._renderScriptMeta(g.members[0])}${this._renderCycleSoakMeta(g.members[0])}${this._renderWaterMeta(g.members[0])}`
             : A}
               ${next
             ? b `<span class="meta"
@@ -5053,6 +5168,7 @@ class ViewSchedule extends i$2 {
               ${this._renderGuardMeta(s.guards, s.ignore_global_guards)}
               ${this._renderScriptMeta(s)}
               ${this._renderCycleSoakMeta(s)}
+              ${this._renderWaterMeta(s)}
               ${next
             ? b `<span class="meta"
                     ><ha-icon icon="mdi:skip-next-outline"></ha-icon>${weekdayShort(this.hass, mondayBasedWeekday(next))}
@@ -5472,6 +5588,7 @@ class ViewSettings extends i$2 {
         this._mode = "normal";
         this._maxParallel = 2;
         this._preStart = [];
+        this._waterMeter = "";
         this._preStartDelaySec = 10;
         this._preStartScript = "";
         this._preStartScriptTimeoutSec = 300;
@@ -5545,6 +5662,7 @@ class ViewSettings extends i$2 {
             ? inst.pre_start_switches.filter(Boolean)
             : [];
         this._preStart = ps.length ? [...ps] : [""];
+        this._waterMeter = String(inst.water_meter_entity_id ?? "");
         const d = Number(inst.pre_start_delay_sec ?? 10);
         this._preStartDelaySec = Number.isFinite(d) ? Math.max(0, Math.min(3600, Math.round(d))) : 10;
         this._preStartScript = String(inst.pre_start_script ?? "");
@@ -5595,6 +5713,7 @@ class ViewSettings extends i$2 {
                 max_parallel_zones: this._maxParallel,
                 is_default: this._isDefault,
                 guards: guardsForSave(this._guards),
+                water_meter_entity_id: this._waterMeter.trim(),
             });
             if (!res.success) {
                 this._msg = formatApiError(res.error, this.hass);
@@ -5861,6 +5980,18 @@ class ViewSettings extends i$2 {
               ></ha-input>
             </div>
             <p class="hint">${t(this.hass, "config_panel.settings_max_parallel_hint")}</p>
+          </div>
+
+          <div class="section-title">${t(this.hass, "config_panel.settings_section_water")}</div>
+          <div class="field-block">
+            <div class="field-row">
+              ${renderNativeEntityField(this.hass, ["sensor"], t(this.hass, "config_panel.settings_water_meter_label"), this._waterMeter, (v) => {
+            this._waterMeter = v;
+            this._markDirty();
+            this.requestUpdate();
+        }, { placeholderKey: "config_panel.water_meter_placeholder" })}
+            </div>
+            <p class="hint">${t(this.hass, "config_panel.settings_water_meter_hint")}</p>
           </div>
 
           <div class="section-title">${t(this.hass, "config_panel.settings_section_guards")}</div>
@@ -6926,6 +7057,8 @@ class ViewZones extends i$2 {
             duration_field: "",
             duration_unit: "",
             start_entity_id: "",
+            water_meter_entity_id: "",
+            flow_rate_lpm: 0,
         };
     }
     _cloneZone(z) {
@@ -6957,8 +7090,32 @@ class ViewZones extends i$2 {
                 duration_field: String(o.duration_field ?? ""),
                 duration_unit: String(o.duration_unit ?? ""),
                 start_entity_id: String(o.start_entity_id ?? ""),
+                water_meter_entity_id: String(o.water_meter_entity_id ?? ""),
+                flow_rate_lpm: Math.max(0, Number(o.flow_rate_lpm ?? 0) || 0),
             };
         });
+    }
+    /** "~120 L" for one run of the zone in the active mode; "" without a rate. */
+    _waterPerRun(z) {
+        if (z.flow_rate_lpm <= 0)
+            return "";
+        const minutes = durationForMode({ duration_eco_min: z.duration_eco_min, duration_normal_min: z.duration_normal_min, duration_extra_min: z.duration_extra_min }, this._mode());
+        const unit = volumeUnit(this.hass);
+        return t(this.hass, "config_panel.water_approx", {
+            v: formatVolumeNumber(litresToUnit(z.flow_rate_lpm * minutes, unit)),
+            u: unit,
+        });
+    }
+    /** What the zone used last time, from the run state; "" when it tracks none. */
+    _waterLastRun(z) {
+        const rs = this._rs();
+        const last = rs.water_last_run_l?.[z.zone_id];
+        if (last === undefined || last === null)
+            return "";
+        const source = rs.water_source?.[z.zone_id];
+        const unit = volumeUnit(this.hass);
+        const key = source === "measured" ? "config_panel.water_exact" : "config_panel.water_approx";
+        return t(this.hass, key, { v: formatVolumeNumber(litresToUnit(Number(last), unit)), u: unit });
     }
     /** A zone has an "issue" when an output entity is missing or unavailable. */
     _zoneIssue(z) {
@@ -7159,6 +7316,8 @@ class ViewZones extends i$2 {
                     duration_field: zone.duration_field.trim(),
                     duration_unit: zone.duration_unit.trim(),
                     start_entity_id: zone.start_entity_id.trim(),
+                    water_meter_entity_id: zone.water_meter_entity_id.trim(),
+                    flow_rate_lpm: zone.flow_rate_lpm,
                 };
             }
             const res = await saveZone(this.hass, this.entryId, body);
@@ -7298,6 +7457,33 @@ class ViewZones extends i$2 {
           </div>
         </div>
         <p class="hint">${t(this.hass, "config_panel.zones_behavior_desc")}</p>
+      </div>
+
+      <div class="section-title">${t(this.hass, "config_panel.zones_water_title")}</div>
+      <div class="field-block">
+        <p class="field-desc">${t(this.hass, "config_panel.zones_water_desc")}</p>
+        <div class="field-row">
+          ${renderNativeEntityField(this.hass, ["sensor"], t(this.hass, "config_panel.zones_water_meter_label"), z.water_meter_entity_id, (v) => {
+            z.water_meter_entity_id = v;
+            this.requestUpdate();
+        }, { placeholderKey: "config_panel.water_meter_placeholder" })}
+        </div>
+        <p class="hint">${t(this.hass, "config_panel.zones_water_meter_hint")}</p>
+        <div class="field-row">
+          <ha-input
+            type="number"
+            .label=${t(this.hass, "config_panel.zones_flow_rate_label", { unit: volumeUnit(this.hass) })}
+            .value=${z.flow_rate_lpm > 0 ? formatRateNumber(litresToUnit(z.flow_rate_lpm, volumeUnit(this.hass))) : ""}
+            min="0"
+            max="1000"
+            step="0.1"
+            @input=${(e) => {
+            const raw = parseFloat(e.target.value);
+            z.flow_rate_lpm = Number.isFinite(raw) && raw > 0 ? unitToLitres(raw, volumeUnit(this.hass)) : 0;
+        }}
+          ></ha-input>
+        </div>
+        <p class="hint">${t(this.hass, "config_panel.zones_flow_rate_hint")}</p>
       </div>
 
       <div class="section-title">${t(this.hass, "config_panel.zones_advanced_title")}</div>
@@ -7499,6 +7685,18 @@ class ViewZones extends i$2 {
         })}
                 ${" "}${t(this.hass, "config_panel.zones_min_suffix")}
               </span>
+              ${this._waterPerRun(z)
+            ? b `<span class="meta"
+                    ><ha-icon icon="mdi:water-outline"></ha-icon>${this._waterPerRun(z)}
+                    ${t(this.hass, "config_panel.water_per_run")}</span
+                  >`
+            : A}
+              ${this._waterLastRun(z)
+            ? b `<span class="meta"
+                    ><ha-icon icon="mdi:water-check-outline"></ha-icon>${t(this.hass, "config_panel.general_water_last_run")}
+                    ${this._waterLastRun(z)}</span
+                  >`
+            : A}
               ${slotN > 0
             ? b `<span class="meta"
                     ><ha-icon icon="mdi:format-list-bulleted"></ha-icon>${slotN === 1

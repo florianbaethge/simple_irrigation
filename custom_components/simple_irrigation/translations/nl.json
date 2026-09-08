@@ -59,6 +59,12 @@
       },
       "zone_ends_at": {
         "name": "{zone_name} bewatering tot"
+      },
+      "water_total": {
+        "name": "Water"
+      },
+      "zone_water": {
+        "name": "{zone_name} water"
       }
     },
     "binary_sensor": {
@@ -453,6 +459,23 @@
     "cycle_soak_pause_repetitions": "Pauze tussen herhalingen (min)",
     "cycle_soak_hint": "Tijdens een pauze zijn alle uitgangen gesloten, ook pomp en hoofdklep. Stop beëindigt de beurt, „Volgende fase“ kort de pauze in.",
     "cycle_soak_badge": "{r}× Cycle & Soak",
+    "errors_invalid_water_meter": "De watermeter moet een sensor met een volume-eenheid zijn (L, m³, gal, ft³).",
+    "errors_invalid_flow_rate": "Het debiet moet een getal tussen 0 en 1000 per minuut zijn.",
+    "zones_water_title": "Water",
+    "zones_water_desc": "Optioneel. Geef op hoeveel deze zone verbruikt en Simple Irrigation toont liters per beurt — gemeten door een meter op de leiding van de zone, of geschat op basis van een eenmalig gemeten debiet.",
+    "zones_water_meter_label": "Watermeter (optioneel)",
+    "zones_water_meter_hint": "Een sensor die het volume op de leiding van deze zone telt. Hij wordt gelezen bij het openen en sluiten van de zone; het verschil is het verbruik. Gaat vóór het debiet.",
+    "zones_flow_rate_label": "Debiet ({unit} per minuut)",
+    "zones_flow_rate_hint": "Zo meet je het: laat deze zone 10 minuten alleen draaien met je gebruikelijke watertoevoer, lees de huiswatermeter vooraf en achteraf af, deel het verschil door 10. Meet opnieuw als je wisselt tussen leidingwater en een regenwaterpomp — de druk verandert het debiet. Waarden uit een debiet zijn gemarkeerd als schatting (~).",
+    "settings_section_water": "Water",
+    "settings_water_meter_label": "Watermeter op de toevoerleiding (optioneel)",
+    "settings_water_meter_hint": "Een sensor die het volume van de hele installatie telt. Hij meet elke beurt als geheel, ook parallelle zones, en vervangt voor het beurttotaal de waarden van de zones. De totalen staan op de watersensoren; maak een Utility Meter voor maandcijfers.",
+    "general_water_so_far": "Water tot nu toe",
+    "general_water_last_run": "Laatste beurt",
+    "water_approx": "~{v} {u}",
+    "water_exact": "{v} {u}",
+    "water_per_run": "per beurt",
+    "water_meter_placeholder": "bijv. sensor.tuin_watermeter",
     "general_state_soaking": "Pauze (intrekken)",
     "general_soak_remaining": "Pauze",
     "guards_entity_label": "Entiteit",

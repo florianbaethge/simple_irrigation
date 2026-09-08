@@ -32,6 +32,13 @@ from .models import RunState, ScheduleSlot, Zone
 from .program import RunStep, Soak, watering_steps
 from .scheduler import phases_for_slot, program_for_slot
 from .scripts import ScriptCall, effective_post_run_script, effective_pre_start_script
+from .water import (
+    SOURCE_ESTIMATED,
+    SOURCE_MEASURED,
+    estimated_litres,
+    meter_delta,
+    meter_litres,
+)
 
 if TYPE_CHECKING:
     from .coordinator import SimpleIrrigationCoordinator
@@ -98,6 +105,8 @@ class IrrigationRuntime:
         self._zone_stop_requests: set[str] = set()
         # Slots behind the current run; they may override the pipeline's scripts.
         self._run_slots: list[ScheduleSlot] = []
+        # The supply-line meter's reading when the run began, if there is one.
+        self._run_meter_start: float | None = None
 
     async def async_setup(self) -> None:
         """Reset state on startup."""
@@ -187,6 +196,9 @@ class IrrigationRuntime:
             rs.manual_run = not scheduled
             rs.current_slot_id = slot_ids[0] if slot_ids else None
             rs.current_run_started_at = dt_util.utcnow()
+            rs.run_water_l = None
+            rs.run_water_source = ""
+            self._run_meter_start = meter_litres(self.hass, inst.water_meter_entity_id)
             # active_zone_ids empty until first phase; upcoming = phases not yet started.
             rs.upcoming_phases = watering_steps(self._phase_queue)
             rs.phase_index = 0
@@ -275,6 +287,7 @@ class IrrigationRuntime:
         await self.coordinator.async_update_run_state(rs)
 
         await self._async_turn_off_all_tracked()
+        self._book_run_water()
         await self._async_post_run()
 
         rs.run_state = state
@@ -334,6 +347,69 @@ class IrrigationRuntime:
         for entity_id in inst.pre_start_switches:
             await self._async_switch_turn_on(entity_id)
         await self._async_sleep_interruptible(float(inst.pre_start_delay_sec))
+
+    # --- water ---------------------------------------------------------------
+
+    def _book_zone_water(self, zone: Zone, started, meter_start: float | None) -> None:
+        """Credit what one zone run used: the meter's word, else the rate's.
+
+        Measured against the wall clock, so a zone stopped early books only
+        what it actually delivered. A zone that tracks no water books nothing.
+        """
+        litres: float | None = None
+        source = ""
+        if zone.water_meter_entity_id.strip():
+            litres = meter_delta(
+                meter_start, meter_litres(self.hass, zone.water_meter_entity_id)
+            )
+            if litres is None:
+                _LOGGER.warning(
+                    "Water meter %s of zone %s could not be read for this run",
+                    zone.water_meter_entity_id,
+                    zone.name,
+                )
+            else:
+                source = SOURCE_MEASURED
+        if litres is None:
+            elapsed = (dt_util.utcnow() - started).total_seconds()
+            litres = estimated_litres(zone, elapsed)
+            source = SOURCE_ESTIMATED
+        if litres is None:
+            return
+        rs = self.coordinator.run_state
+        rs.water_last_run_l[zone.zone_id] = litres
+        rs.water_total_l[zone.zone_id] = rs.water_total_l.get(zone.zone_id, 0.0) + litres
+        rs.water_source[zone.zone_id] = source
+        rs.run_water_l = (rs.run_water_l or 0.0) + litres
+        # One estimated zone makes the run's figure an estimate.
+        if source == SOURCE_ESTIMATED or rs.run_water_source == SOURCE_ESTIMATED:
+            rs.run_water_source = SOURCE_ESTIMATED
+        else:
+            rs.run_water_source = SOURCE_MEASURED
+
+    def _book_run_water(self) -> None:
+        """Close the run's water account once every output is off.
+
+        The supply-line meter, when there is one, replaces the per-zone sum:
+        it saw everything that flowed, parallel zones included.
+        """
+        inst = self.coordinator.installation
+        rs = self.coordinator.run_state
+        if inst.water_meter_entity_id.strip():
+            measured = meter_delta(
+                self._run_meter_start, meter_litres(self.hass, inst.water_meter_entity_id)
+            )
+            if measured is not None:
+                rs.run_water_l = measured
+                rs.run_water_source = SOURCE_MEASURED
+        self._run_meter_start = None
+        if rs.run_water_l is None:
+            return
+        rs.last_run_water_l = rs.run_water_l
+        rs.last_run_water_source = rs.run_water_source
+        rs.water_total_installation_l += rs.run_water_l
+        rs.run_water_l = None
+        rs.run_water_source = ""
 
     async def _async_sleep_interruptible(self, delay_sec: float) -> None:
         """Sleep but wake early on stop or skip phase."""
@@ -642,6 +718,8 @@ class IrrigationRuntime:
                 "entity_ids": outputs,
             },
         )
+        started = dt_util.utcnow()
+        meter_start = meter_litres(self.hass, zone.water_meter_entity_id)
         handled_by_service = await self._async_zone_run_with_duration_service(
             zone,
             duration_min,
@@ -650,6 +728,7 @@ class IrrigationRuntime:
             await asyncio.gather(*(self._async_switch_turn_on(eid) for eid in outputs))
             await self._async_wait_zone_duration(duration_min * 60, zone.zone_id)
             await asyncio.gather(*(self._async_switch_turn_off(eid) for eid in outputs))
+        self._book_zone_water(zone, started, meter_start)
         stopped = zone.zone_id in self._zone_stop_requests
         self._zone_stop_requests.discard(zone.zone_id)
         now = dt_util.utcnow()

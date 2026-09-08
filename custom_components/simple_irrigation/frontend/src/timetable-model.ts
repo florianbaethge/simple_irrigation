@@ -59,6 +59,31 @@ export function durationForMode(
 }
 
 /** Bucket by wall-clock hour of segment start ([0,8), [8,16), [16,24)). */
+/**
+ * Litres a run of these zones is expected to use in `mode`, from the zones'
+ * flow rates (`flow_rate_lpm`) times minutes times Cycle & Soak repetitions.
+ * Null when no zone has a rate -- a meter only tells afterwards.
+ */
+export function plannedLitres(
+  zoneIds: string[],
+  zones: Record<string, Record<string, unknown> | undefined> | undefined,
+  mode: string,
+  repetitions = 1
+): number | null {
+  if (!zones) return null;
+  let total = 0;
+  let known = false;
+  for (const zid of zoneIds) {
+    const z = zones[zid];
+    if (!z || !Boolean(z.enabled ?? true)) continue;
+    const rate = Number(z.flow_rate_lpm ?? 0);
+    if (!Number.isFinite(rate) || rate <= 0) continue;
+    known = true;
+    total += rate * durationForMode(z, mode) * Math.max(1, repetitions);
+  }
+  return known ? total : null;
+}
+
 export function bucketFromStartMin(startMin: number): TimetableBucket {
   const h = Math.floor(Math.max(0, startMin) / 60);
   if (h < 8) return 0;

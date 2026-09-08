@@ -59,6 +59,12 @@
       },
       "zone_ends_at": {
         "name": "Irrigazione di {zone_name} fino a"
+      },
+      "water_total": {
+        "name": "Acqua"
+      },
+      "zone_water": {
+        "name": "{zone_name} acqua"
       }
     },
     "binary_sensor": {
@@ -443,6 +449,23 @@
     "cycle_soak_pause_repetitions": "Pausa tra le ripetizioni (min)",
     "cycle_soak_hint": "Durante una pausa tutte le uscite sono chiuse, pompa e valvola principale comprese. Stop termina l'irrigazione, «Fase successiva» accorcia la pausa.",
     "cycle_soak_badge": "{r}× Cycle & Soak",
+    "errors_invalid_water_meter": "Il contatore dell'acqua deve essere un sensore con un'unità di volume (L, m³, gal, ft³).",
+    "errors_invalid_flow_rate": "La portata deve essere un numero tra 0 e 1000 al minuto.",
+    "zones_water_title": "Acqua",
+    "zones_water_desc": "Facoltativo. Indica quanto consuma questa zona e Simple Irrigation mostra i litri per irrigazione — misurati da un contatore sulla linea della zona, o stimati da una portata misurata una volta.",
+    "zones_water_meter_label": "Contatore dell'acqua (facoltativo)",
+    "zones_water_meter_hint": "Un sensore che conta il volume sulla linea di questa zona. Viene letto all'apertura e alla chiusura della zona; la differenza è il consumo. Ha la precedenza sulla portata.",
+    "zones_flow_rate_label": "Portata ({unit} al minuto)",
+    "zones_flow_rate_hint": "Come misurarla: fai funzionare questa zona da sola per 10 minuti con la tua alimentazione abituale, leggi il contatore dell'acqua di casa prima e dopo, dividi la differenza per 10. Misura di nuovo se passi dalla rete a una pompa da cisterna — la pressione cambia la portata. I valori da una portata sono contrassegnati come stime (~).",
+    "settings_section_water": "Acqua",
+    "settings_water_meter_label": "Contatore dell'acqua sulla linea di alimentazione (facoltativo)",
+    "settings_water_meter_hint": "Un sensore che conta il volume dell'intero impianto. Misura ogni irrigazione nel suo insieme, zone parallele comprese, e sostituisce i valori delle zone per il totale. I totali cumulativi sono sui sensori dell'acqua; aggiungi uno Utility Meter per i valori mensili.",
+    "general_water_so_far": "Acqua finora",
+    "general_water_last_run": "Ultima irrigazione",
+    "water_approx": "~{v} {u}",
+    "water_exact": "{v} {u}",
+    "water_per_run": "per irrigazione",
+    "water_meter_placeholder": "ad es. sensor.contatore_acqua_giardino",
     "general_state_soaking": "Pausa (assorbimento)",
     "general_soak_remaining": "Pausa",
     "guards_entity_label": "Entità",

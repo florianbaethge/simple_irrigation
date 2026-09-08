@@ -3,6 +3,14 @@ import { state } from "lit/decorators.js";
 import { keyed } from "lit/directives/keyed.js";
 import { runZoneNow, saveZone, stopZone } from "../data/api";
 import { renderNativeEntityField } from "../entity-input";
+import { durationForMode } from "../timetable-model";
+import {
+  formatRateNumber,
+  formatVolumeNumber,
+  litresToUnit,
+  unitToLitres,
+  volumeUnit,
+} from "../units";
 import { apiErrorCode, defineCustomElementOnce, formatApiError } from "../helpers";
 import { t } from "../i18n";
 import { formLayoutStyles } from "../form-layout-styles";
@@ -76,6 +84,8 @@ interface ZoneRow {
   duration_field: string;
   duration_unit: string;
   start_entity_id: string;
+  water_meter_entity_id: string;
+  flow_rate_lpm: number;
 }
 
 export class ViewZones extends LitElement {
@@ -178,6 +188,8 @@ export class ViewZones extends LitElement {
       duration_field: "",
       duration_unit: "",
       start_entity_id: "",
+      water_meter_entity_id: "",
+      flow_rate_lpm: 0,
     };
   }
 
@@ -207,8 +219,35 @@ export class ViewZones extends LitElement {
         duration_field: String(o.duration_field ?? ""),
         duration_unit: String(o.duration_unit ?? ""),
         start_entity_id: String(o.start_entity_id ?? ""),
+        water_meter_entity_id: String(o.water_meter_entity_id ?? ""),
+        flow_rate_lpm: Math.max(0, Number(o.flow_rate_lpm ?? 0) || 0),
       };
     });
+  }
+
+  /** "~120 L" for one run of the zone in the active mode; "" without a rate. */
+  private _waterPerRun(z: ZoneRow): string {
+    if (z.flow_rate_lpm <= 0) return "";
+    const minutes = durationForMode(
+      { duration_eco_min: z.duration_eco_min, duration_normal_min: z.duration_normal_min, duration_extra_min: z.duration_extra_min },
+      this._mode()
+    );
+    const unit = volumeUnit(this.hass);
+    return t(this.hass, "config_panel.water_approx", {
+      v: formatVolumeNumber(litresToUnit(z.flow_rate_lpm * minutes, unit)),
+      u: unit,
+    });
+  }
+
+  /** What the zone used last time, from the run state; "" when it tracks none. */
+  private _waterLastRun(z: ZoneRow): string {
+    const rs = this._rs();
+    const last = (rs.water_last_run_l as Record<string, number> | undefined)?.[z.zone_id];
+    if (last === undefined || last === null) return "";
+    const source = (rs.water_source as Record<string, string> | undefined)?.[z.zone_id];
+    const unit = volumeUnit(this.hass);
+    const key = source === "measured" ? "config_panel.water_exact" : "config_panel.water_approx";
+    return t(this.hass, key, { v: formatVolumeNumber(litresToUnit(Number(last), unit)), u: unit });
   }
 
   /** A zone has an "issue" when an output entity is missing or unavailable. */
@@ -418,6 +457,8 @@ export class ViewZones extends LitElement {
           duration_field: zone.duration_field.trim(),
           duration_unit: zone.duration_unit.trim(),
           start_entity_id: zone.start_entity_id.trim(),
+          water_meter_entity_id: zone.water_meter_entity_id.trim(),
+          flow_rate_lpm: zone.flow_rate_lpm,
         };
       }
       const res = await saveZone(this.hass, this.entryId, body);
@@ -563,6 +604,40 @@ export class ViewZones extends LitElement {
           </div>
         </div>
         <p class="hint">${t(this.hass, "config_panel.zones_behavior_desc")}</p>
+      </div>
+
+      <div class="section-title">${t(this.hass, "config_panel.zones_water_title")}</div>
+      <div class="field-block">
+        <p class="field-desc">${t(this.hass, "config_panel.zones_water_desc")}</p>
+        <div class="field-row">
+          ${renderNativeEntityField(
+            this.hass,
+            ["sensor"],
+            t(this.hass, "config_panel.zones_water_meter_label"),
+            z.water_meter_entity_id,
+            (v) => {
+              z.water_meter_entity_id = v;
+              this.requestUpdate();
+            },
+            { placeholderKey: "config_panel.water_meter_placeholder" }
+          )}
+        </div>
+        <p class="hint">${t(this.hass, "config_panel.zones_water_meter_hint")}</p>
+        <div class="field-row">
+          <ha-input
+            type="number"
+            .label=${t(this.hass, "config_panel.zones_flow_rate_label", { unit: volumeUnit(this.hass) })}
+            .value=${z.flow_rate_lpm > 0 ? formatRateNumber(litresToUnit(z.flow_rate_lpm, volumeUnit(this.hass))) : ""}
+            min="0"
+            max="1000"
+            step="0.1"
+            @input=${(e: Event) => {
+              const raw = parseFloat((e.target as HTMLInputElement).value);
+              z.flow_rate_lpm = Number.isFinite(raw) && raw > 0 ? unitToLitres(raw, volumeUnit(this.hass)) : 0;
+            }}
+          ></ha-input>
+        </div>
+        <p class="hint">${t(this.hass, "config_panel.zones_flow_rate_hint")}</p>
       </div>
 
       <div class="section-title">${t(this.hass, "config_panel.zones_advanced_title")}</div>
@@ -793,6 +868,21 @@ export class ViewZones extends LitElement {
                 })}
                 ${" "}${t(this.hass, "config_panel.zones_min_suffix")}
               </span>
+              ${this._waterPerRun(z)
+                ? html`<span class="meta"
+                    ><ha-icon icon="mdi:water-outline"></ha-icon>${this._waterPerRun(z)}
+                    ${t(this.hass, "config_panel.water_per_run")}</span
+                  >`
+                : nothing}
+              ${this._waterLastRun(z)
+                ? html`<span class="meta"
+                    ><ha-icon icon="mdi:water-check-outline"></ha-icon>${t(
+                      this.hass,
+                      "config_panel.general_water_last_run"
+                    )}
+                    ${this._waterLastRun(z)}</span
+                  >`
+                : nothing}
               ${slotN > 0
                 ? html`<span class="meta"
                     ><ha-icon icon="mdi:format-list-bulleted"></ha-icon>${slotN === 1

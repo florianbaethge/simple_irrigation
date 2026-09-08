@@ -47,6 +47,7 @@ from .validation import (
     validate_pre_start_entities,
     validate_script_entity,
     validate_script_timeout,
+    validate_water_meter_entity,
     validate_zone_payload,
 )
 
@@ -352,6 +353,7 @@ class SimpleIrrigationPanelGlobalView(HomeAssistantView):
                 vol.Optional("is_default"): cv.boolean,
                 vol.Optional("pause_until"): vol.Any(cv.string, None),
                 vol.Optional("guards"): GUARD_LIST_SCHEMA,
+                vol.Optional("water_meter_entity_id"): vol.Any(cv.string, None),
             }
         )
     )
@@ -413,6 +415,12 @@ class SimpleIrrigationPanelGlobalView(HomeAssistantView):
             if guard_err:
                 return self.json({"success": False, "error": guard_err}, status_code=400)
             inst.guards = guards
+        if "water_meter_entity_id" in data:
+            meter = str(data["water_meter_entity_id"] or "").strip()
+            err = validate_water_meter_entity(hass, meter)
+            if err:
+                return self.json({"success": False, "error": err}, status_code=400)
+            inst.water_meter_entity_id = meter
         if "pause_until" in data:
             raw = data["pause_until"]
             if raw in (None, ""):
@@ -466,6 +474,8 @@ class SimpleIrrigationPanelZoneView(HomeAssistantView):
                         vol.Optional("duration_field"): vol.Any(cv.string, None),
                         vol.Optional("duration_unit"): vol.Any(cv.string, None),
                         vol.Optional("start_entity_id"): vol.Any(cv.string, None),
+                        vol.Optional("water_meter_entity_id"): vol.Any(cv.string, None),
+                        vol.Optional("flow_rate_lpm"): vol.Any(float, int, None),
                     }
                 ),
             }
@@ -497,6 +507,8 @@ class SimpleIrrigationPanelZoneView(HomeAssistantView):
                 "duration_field": zone_data.get("duration_field", ""),
                 "duration_unit": zone_data.get("duration_unit", ""),
                 "start_entity_id": zone_data.get("start_entity_id", ""),
+                "water_meter_entity_id": zone_data.get("water_meter_entity_id", ""),
+                "flow_rate_lpm": zone_data.get("flow_rate_lpm", 0),
             }
             err = validate_zone_payload(hass, payload)
             if err:
@@ -516,6 +528,8 @@ class SimpleIrrigationPanelZoneView(HomeAssistantView):
                 duration_field=str(payload["duration_field"] or "").strip(),
                 duration_unit=str(payload["duration_unit"] or "").strip(),
                 start_entity_id=str(payload["start_entity_id"] or "").strip(),
+                water_meter_entity_id=str(payload["water_meter_entity_id"] or "").strip(),
+                flow_rate_lpm=float(payload["flow_rate_lpm"] or 0),
             )
             await coord.async_update_installation(inst)
             return self.json({"success": True, "zone_id": zid})
@@ -558,6 +572,10 @@ class SimpleIrrigationPanelZoneView(HomeAssistantView):
             "duration_field": zone_data.get("duration_field", zone.duration_field),
             "duration_unit": zone_data.get("duration_unit", zone.duration_unit),
             "start_entity_id": zone_data.get("start_entity_id", zone.start_entity_id),
+            "water_meter_entity_id": zone_data.get(
+                "water_meter_entity_id", zone.water_meter_entity_id
+            ),
+            "flow_rate_lpm": zone_data.get("flow_rate_lpm", zone.flow_rate_lpm),
         }
         err = validate_zone_payload(hass, merged)
         if err:
@@ -573,6 +591,8 @@ class SimpleIrrigationPanelZoneView(HomeAssistantView):
         zone.duration_field = str(merged["duration_field"] or "").strip()
         zone.duration_unit = str(merged["duration_unit"] or "").strip()
         zone.start_entity_id = str(merged["start_entity_id"] or "").strip()
+        zone.water_meter_entity_id = str(merged["water_meter_entity_id"] or "").strip()
+        zone.flow_rate_lpm = float(merged["flow_rate_lpm"] or 0)
         await coord.async_update_installation(inst)
         return self.json({"success": True})
 

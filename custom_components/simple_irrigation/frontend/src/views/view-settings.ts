@@ -87,6 +87,7 @@ export class ViewSettings extends LitElement {
   private _mode = "normal";
   private _maxParallel = 2;
   private _preStart: string[] = [];
+  private _waterMeter = "";
   private _preStartDelaySec = 10;
   private _preStartScript = "";
   private _preStartScriptTimeoutSec = 300;
@@ -110,6 +111,7 @@ export class ViewSettings extends LitElement {
       ? (inst.pre_start_switches as string[]).filter(Boolean)
       : [];
     this._preStart = ps.length ? [...ps] : [""];
+    this._waterMeter = String(inst.water_meter_entity_id ?? "");
     const d = Number(inst.pre_start_delay_sec ?? 10);
     this._preStartDelaySec = Number.isFinite(d) ? Math.max(0, Math.min(3600, Math.round(d))) : 10;
     this._preStartScript = String(inst.pre_start_script ?? "");
@@ -171,6 +173,7 @@ export class ViewSettings extends LitElement {
         max_parallel_zones: this._maxParallel,
         is_default: this._isDefault,
         guards: guardsForSave(this._guards),
+        water_meter_entity_id: this._waterMeter.trim(),
       });
       if (!res.success) {
         this._msg = formatApiError(res.error, this.hass);
@@ -470,6 +473,25 @@ export class ViewSettings extends LitElement {
               ></ha-input>
             </div>
             <p class="hint">${t(this.hass, "config_panel.settings_max_parallel_hint")}</p>
+          </div>
+
+          <div class="section-title">${t(this.hass, "config_panel.settings_section_water")}</div>
+          <div class="field-block">
+            <div class="field-row">
+              ${renderNativeEntityField(
+                this.hass,
+                ["sensor"],
+                t(this.hass, "config_panel.settings_water_meter_label"),
+                this._waterMeter,
+                (v) => {
+                  this._waterMeter = v;
+                  this._markDirty();
+                  this.requestUpdate();
+                },
+                { placeholderKey: "config_panel.water_meter_placeholder" }
+              )}
+            </div>
+            <p class="hint">${t(this.hass, "config_panel.settings_water_meter_hint")}</p>
           </div>
 
           <div class="section-title">${t(this.hass, "config_panel.settings_section_guards")}</div>

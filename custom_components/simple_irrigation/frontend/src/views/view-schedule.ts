@@ -39,8 +39,9 @@ import {
   type CycleSoak,
   type ZonePhaseInput,
 } from "../schedule-phases";
-import { durationForMode } from "../timetable-model";
+import { durationForMode, plannedLitres } from "../timetable-model";
 import { renderCycleSoakEditor } from "../cycle-soak-editor";
+import { formatVolumeNumber, litresToUnit, volumeUnit } from "../units";
 import {
   mondayBasedWeekday,
   previewStrip,
@@ -322,6 +323,19 @@ export class ViewSchedule extends LitElement {
         this.hass,
         "config_panel.schedule_scripts_own"
       )}</span
+    >`;
+  }
+
+  /** "~120 L" for one run of the slot, from the zones' flow rates. */
+  private _renderWaterMeta(s: SlotRow): TemplateResult | typeof nothing {
+    const litres = plannedLitres(s.zone_ids_ordered, this._zonesMap(), this._mode(), s.cycle_soak.repetitions);
+    if (litres === null) return nothing;
+    const unit = volumeUnit(this.hass);
+    return html`<span class="meta"
+      ><ha-icon icon="mdi:water-outline"></ha-icon>${t(this.hass, "config_panel.water_approx", {
+        v: formatVolumeNumber(litresToUnit(litres, unit)),
+        u: unit,
+      })}</span
     >`;
   }
 
@@ -943,7 +957,7 @@ export class ViewSchedule extends LitElement {
                     g.members[0].ignore_global_guards
                   )}${this._renderScriptMeta(g.members[0])}${this._renderCycleSoakMeta(
                     g.members[0]
-                  )}`
+                  )}${this._renderWaterMeta(g.members[0])}`
                 : nothing}
               ${next
                 ? html`<span class="meta"
@@ -1067,6 +1081,7 @@ export class ViewSchedule extends LitElement {
               ${this._renderGuardMeta(s.guards, s.ignore_global_guards)}
               ${this._renderScriptMeta(s)}
               ${this._renderCycleSoakMeta(s)}
+              ${this._renderWaterMeta(s)}
               ${next
                 ? html`<span class="meta"
                     ><ha-icon icon="mdi:skip-next-outline"></ha-icon>${weekdayShort(

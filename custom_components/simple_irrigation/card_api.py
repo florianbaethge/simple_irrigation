@@ -41,6 +41,7 @@ from .grouping import compute_phases
 from .guards import guards_allow_run
 from .models import Installation, ScheduleSlot, Zone
 from .program import soak_minutes
+from .water import planned_litres
 from .runtime import ScheduleSlotRunError, ZoneManualRunError
 from .time_util import parse_hh_mm, week_parity_matches
 
@@ -192,6 +193,24 @@ def _slot_duration_min(inst: Installation, slot: ScheduleSlot) -> int:
     return per_pass * max(1, slot.repetitions) + soak_minutes(len(phases), slot)
 
 
+def _slot_water_l(inst: Installation, slot: ScheduleSlot) -> float | None:
+    """Litres a run of the slot is expected to use, from the zones' flow rates.
+
+    Volume does not care about phases or parallelism, only about minutes per
+    zone times repetitions. Zones without a rate contribute nothing; when no
+    zone has one there is no forecast at all rather than a misleading zero.
+    """
+    total = 0.0
+    known = False
+    for zid in _slot_zone_ids(inst, slot):
+        litres = planned_litres(inst.zones[zid], inst.zones[zid].duration_for_mode(inst.mode))
+        if litres is None:
+            continue
+        known = True
+        total += litres * max(1, slot.repetitions)
+    return round(total, 1) if known else None
+
+
 def _slot_payload(inst: Installation, slot: ScheduleSlot) -> dict[str, Any]:
     """One schedule slot as the card needs it."""
     zone_ids = _slot_zone_ids(inst, slot)
@@ -206,6 +225,8 @@ def _slot_payload(inst: Installation, slot: ScheduleSlot) -> dict[str, Any]:
         "zone_names": [inst.zones[zid].name for zid in zone_ids],
         "duration_min": _slot_duration_min(inst, slot),
         "repetitions": slot.repetitions,
+        # Always an estimate: a meter can only tell afterwards.
+        "water_l": _slot_water_l(inst, slot),
         "cadence": _cadence(slot),
         "has_conditions": bool(slot.guards) or bool(inst.guards),
     }
@@ -376,6 +397,10 @@ def _zones_payload(
                 "next_run": next_run.isoformat() if next_run else None,
                 "last_run": last_run.isoformat() if last_run else None,
                 "issue": _zone_issue(hass, zone),
+                "flow_lpm": zone.flow_rate_lpm,
+                "has_meter": bool(zone.water_meter_entity_id.strip()),
+                "last_run_l": run_state.water_last_run_l.get(zone_id),
+                "water_source": run_state.water_source.get(zone_id),
                 "entity_id": _entity_id(
                     hass, entry_id, f"zone_{zone_id}_active", "binary_sensor"
                 ),
@@ -450,6 +475,13 @@ def _snapshot(hass: HomeAssistant, entry_id: str, data: dict[str, Any]) -> dict[
         # Set while the run rests between Cycle & Soak passes; the card counts
         # it down in place of a zone.
         "soak_until": rs.soak_until.isoformat() if rs.soak_until else None,
+        # Water, always in litres; the card converts to the user's unit system.
+        "tracks_water": bool(inst.water_meter_entity_id.strip())
+        or any(z.tracks_water for z in inst.zones.values()),
+        "run_water_l": rs.run_water_l,
+        "run_water_source": rs.run_water_source or None,
+        "last_run_water_l": rs.last_run_water_l,
+        "last_run_water_source": rs.last_run_water_source or None,
         "max_parallel_zones": inst.max_parallel_zones,
         "zones": zones,
         "slots": slots,

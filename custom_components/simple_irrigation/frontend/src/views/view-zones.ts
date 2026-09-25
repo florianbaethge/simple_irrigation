@@ -27,6 +27,9 @@ const defaultDomains = ["switch", "input_boolean", "group", "valve"];
  *  picker for that field runs with `allowCustom`. */
 const startTargetDomains = ["switch", "valve", "binary_sensor", "input_boolean", "number"];
 
+/** A valve's own countdown is a number entity; the backend enforces the domain. */
+const countdownDomains = ["number", "input_number"];
+
 const zoneStartPresets: Record<
   string,
   {
@@ -87,6 +90,8 @@ interface ZoneRow {
   start_entity_id: string;
   water_meter_entity_id: string;
   flow_rate_lpm: number;
+  countdown_entity_id: string;
+  countdown_unit: string;
 }
 
 export class ViewZones extends LitElement {
@@ -191,6 +196,8 @@ export class ViewZones extends LitElement {
       start_entity_id: "",
       water_meter_entity_id: "",
       flow_rate_lpm: 0,
+      countdown_entity_id: "",
+      countdown_unit: "",
     };
   }
 
@@ -222,6 +229,8 @@ export class ViewZones extends LitElement {
         start_entity_id: String(o.start_entity_id ?? ""),
         water_meter_entity_id: String(o.water_meter_entity_id ?? ""),
         flow_rate_lpm: Math.max(0, Number(o.flow_rate_lpm ?? 0) || 0),
+        countdown_entity_id: String(o.countdown_entity_id ?? ""),
+        countdown_unit: String(o.countdown_unit ?? ""),
       };
     });
   }
@@ -460,6 +469,8 @@ export class ViewZones extends LitElement {
           start_entity_id: zone.start_entity_id.trim(),
           water_meter_entity_id: zone.water_meter_entity_id.trim(),
           flow_rate_lpm: zone.flow_rate_lpm,
+          countdown_entity_id: zone.countdown_entity_id.trim(),
+          countdown_unit: zone.countdown_entity_id.trim() ? zone.countdown_unit : "",
         };
       }
       const res = await saveZone(this.hass, this.entryId, body);
@@ -746,6 +757,40 @@ export class ViewZones extends LitElement {
             )}
           </div>
           <p class="hint">${t(this.hass, "config_panel.zones_advanced_target_desc")}</p>
+        </details>
+        <details class="inline-help" ?open=${Boolean(z.countdown_entity_id)}>
+          <summary>
+            <ha-icon class="inline-help-icon" icon="mdi:timer-lock-outline"></ha-icon>
+            ${t(this.hass, "config_panel.zones_countdown_summary")}
+          </summary>
+          <p>${t(this.hass, "config_panel.zones_countdown_desc")}</p>
+          <div class="field-row">
+            ${renderNativeEntityField(
+              this.hass,
+              countdownDomains,
+              t(this.hass, "config_panel.zones_countdown_entity"),
+              z.countdown_entity_id,
+              (v) => {
+                z.countdown_entity_id = v;
+                this.requestUpdate();
+              }
+            )}
+          </div>
+          <div class="field-row">
+            <select
+              class="field-select"
+              .value=${z.countdown_unit || ""}
+              ?disabled=${!z.countdown_entity_id}
+              @change=${(e: Event) => {
+                z.countdown_unit = (e.target as HTMLSelectElement).value;
+                this.requestUpdate();
+              }}
+            >
+              <option value="">${t(this.hass, "config_panel.zones_countdown_unit_auto")}</option>
+              <option value="minutes">${t(this.hass, "config_panel.zones_duration_unit_minutes")}</option>
+              <option value="seconds">${t(this.hass, "config_panel.zones_duration_unit_seconds")}</option>
+            </select>
+          </div>
         </details>
       </div>
     `;

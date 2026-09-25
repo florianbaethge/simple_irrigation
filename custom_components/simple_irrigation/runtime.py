@@ -26,6 +26,7 @@ from .const import (
     RUN_STATE_STOPPING,
     SCRIPT_DOMAIN,
 )
+from .countdown import async_set_countdown, clear_value, countdown_value
 from .grouping import can_join_active_phase, compute_phases
 from .guards import guards_allow_run
 from .models import RunState, ScheduleSlot, Zone
@@ -92,6 +93,8 @@ class IrrigationRuntime:
         self._skip_phase_event = asyncio.Event()
         self._run_lock = asyncio.Lock()
         self._touched_entities: set[str] = set()
+        # Hardware countdowns armed for this run; cleared once their valve is shut.
+        self._armed_countdowns: set[str] = set()
         self._duration_overrides: dict[str, int] = {}
         # What the run still has ahead of it: phases (zone ids watering in
         # parallel) and, with Cycle & Soak, the rests between them.
@@ -720,6 +723,7 @@ class IrrigationRuntime:
         )
         started = dt_util.utcnow()
         meter_start = meter_litres(self.hass, zone.water_meter_entity_id)
+        await self._async_arm_countdown(zone, duration_min)
         handled_by_service = await self._async_zone_run_with_duration_service(
             zone,
             duration_min,
@@ -728,6 +732,7 @@ class IrrigationRuntime:
             await asyncio.gather(*(self._async_switch_turn_on(eid) for eid in outputs))
             await self._async_wait_zone_duration(duration_min * 60, zone.zone_id)
             await asyncio.gather(*(self._async_switch_turn_off(eid) for eid in outputs))
+        await self._async_disarm_countdown(zone.countdown_entity_id)
         self._book_zone_water(zone, started, meter_start)
         stopped = zone.zone_id in self._zone_stop_requests
         self._zone_stop_requests.discard(zone.zone_id)
@@ -1069,6 +1074,50 @@ class IrrigationRuntime:
         self._skip_phase_event.set()
         return True
 
+    async def _async_arm_countdown(self, zone: Zone, duration_min: int) -> None:
+        """Set the valve's own timer to the pass, before the outputs open.
+
+        Before, not after: some valves restart or ignore a countdown written
+        while they are already open. A backstop must not block the run, so a
+        failed write is logged and the zone waters on Simple Irrigation's
+        timing alone.
+        """
+        entity_id = zone.countdown_entity_id.strip()
+        if not entity_id:
+            return
+        value = countdown_value(self.hass, zone, duration_min)
+        if value is None:
+            _LOGGER.warning(
+                "Zone %s: cannot tell the unit of countdown %s; hardware timer not set",
+                zone.zone_id,
+                entity_id,
+            )
+            return
+        try:
+            await async_set_countdown(self.hass, entity_id, value)
+        except Exception:  # noqa: BLE001 - the timer is a safety net, not the run
+            _LOGGER.exception(
+                "Zone %s: could not set countdown %s; running without hardware timer",
+                zone.zone_id,
+                entity_id,
+            )
+            return
+        self._armed_countdowns.add(entity_id)
+
+    async def _async_disarm_countdown(self, entity_id: str) -> None:
+        """Clear the valve's timer once its outputs are shut. Never raises."""
+        entity_id = entity_id.strip()
+        if entity_id not in self._armed_countdowns:
+            return
+        self._armed_countdowns.discard(entity_id)
+        value = clear_value(self.hass, entity_id)
+        if value is None:
+            return
+        try:
+            await async_set_countdown(self.hass, entity_id, value)
+        except Exception:  # noqa: BLE001 - a stale countdown on a closed valve is harmless
+            _LOGGER.warning("Could not clear countdown %s", entity_id, exc_info=True)
+
     async def _async_switch_turn_on(self, entity_id: str) -> None:
         from .const import OUTPUT_DOMAIN_SERVICES
         
@@ -1133,6 +1182,8 @@ class IrrigationRuntime:
                 _LOGGER.exception("Could not turn off %s during cleanup", entity_id)
                 failed.append(entity_id)
         self._touched_entities.clear()
+        for entity_id in list(self._armed_countdowns):
+            await self._async_disarm_countdown(entity_id)
         if failed:
             self.coordinator.run_state.last_error = (
                 f"Could not turn off: {', '.join(failed)}"

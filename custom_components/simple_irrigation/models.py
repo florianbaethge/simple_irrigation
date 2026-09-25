@@ -114,6 +114,13 @@ class Zone:
     # reports no water at all — never a guess it cannot back up.
     water_meter_entity_id: str = ""
     flow_rate_lpm: float = 0.0
+    # --- Hardware countdown ------------------------------------------------
+    # A number entity on the valve itself that closes it when it runs out. Set
+    # to the pass duration right before the outputs open: the valve still shuts
+    # on time if Home Assistant is gone mid-run. Unit "minutes" / "seconds", or
+    # empty to take it from the entity's unit_of_measurement.
+    countdown_entity_id: str = ""
+    countdown_unit: str = ""
 
     @property
     def tracks_water(self) -> bool:
@@ -147,6 +154,8 @@ class Zone:
             "start_entity_id": self.start_entity_id,
             "water_meter_entity_id": self.water_meter_entity_id,
             "flow_rate_lpm": self.flow_rate_lpm,
+            "countdown_entity_id": self.countdown_entity_id,
+            "countdown_unit": self.countdown_unit,
         }
 
     @staticmethod
@@ -178,6 +187,8 @@ class Zone:
             start_entity_id=str(data.get("start_entity_id") or "").strip(),
             water_meter_entity_id=str(data.get("water_meter_entity_id") or "").strip(),
             flow_rate_lpm=_non_negative_float(data.get("flow_rate_lpm")),
+            countdown_entity_id=str(data.get("countdown_entity_id") or "").strip(),
+            countdown_unit=str(data.get("countdown_unit") or "").strip(),
         )
 
 

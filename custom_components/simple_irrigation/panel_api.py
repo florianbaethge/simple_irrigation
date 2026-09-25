@@ -476,6 +476,8 @@ class SimpleIrrigationPanelZoneView(HomeAssistantView):
                         vol.Optional("start_entity_id"): vol.Any(cv.string, None),
                         vol.Optional("water_meter_entity_id"): vol.Any(cv.string, None),
                         vol.Optional("flow_rate_lpm"): vol.Any(float, int, None),
+                        vol.Optional("countdown_entity_id"): vol.Any(cv.string, None),
+                        vol.Optional("countdown_unit"): vol.Any(cv.string, None),
                     }
                 ),
             }
@@ -509,6 +511,8 @@ class SimpleIrrigationPanelZoneView(HomeAssistantView):
                 "start_entity_id": zone_data.get("start_entity_id", ""),
                 "water_meter_entity_id": zone_data.get("water_meter_entity_id", ""),
                 "flow_rate_lpm": zone_data.get("flow_rate_lpm", 0),
+                "countdown_entity_id": zone_data.get("countdown_entity_id", ""),
+                "countdown_unit": zone_data.get("countdown_unit", ""),
             }
             err = validate_zone_payload(hass, payload)
             if err:
@@ -530,6 +534,8 @@ class SimpleIrrigationPanelZoneView(HomeAssistantView):
                 start_entity_id=str(payload["start_entity_id"] or "").strip(),
                 water_meter_entity_id=str(payload["water_meter_entity_id"] or "").strip(),
                 flow_rate_lpm=float(payload["flow_rate_lpm"] or 0),
+                countdown_entity_id=str(payload["countdown_entity_id"] or "").strip(),
+                countdown_unit=str(payload["countdown_unit"] or "").strip(),
             )
             await coord.async_update_installation(inst)
             return self.json({"success": True, "zone_id": zid})
@@ -576,6 +582,10 @@ class SimpleIrrigationPanelZoneView(HomeAssistantView):
                 "water_meter_entity_id", zone.water_meter_entity_id
             ),
             "flow_rate_lpm": zone_data.get("flow_rate_lpm", zone.flow_rate_lpm),
+            "countdown_entity_id": zone_data.get(
+                "countdown_entity_id", zone.countdown_entity_id
+            ),
+            "countdown_unit": zone_data.get("countdown_unit", zone.countdown_unit),
         }
         err = validate_zone_payload(hass, merged)
         if err:
@@ -593,6 +603,8 @@ class SimpleIrrigationPanelZoneView(HomeAssistantView):
         zone.start_entity_id = str(merged["start_entity_id"] or "").strip()
         zone.water_meter_entity_id = str(merged["water_meter_entity_id"] or "").strip()
         zone.flow_rate_lpm = float(merged["flow_rate_lpm"] or 0)
+        zone.countdown_entity_id = str(merged["countdown_entity_id"] or "").strip()
+        zone.countdown_unit = str(merged["countdown_unit"] or "").strip()
         await coord.async_update_installation(inst)
         return self.json({"success": True})
 

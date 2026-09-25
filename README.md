@@ -20,7 +20,7 @@
 - **Everything in the UI** — Overview · Zones · Schedule · Timetable · Settings. No YAML for zones or schedules.
 - **Multiple gardens** — add several installations for different plots or seasonal plans.
 
-Outputs can be any mix of `switch`, `input_boolean`, `group` and `valve` entities. Zones can also use a **duration-aware start service** for irrigation integrations such as Rain Bird, Rachio, Hydrawise, B-hyve / Orbit and OpenSprinkler. Optional **pre-start** outputs (pump / master valve) fire first. Full **English**, **German**, **Italian**, **Dutch** and **French** translations. Responsive down to the Home Assistant companion app.
+Outputs can be any mix of `switch`, `input_boolean`, `group` and `valve` entities. Zones can also use a **duration-aware start service** for irrigation integrations such as Rain Bird, Rachio, Hydrawise, B-hyve / Orbit and OpenSprinkler. A valve's own **hardware countdown** can be armed as a safety net for when Home Assistant is gone mid-run. Optional **pre-start** outputs (pump / master valve) fire first. Full **English**, **German**, **Italian**, **Dutch** and **French** translations. Responsive down to the Home Assistant companion app.
 
 **Requirements:** Home Assistant **2024.1** or newer.
 
@@ -130,6 +130,16 @@ Choose **Custom** for another integration and enter its `domain.service`, durati
 - All outputs of a zone start together, exactly like the default path, and the zone takes its configured duration regardless of how many outputs it has.
 - A failed off action stops the run and is reported, so a potentially open valve cannot go unnoticed while another zone starts. The cleanup that follows still closes every other output.
 - **The start service has to return once the run has started**, which is what all the presets above do. A service that instead blocks for the whole watering time — a script entered under **Custom**, typically — is given 30 seconds and then dropped, so the zone keeps its own timing. Note that dropping it cancels the call, so put the waiting in Simple Irrigation's duration, not in the start service.
+
+#### Hardware countdown as a safety net
+
+Simple Irrigation closes every output itself — but only while Home Assistant is running. Some valves carry a **timer of their own** that shuts them when it runs out, whatever happened to the controller in the meantime: Tuya and Sonoff water timers expose it as a `number` entity (`countdown`, `timer`, …) next to the valve's switch. Open a zone, scroll to **Advanced** and expand **Hardware countdown (safety timer)**.
+
+- Pick the **countdown entity**. Right before the zone opens, it is set to the duration of the pass (every Cycle & Soak pass on its own), so the valve closes on time even if Home Assistant, the network or the integration dies mid-run. Once the outputs are closed again — at the end, after *Stop zone* or *Stop* — the countdown is cleared.
+- The **unit** is read off the entity (`min` or `s`). Choose minutes or seconds by hand only when the entity carries no unit.
+- The value is rounded up to whole units and clamped to the entity's range; a pass longer than the timer's maximum is logged and covered as far as the timer reaches.
+- **The timer never blocks a run.** Simple Irrigation keeps stopping the zone itself; if the countdown cannot be set, a warning is logged and the zone waters on the integration's own timing.
+- Set the countdown before the switch, not after: some valves restart or ignore a countdown written while they are already open. That order is fixed.
 
 ### Cycles and slots
 
@@ -527,6 +537,6 @@ This updates `VERSION`, `manifest.json`, `frontend/package.json`, the panel Type
 
 ### Contributors
 
-Ideas, prototypes and bug reports shape this integration as much as code does. Thank you to:
+Ideas, bug reports, translations, prototypes and pull requests shape this integration as much as the code does. Thank you to everyone who sent a fix, a translation, a feature, a feature request or an issue:
 
-- [@Kohle93](https://github.com/Kohle93) — asked for **Cycle & Soak** and built a working prototype of it and of water tracking on a fork ([#52](https://github.com/florianbaethge/simple_irrigation/issues/52)). Both features in this repository were written fresh, but they exist because of that groundwork.
+[@1tygs](https://github.com/1tygs), [@7weazel7](https://github.com/7weazel7), [@akosos](https://github.com/akosos), [@apsillas](https://github.com/apsillas), [@brpeterso](https://github.com/brpeterso), [@bvgeleuken](https://github.com/bvgeleuken), [@fisch3009](https://github.com/fisch3009), [@HAuser1234](https://github.com/HAuser1234), [@inrulethonn](https://github.com/inrulethonn), [@jpeters001](https://github.com/jpeters001), [@koffienl](https://github.com/koffienl), [@Kohle93](https://github.com/Kohle93), [@maarken](https://github.com/maarken), [@macapus](https://github.com/macapus), [@MojitoJoe1813](https://github.com/MojitoJoe1813), [@scns](https://github.com/scns), [@silviopen](https://github.com/silviopen), [@skarsjo](https://github.com/skarsjo), [@talk-more](https://github.com/talk-more), [@terryhonn](https://github.com/terryhonn), [@thetornado76](https://github.com/thetornado76), [@tszekeres01](https://github.com/tszekeres01)

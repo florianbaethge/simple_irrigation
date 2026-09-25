@@ -31,6 +31,7 @@ __all__ = [
     "parse_zone_switch_entities",
     "validate_output_entity_id",
     "validate_zone_payload",
+    "validate_countdown_entity",
     "validate_pre_start_entities",
     "validate_script_entity",
     "validate_script_timeout",
@@ -188,6 +189,12 @@ def validate_zone_payload(hass: Any, user_input: dict[str, Any]) -> str | None:
         err = validate_water_meter_entity(hass, user_input.get("water_meter_entity_id"))
         if err:
             return err
+    if "countdown_entity_id" in user_input or "countdown_unit" in user_input:
+        err = validate_countdown_entity(
+            hass, user_input.get("countdown_entity_id"), user_input.get("countdown_unit")
+        )
+        if err:
+            return err
 
     return None
 
@@ -219,6 +226,30 @@ def validate_water_meter_entity(hass: Any, entity_id: str | None) -> str | None:
     if "." not in entity_id:
         return "invalid_water_meter"
     return meter_unit_error(hass, entity_id)
+
+
+def validate_countdown_entity(hass: Any, entity_id: str | None, unit: str | None) -> str | None:
+    """Return error key or None; empty means "no hardware countdown".
+
+    The entity has to be a ``number`` (or ``input_number``) that exists, and
+    the unit has to be known: chosen explicitly, or readable off the entity.
+    """
+    from .countdown import COUNTDOWN_DOMAINS, unit_from_entity
+
+    entity_id = str(entity_id or "").strip()
+    unit = str(unit or "").strip()
+    if not entity_id:
+        return None
+    if domain_of(entity_id) not in COUNTDOWN_DOMAINS:
+        return "invalid_countdown"
+    if hass.states.get(entity_id) is None:
+        return "unknown_entity"
+    if unit:
+        if unit not in DURATION_UNITS:
+            return "invalid_countdown_unit"
+    elif unit_from_entity(hass, entity_id) is None:
+        return "invalid_countdown_unit"
+    return None
 
 
 def validate_pre_start_entities(hass: Any, entity_ids: list[str] | None) -> str | None:

@@ -125,8 +125,12 @@ export function weekdayNames(
   hass: HomeAssistant | undefined,
   style: "short" | "long" | "narrow" = "short"
 ): string[] {
-  const fmt = new Intl.DateTimeFormat(language(hass), { weekday: style });
-  // 2024-01-01 was a Monday.
+  // 2024-01-01 was a Monday. Format in UTC too, or a browser west of UTC
+  // sees Monday 00:00 UTC as Sunday evening and every name shifts a day.
+  const fmt = new Intl.DateTimeFormat(language(hass), {
+    weekday: style,
+    timeZone: "UTC",
+  });
   return Array.from({ length: 7 }, (_, i) =>
     fmt.format(new Date(Date.UTC(2024, 0, 1 + i)))
   );

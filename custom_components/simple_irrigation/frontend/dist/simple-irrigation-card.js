@@ -1407,8 +1407,12 @@ function leadTime(hass, iso) {
 }
 /** Localized weekday names, Monday first (the integration's weekday order). */
 function weekdayNames(hass, style = "short") {
-    const fmt = new Intl.DateTimeFormat(language(hass), { weekday: style });
-    // 2024-01-01 was a Monday.
+    // 2024-01-01 was a Monday. Format in UTC too, or a browser west of UTC
+    // sees Monday 00:00 UTC as Sunday evening and every name shifts a day.
+    const fmt = new Intl.DateTimeFormat(language(hass), {
+        weekday: style,
+        timeZone: "UTC",
+    });
     return Array.from({ length: 7 }, (_, i) => fmt.format(new Date(Date.UTC(2024, 0, 1 + i))));
 }
 /** "Every 2 days", "Daily", "Mon, Wed, Fri" — the slot's rhythm in one phrase. */
@@ -4695,10 +4699,12 @@ let SimpleIrrigationCard = class SimpleIrrigationCard extends i$2 {
       <div class="wbody">
         <div class="wgrid">
           ${week.days.map((day) => {
-            const date = new Date(day.date);
+            // "YYYY-MM-DD" through `new Date` is UTC midnight, which is the
+            // previous day in the Americas — read the day number as text.
+            const dayNum = Number(day.date.slice(8, 10));
             const label = this._narrow
                 ? narrow[day.weekday]
-                : `${short[day.weekday]} ${date.getDate()}`;
+                : `${short[day.weekday]} ${dayNum}`;
             const dayTap = this._runTap();
             return b `<div
               class=${e({ wcol: true, today: day.today })}

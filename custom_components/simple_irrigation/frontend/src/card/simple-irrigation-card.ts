@@ -1195,10 +1195,12 @@ export class SimpleIrrigationCard extends LitElement {
       <div class="wbody">
         <div class="wgrid">
           ${week.days.map((day) => {
-            const date = new Date(day.date);
+            // "YYYY-MM-DD" through `new Date` is UTC midnight, which is the
+            // previous day in the Americas — read the day number as text.
+            const dayNum = Number(day.date.slice(8, 10));
             const label = this._narrow
               ? narrow[day.weekday]
-              : `${short[day.weekday]} ${date.getDate()}`;
+              : `${short[day.weekday]} ${dayNum}`;
             const dayTap = this._runTap();
             return html`<div
               class=${classMap({ wcol: true, today: day.today })}

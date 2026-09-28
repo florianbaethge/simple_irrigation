@@ -367,6 +367,27 @@ def _clamp_int(raw: Any, default: int, lo: int, hi: int) -> int:
     return max(lo, min(hi, value))
 
 
+def normalize_zone_order(raw: Any, zones: dict[str, Zone]) -> list[str]:
+    """Return a complete, duplicate-free display order for ``zones``.
+
+    ``zone_order`` is deliberately an additive preference rather than the source
+    of truth for zone membership.  Older stores have no order at all, and a
+    partially written or hand-edited store must not make a zone disappear from
+    the UI.  Keep valid saved ids first, then append every missing zone in the
+    dictionary's stable creation order.
+    """
+    saved = raw if isinstance(raw, list) else []
+    ordered: list[str] = []
+    seen: set[str] = set()
+    for item in saved:
+        zone_id = str(item)
+        if zone_id in zones and zone_id not in seen:
+            ordered.append(zone_id)
+            seen.add(zone_id)
+    ordered.extend(zone_id for zone_id in zones if zone_id not in seen)
+    return ordered
+
+
 @dataclass
 class Installation:
     """Global installation settings."""
@@ -391,7 +412,14 @@ class Installation:
     # Conditions applied to every scheduled run unless a slot opts out.
     guards: list[Guard] = field(default_factory=list)
     zones: dict[str, Zone] = field(default_factory=dict)
+    # Presentation/default-selection order only.  A schedule's explicit
+    # ``zone_ids_ordered`` remains authoritative for its watering sequence.
+    zone_order: list[str] = field(default_factory=list)
     schedule_slots: list[ScheduleSlot] = field(default_factory=list)
+
+    def ordered_zone_ids(self) -> list[str]:
+        """Return all current zone ids in the persisted display order."""
+        return normalize_zone_order(self.zone_order, self.zones)
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize to JSON-compatible dict."""
@@ -412,6 +440,7 @@ class Installation:
             "water_meter_entity_id": self.water_meter_entity_id,
             "guards": [g.to_dict() for g in self.guards],
             "zones": {k: v.to_dict() for k, v in self.zones.items()},
+            "zone_order": self.ordered_zone_ids(),
             "schedule_slots": [s.to_dict() for s in self.schedule_slots],
         }
 
@@ -431,6 +460,7 @@ class Installation:
 
         slots_raw = data.get("schedule_slots") or []
         schedule_slots = [ScheduleSlot.from_dict(s) for s in slots_raw]
+        zone_order = normalize_zone_order(data.get("zone_order"), zones)
 
         return Installation(
             installation_id=data["installation_id"],
@@ -453,6 +483,7 @@ class Installation:
             water_meter_entity_id=str(data.get("water_meter_entity_id") or "").strip(),
             guards=parse_guards(data.get("guards")),
             zones=zones,
+            zone_order=zone_order,
             schedule_slots=schedule_slots,
         )
 

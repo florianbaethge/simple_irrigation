@@ -1,6 +1,7 @@
 /** Weekly timetable entries from schedule slots (local wall clock, Mon=0 … Sun=6). */
 
 import { computePhases, cycleSoakOf, expandProgram, isSoak, type ZonePhaseInput } from "./schedule-phases";
+import { orderedZoneIds } from "./zone-order";
 
 /** 0 = 00:00–08:00, 1 = 08:00–16:00, 2 = 16:00–24:00 (by segment start time). */
 export type TimetableBucket = 0 | 1 | 2;
@@ -225,9 +226,7 @@ export function buildTimetableEntries(installation: Record<string, unknown>): Ti
 }
 
 export function zoneRowOrder(installation: Record<string, unknown>): string[] {
-  const zones = installation?.zones as Record<string, unknown> | undefined;
-  if (!zones) return [];
-  return Object.keys(zones);
+  return orderedZoneIds(installation);
 }
 
 export function zoneDisplayName(

@@ -42,6 +42,7 @@ import {
 import { durationForMode, plannedLitres } from "../timetable-model";
 import { renderCycleSoakEditor } from "../cycle-soak-editor";
 import { formatVolumeNumber, litresToUnit, volumeUnit } from "../units";
+import { orderedZoneIds } from "../zone-order";
 import {
   mondayBasedWeekday,
   previewStrip,
@@ -1145,7 +1146,9 @@ export class ViewSchedule extends LitElement {
   private _addZoneOptionsForDraft(draft: SlotRow): string[] {
     const zones = this._zonesMap();
     if (!zones) return [];
-    return Object.keys(zones).filter((id) => !draft.zone_ids_ordered.includes(id));
+    return orderedZoneIds(this.installation).filter(
+      (id) => !draft.zone_ids_ordered.includes(id)
+    );
   }
 
   /**

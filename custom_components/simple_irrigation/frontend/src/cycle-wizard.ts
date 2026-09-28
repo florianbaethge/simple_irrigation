@@ -47,6 +47,7 @@ import {
 import { renderCycleSoakEditor } from "./cycle-soak-editor";
 import { durationForMode, parseTimeLocalToMinutes, minutesToTimeLocal } from "./timetable-model";
 import { formatDateTimeForDisplay } from "./date-format";
+import { orderedZoneIds } from "./zone-order";
 import type { HomeAssistant } from "./types";
 
 interface KindOption {
@@ -301,9 +302,7 @@ export class CycleWizard extends LitElement {
   private _defaultZoneIds(): string[] {
     const zones = this.installation?.zones as Record<string, Record<string, unknown>> | undefined;
     if (!zones) return [];
-    return Object.entries(zones)
-      .filter(([, z]) => Boolean(z.enabled ?? true))
-      .map(([id]) => id);
+    return orderedZoneIds(this.installation).filter((id) => Boolean(zones[id]?.enabled ?? true));
   }
 
   private _meta(): CycleMeta {
@@ -613,7 +612,7 @@ export class CycleWizard extends LitElement {
 
   private _renderStep3(): TemplateResult {
     const zones = this.installation?.zones as Record<string, Record<string, unknown>> | undefined;
-    const allIds = zones ? Object.keys(zones) : [];
+    const allIds = zones ? orderedZoneIds(this.installation) : [];
     const pmap = phaseIndexByZoneId(this._zoneIds, this._zonesPhaseInput(), this._maxParallel());
     const est = this._estimateMin();
     const slots = this._slots();

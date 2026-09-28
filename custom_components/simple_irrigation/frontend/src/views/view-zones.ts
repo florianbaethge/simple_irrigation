@@ -1,7 +1,7 @@
 import { LitElement, html, css, nothing, type TemplateResult } from "lit";
 import { state } from "lit/decorators.js";
 import { keyed } from "lit/directives/keyed.js";
-import { runZoneNow, saveZone, stopZone } from "../data/api";
+import { runZoneNow, saveZone, saveZoneOrder, stopZone } from "../data/api";
 import { renderNativeEntityField } from "../entity-input";
 import { renderInlineHelp } from "../inline-help";
 import { durationForMode } from "../timetable-model";
@@ -17,6 +17,7 @@ import { t } from "../i18n";
 import { formLayoutStyles } from "../form-layout-styles";
 import { sharedStyles } from "../shared-styles";
 import { slotInclusionCountPerZone } from "../timetable-model";
+import { orderedZoneEntries, orderedZoneIds } from "../zone-order";
 import type { HomeAssistant } from "../types";
 
 const defaultDomains = ["switch", "input_boolean", "group", "valve"];
@@ -130,6 +131,21 @@ export class ViewZones extends LitElement {
         border-left-color: var(--primary-color);
         background: color-mix(in srgb, var(--primary-color) 6%, var(--card-background-color));
       }
+      .compact-row.dragging {
+        opacity: 0.55;
+      }
+      .reorder-actions {
+        flex: 0 0 auto;
+      }
+      .drag-marker {
+        color: var(--secondary-text-color);
+        display: inline-flex;
+        align-items: center;
+        cursor: grab;
+      }
+      .drag-marker ha-icon {
+        --mdc-icon-size: 20px;
+      }
       .out-line {
         margin: 8px 0 0;
         font-size: 0.8rem;
@@ -150,6 +166,7 @@ export class ViewZones extends LitElement {
   @state() private _editDraft: ZoneRow | null = null;
   @state() private _filter: ZoneFilter = "all";
   @state() private _expanded = new Set<string>();
+  @state() private _dragZoneId?: string;
   private _new: ZoneRow = this._blankZone();
   private _tick?: number;
 
@@ -206,9 +223,7 @@ export class ViewZones extends LitElement {
   }
 
   private _zonesFromInstallation(): ZoneRow[] {
-    const z = this.installation?.zones as Record<string, Record<string, unknown>> | undefined;
-    if (!z) return [];
-    return Object.entries(z).map(([zone_id, o]) => {
+    return orderedZoneEntries<Record<string, unknown>>(this.installation).map(([zone_id, o]) => {
       const raw = (o as Record<string, unknown>).switch_entity_ids;
       let ids: string[] = [];
       if (Array.isArray(raw)) ids = raw.map((x) => String(x)).filter(Boolean);
@@ -233,6 +248,48 @@ export class ViewZones extends LitElement {
         countdown_unit: String(o.countdown_unit ?? ""),
       };
     });
+  }
+
+  /** Save a complete order so the backend can reject stale concurrent edits. */
+  private async _saveZoneOrder(order: string[]): Promise<void> {
+    if (this._busy) return;
+    this._busy = true;
+    this._msg = undefined;
+    this.requestUpdate();
+    try {
+      const res = await saveZoneOrder(this.hass, this.entryId, order);
+      if (!res.success) this._msg = formatApiError(res.error, this.hass);
+      else this.onSaved?.();
+    } catch (e) {
+      this._msg = formatApiError(e, this.hass);
+    } finally {
+      this._busy = false;
+      this.requestUpdate();
+    }
+  }
+
+  private _moveZone(zoneId: string, offset: -1 | 1): void {
+    const order = orderedZoneIds(this.installation);
+    const from = order.indexOf(zoneId);
+    const to = from + offset;
+    if (from < 0 || to < 0 || to >= order.length) return;
+    [order[from], order[to]] = [order[to], order[from]];
+    void this._saveZoneOrder(order);
+  }
+
+  private _dropZone(targetZoneId: string): void {
+    const moving = this._dragZoneId;
+    this._dragZoneId = undefined;
+    if (!moving || moving === targetZoneId || this._busy || this._filter !== "all") return;
+    const order = orderedZoneIds(this.installation);
+    const from = order.indexOf(moving);
+    const target = order.indexOf(targetZoneId);
+    if (from < 0 || target < 0) return;
+    order.splice(from, 1);
+    // Dropping downward places the dragged zone after the target; dropping
+    // upward places it before. This matches the direction the row travelled.
+    order.splice(target, 0, moving);
+    void this._saveZoneOrder(order);
   }
 
   /** "~120 L" for one run of the zone in the active mode; "" without a rate. */
@@ -796,7 +853,11 @@ export class ViewZones extends LitElement {
     `;
   }
 
-  private _renderRow(z: ZoneRow, slotsPerZone: Record<string, number>): TemplateResult {
+  private _renderRow(
+    z: ZoneRow,
+    slotsPerZone: Record<string, number>,
+    zoneOrder: string[]
+  ): TemplateResult {
     const outs = z.switch_entity_ids.filter(Boolean);
     const issue = this._zoneIssue(z);
     const active = this._activeZoneIds().includes(z.zone_id);
@@ -821,6 +882,8 @@ export class ViewZones extends LitElement {
     const accentClass = !z.enabled ? "inactive" : issue ? "warn" : active ? "running" : "";
     const expanded = this._expanded.has(z.zone_id);
     const firstOut = outs[0] ?? "";
+    const orderIndex = zoneOrder.indexOf(z.zone_id);
+    const canReorder = this._filter === "all" && zoneOrder.length > 1;
 
     const runBtn = html`
       <button
@@ -861,9 +924,65 @@ export class ViewZones extends LitElement {
         <ha-icon icon="mdi:pencil"></ha-icon>
       </button>
     `;
+    const reorderButtons = canReorder
+      ? html`<div class="icon-group reorder-actions" role="group">
+          <span
+            class="drag-marker hide-narrow"
+            title=${t(this.hass, "config_panel.zones_drag_to_reorder")}
+            aria-hidden="true"
+            .draggable=${!this._busy}
+            @dragstart=${(e: DragEvent) => {
+              if (this._busy) {
+                e.preventDefault();
+                return;
+              }
+              this._dragZoneId = z.zone_id;
+              if (e.dataTransfer) {
+                e.dataTransfer.effectAllowed = "move";
+                e.dataTransfer.setData("text/plain", z.zone_id);
+              }
+            }}
+            @dragend=${() => (this._dragZoneId = undefined)}
+          >
+            <ha-icon icon="mdi:drag-vertical"></ha-icon>
+          </span>
+          <button
+            type="button"
+            class="iconbtn"
+            title=${t(this.hass, "config_panel.zones_move_up")}
+            aria-label=${t(this.hass, "config_panel.zones_move_up")}
+            ?disabled=${this._busy || orderIndex <= 0}
+            @click=${() => this._moveZone(z.zone_id, -1)}
+          >
+            <ha-icon icon="mdi:arrow-up"></ha-icon>
+          </button>
+          <button
+            type="button"
+            class="iconbtn"
+            title=${t(this.hass, "config_panel.zones_move_down")}
+            aria-label=${t(this.hass, "config_panel.zones_move_down")}
+            ?disabled=${this._busy || orderIndex < 0 || orderIndex >= zoneOrder.length - 1}
+            @click=${() => this._moveZone(z.zone_id, 1)}
+          >
+            <ha-icon icon="mdi:arrow-down"></ha-icon>
+          </button>
+        </div>`
+      : nothing;
 
     return html`
-      <div class="compact-row ${accentClass}">
+      <div
+        class="compact-row ${accentClass} ${this._dragZoneId === z.zone_id ? "dragging" : ""}"
+        @dragover=${(e: DragEvent) => {
+          if (canReorder && this._dragZoneId && this._dragZoneId !== z.zone_id) {
+            e.preventDefault();
+            if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+          }
+        }}
+        @drop=${(e: DragEvent) => {
+          e.preventDefault();
+          this._dropZone(z.zone_id);
+        }}
+      >
         <div class="compact-row-header">
           <ha-switch
             .disabled=${this._busy}
@@ -950,6 +1069,7 @@ export class ViewZones extends LitElement {
                 : nothing}
             </div>
           </div>
+          ${reorderButtons}
           <div class="icon-group hide-narrow" role="group">
             ${primaryBtn}${editBtn}
           </div>
@@ -993,6 +1113,7 @@ export class ViewZones extends LitElement {
 
   protected render() {
     const all = this._zonesFromInstallation();
+    const zoneOrder = orderedZoneIds(this.installation);
     const issuesCount = all.filter((z) => this._zoneIssue(z)).length;
     const filtered = all.filter((z) => {
       if (this._filter === "enabled") return z.enabled;
@@ -1045,6 +1166,7 @@ export class ViewZones extends LitElement {
               ${t(this.hass, "config_panel.zones_help_summary")}
             </summary>
             <p>${t(this.hass, "config_panel.zones_intro")}</p>
+            <p>${t(this.hass, "config_panel.zones_reorder_hint")}</p>
           </details>
 
           ${all.length === 0
@@ -1063,7 +1185,7 @@ export class ViewZones extends LitElement {
                     ${t(this.hass, "config_panel.zones_filter_all")}
                   </button>
                 </div>`
-              : filtered.map((z) => this._renderRow(z, slotsPerZone))}
+              : filtered.map((z) => this._renderRow(z, slotsPerZone, zoneOrder))}
 
           <details class="inline-help" style="margin-top:14px">
             <summary>

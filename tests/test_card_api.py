@@ -402,6 +402,17 @@ def test_snapshot_has_no_phase_counter_while_idle() -> None:
     assert snap["phase_total"] is None
 
 
+def test_snapshot_uses_the_saved_zone_order() -> None:
+    """The Lovelace card should match the order chosen in the panel."""
+    inst = _installation(zone_order=["z3", "z1", "z2"])
+    hass = _hass()
+    with _freeze(), patch(
+        "custom_components.simple_irrigation.card_api._entity_id", return_value=""
+    ):
+        snap = _snapshot(hass, "e1", _coordinator(inst, RunState()))
+    assert [zone["zone_id"] for zone in snap["zones"]] == ["z3", "z1", "z2"]
+
+
 def test_snapshot_counts_only_issues_on_enabled_zones() -> None:
     """A deliberately disabled zone with a dead valve is not a problem to report."""
     inst = _installation()

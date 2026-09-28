@@ -30,6 +30,8 @@ const fetchPanelState = (hass, entryId) => hass.callWS({
 });
 const saveGlobal = (hass, entryId, body) => hass.callApi("POST", "simple_irrigation/panel/global", { entry_id: entryId, ...body });
 const saveZone = (hass, entryId, body) => hass.callApi("POST", "simple_irrigation/panel/zone", { entry_id: entryId, ...body });
+/** Persist the complete display/default-selection order as one atomic update. */
+const saveZoneOrder = (hass, entryId, zoneOrder) => saveZone(hass, entryId, { action: "reorder", zone_order: zoneOrder });
 const saveSlot = (hass, entryId, body) => hass.callApi("POST", "simple_irrigation/panel/slot", { entry_id: entryId, ...body });
 const upsertCycle = (hass, entryId, body) => hass.callApi("POST", "simple_irrigation/panel/slot", {
     entry_id: entryId,
@@ -1538,6 +1540,41 @@ function programMinutes(phases, cs, zoneMinutes) {
     return total;
 }
 
+/**
+ * Resolve the installation's preferred zone order without trusting it to be
+ * complete.  Old installations have no `zone_order`; interrupted or hand-edited
+ * storage may contain stale/duplicate ids.  Valid saved ids stay first and every
+ * current zone is appended in the object's stable creation order.
+ */
+function orderedZoneIds(installation) {
+    const zones = installation?.zones;
+    if (!zones)
+        return [];
+    const raw = Array.isArray(installation?.zone_order)
+        ? installation.zone_order
+        : [];
+    const ordered = [];
+    const seen = new Set();
+    for (const item of raw) {
+        const id = String(item);
+        if (Object.prototype.hasOwnProperty.call(zones, id) && !seen.has(id)) {
+            ordered.push(id);
+            seen.add(id);
+        }
+    }
+    for (const id of Object.keys(zones)) {
+        if (!seen.has(id))
+            ordered.push(id);
+    }
+    return ordered;
+}
+function orderedZoneEntries(installation) {
+    const zones = installation?.zones;
+    if (!zones)
+        return [];
+    return orderedZoneIds(installation).map((id) => [id, zones[id]]);
+}
+
 /** Weekly timetable entries from schedule slots (local wall clock, Mon=0 … Sun=6). */
 function normalizeWeekParity(raw) {
     return raw === "odd" || raw === "even" ? raw : "every";
@@ -1723,10 +1760,7 @@ function buildTimetableEntries(installation) {
     return entries;
 }
 function zoneRowOrder(installation) {
-    const zones = installation?.zones;
-    if (!zones)
-        return [];
-    return Object.keys(zones);
+    return orderedZoneIds(installation);
 }
 function zoneDisplayName(installation, zoneId) {
     const zones = installation?.zones;
@@ -3682,9 +3716,7 @@ class CycleWizard extends i$2 {
         const zones = this.installation?.zones;
         if (!zones)
             return [];
-        return Object.entries(zones)
-            .filter(([, z]) => Boolean(z.enabled ?? true))
-            .map(([id]) => id);
+        return orderedZoneIds(this.installation).filter((id) => Boolean(zones[id]?.enabled ?? true));
     }
     _meta() {
         const opt = this._option();
@@ -3982,7 +4014,7 @@ class CycleWizard extends i$2 {
     }
     _renderStep3() {
         const zones = this.installation?.zones;
-        const allIds = zones ? Object.keys(zones) : [];
+        const allIds = zones ? orderedZoneIds(this.installation) : [];
         const pmap = phaseIndexByZoneId(this._zoneIds, this._zonesPhaseInput(), this._maxParallel());
         const est = this._estimateMin();
         const slots = this._slots();
@@ -5248,7 +5280,7 @@ class ViewSchedule extends i$2 {
         const zones = this._zonesMap();
         if (!zones)
             return [];
-        return Object.keys(zones).filter((id) => !draft.zone_ids_ordered.includes(id));
+        return orderedZoneIds(this.installation).filter((id) => !draft.zone_ids_ordered.includes(id));
     }
     /**
      * "Runs then and then — but only if x AND y AND z", so this sits below the
@@ -7027,6 +7059,21 @@ class ViewZones extends i$2 {
         border-left-color: var(--primary-color);
         background: color-mix(in srgb, var(--primary-color) 6%, var(--card-background-color));
       }
+      .compact-row.dragging {
+        opacity: 0.55;
+      }
+      .reorder-actions {
+        flex: 0 0 auto;
+      }
+      .drag-marker {
+        color: var(--secondary-text-color);
+        display: inline-flex;
+        align-items: center;
+        cursor: grab;
+      }
+      .drag-marker ha-icon {
+        --mdc-icon-size: 20px;
+      }
       .out-line {
         margin: 8px 0 0;
         font-size: 0.8rem;
@@ -7090,10 +7137,7 @@ class ViewZones extends i$2 {
         return { ...z, switch_entity_ids: [...z.switch_entity_ids] };
     }
     _zonesFromInstallation() {
-        const z = this.installation?.zones;
-        if (!z)
-            return [];
-        return Object.entries(z).map(([zone_id, o]) => {
+        return orderedZoneEntries(this.installation).map(([zone_id, o]) => {
             const raw = o.switch_entity_ids;
             let ids = [];
             if (Array.isArray(raw))
@@ -7121,6 +7165,53 @@ class ViewZones extends i$2 {
                 countdown_unit: String(o.countdown_unit ?? ""),
             };
         });
+    }
+    /** Save a complete order so the backend can reject stale concurrent edits. */
+    async _saveZoneOrder(order) {
+        if (this._busy)
+            return;
+        this._busy = true;
+        this._msg = undefined;
+        this.requestUpdate();
+        try {
+            const res = await saveZoneOrder(this.hass, this.entryId, order);
+            if (!res.success)
+                this._msg = formatApiError(res.error, this.hass);
+            else
+                this.onSaved?.();
+        }
+        catch (e) {
+            this._msg = formatApiError(e, this.hass);
+        }
+        finally {
+            this._busy = false;
+            this.requestUpdate();
+        }
+    }
+    _moveZone(zoneId, offset) {
+        const order = orderedZoneIds(this.installation);
+        const from = order.indexOf(zoneId);
+        const to = from + offset;
+        if (from < 0 || to < 0 || to >= order.length)
+            return;
+        [order[from], order[to]] = [order[to], order[from]];
+        void this._saveZoneOrder(order);
+    }
+    _dropZone(targetZoneId) {
+        const moving = this._dragZoneId;
+        this._dragZoneId = undefined;
+        if (!moving || moving === targetZoneId || this._busy || this._filter !== "all")
+            return;
+        const order = orderedZoneIds(this.installation);
+        const from = order.indexOf(moving);
+        const target = order.indexOf(targetZoneId);
+        if (from < 0 || target < 0)
+            return;
+        order.splice(from, 1);
+        // Dropping downward places the dragged zone after the target; dropping
+        // upward places it before. This matches the direction the row travelled.
+        order.splice(target, 0, moving);
+        void this._saveZoneOrder(order);
     }
     /** "~120 L" for one run of the zone in the active mode; "" without a rate. */
     _waterPerRun(z) {
@@ -7633,7 +7724,7 @@ class ViewZones extends i$2 {
       </div>
     `;
     }
-    _renderRow(z, slotsPerZone) {
+    _renderRow(z, slotsPerZone, zoneOrder) {
         const outs = z.switch_entity_ids.filter(Boolean);
         const issue = this._zoneIssue(z);
         const active = this._activeZoneIds().includes(z.zone_id);
@@ -7657,6 +7748,8 @@ class ViewZones extends i$2 {
         const accentClass = !z.enabled ? "inactive" : issue ? "warn" : active ? "running" : "";
         const expanded = this._expanded.has(z.zone_id);
         const firstOut = outs[0] ?? "";
+        const orderIndex = zoneOrder.indexOf(z.zone_id);
+        const canReorder = this._filter === "all" && zoneOrder.length > 1;
         const runBtn = b `
       <button
         type="button"
@@ -7696,8 +7789,65 @@ class ViewZones extends i$2 {
         <ha-icon icon="mdi:pencil"></ha-icon>
       </button>
     `;
+        const reorderButtons = canReorder
+            ? b `<div class="icon-group reorder-actions" role="group">
+          <span
+            class="drag-marker hide-narrow"
+            title=${t(this.hass, "config_panel.zones_drag_to_reorder")}
+            aria-hidden="true"
+            .draggable=${!this._busy}
+            @dragstart=${(e) => {
+                if (this._busy) {
+                    e.preventDefault();
+                    return;
+                }
+                this._dragZoneId = z.zone_id;
+                if (e.dataTransfer) {
+                    e.dataTransfer.effectAllowed = "move";
+                    e.dataTransfer.setData("text/plain", z.zone_id);
+                }
+            }}
+            @dragend=${() => (this._dragZoneId = undefined)}
+          >
+            <ha-icon icon="mdi:drag-vertical"></ha-icon>
+          </span>
+          <button
+            type="button"
+            class="iconbtn"
+            title=${t(this.hass, "config_panel.zones_move_up")}
+            aria-label=${t(this.hass, "config_panel.zones_move_up")}
+            ?disabled=${this._busy || orderIndex <= 0}
+            @click=${() => this._moveZone(z.zone_id, -1)}
+          >
+            <ha-icon icon="mdi:arrow-up"></ha-icon>
+          </button>
+          <button
+            type="button"
+            class="iconbtn"
+            title=${t(this.hass, "config_panel.zones_move_down")}
+            aria-label=${t(this.hass, "config_panel.zones_move_down")}
+            ?disabled=${this._busy || orderIndex < 0 || orderIndex >= zoneOrder.length - 1}
+            @click=${() => this._moveZone(z.zone_id, 1)}
+          >
+            <ha-icon icon="mdi:arrow-down"></ha-icon>
+          </button>
+        </div>`
+            : A;
         return b `
-      <div class="compact-row ${accentClass}">
+      <div
+        class="compact-row ${accentClass} ${this._dragZoneId === z.zone_id ? "dragging" : ""}"
+        @dragover=${(e) => {
+            if (canReorder && this._dragZoneId && this._dragZoneId !== z.zone_id) {
+                e.preventDefault();
+                if (e.dataTransfer)
+                    e.dataTransfer.dropEffect = "move";
+            }
+        }}
+        @drop=${(e) => {
+            e.preventDefault();
+            this._dropZone(z.zone_id);
+        }}
+      >
         <div class="compact-row-header">
           <ha-switch
             .disabled=${this._busy}
@@ -7770,6 +7920,7 @@ class ViewZones extends i$2 {
             : A}
             </div>
           </div>
+          ${reorderButtons}
           <div class="icon-group hide-narrow" role="group">
             ${primaryBtn}${editBtn}
           </div>
@@ -7812,6 +7963,7 @@ class ViewZones extends i$2 {
     }
     render() {
         const all = this._zonesFromInstallation();
+        const zoneOrder = orderedZoneIds(this.installation);
         const issuesCount = all.filter((z) => this._zoneIssue(z)).length;
         const filtered = all.filter((z) => {
             if (this._filter === "enabled")
@@ -7865,6 +8017,7 @@ class ViewZones extends i$2 {
               ${t(this.hass, "config_panel.zones_help_summary")}
             </summary>
             <p>${t(this.hass, "config_panel.zones_intro")}</p>
+            <p>${t(this.hass, "config_panel.zones_reorder_hint")}</p>
           </details>
 
           ${all.length === 0
@@ -7883,7 +8036,7 @@ class ViewZones extends i$2 {
                     ${t(this.hass, "config_panel.zones_filter_all")}
                   </button>
                 </div>`
-                : filtered.map((z) => this._renderRow(z, slotsPerZone))}
+                : filtered.map((z) => this._renderRow(z, slotsPerZone, zoneOrder))}
 
           <details class="inline-help" style="margin-top:14px">
             <summary>
@@ -7996,6 +8149,9 @@ __decorate([
 __decorate([
     r()
 ], ViewZones.prototype, "_expanded", void 0);
+__decorate([
+    r()
+], ViewZones.prototype, "_dragZoneId", void 0);
 defineCustomElementOnce("si-view-zones", ViewZones);
 
 const VERSION = "1.12.0";

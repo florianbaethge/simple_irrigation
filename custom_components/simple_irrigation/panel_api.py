@@ -34,7 +34,14 @@ from .const import (
     WEEK_PARITY_EVERY,
 )
 from .grouping import compute_phases
-from .models import Guard, Installation, ScheduleSlot, Zone, normalize_weekdays
+from .models import (
+    Guard,
+    Installation,
+    ScheduleSlot,
+    Zone,
+    normalize_weekdays,
+    normalize_zone_order,
+)
 from .cycle import CYCLE_KINDS, anchor_week_parity, generate_cycle_slots
 from .runtime import ScheduleSlotRunError, ZoneManualRunError, ZoneStopError
 from .scheduler import compute_next_runs, phases_for_slot
@@ -77,6 +84,20 @@ SLOT_SCRIPT_TIMEOUT_SCHEMA = vol.Any(
 # ("none"), so these are plain ranges rather than positive_int.
 SLOT_REPETITIONS_SCHEMA = vol.All(int, vol.Range(min=1, max=MAX_REPETITIONS))
 SLOT_SOAK_SCHEMA = vol.All(int, vol.Range(min=0, max=MAX_SOAK_MIN))
+
+
+def _is_complete_zone_order(order: list[str], inst: Installation) -> bool:
+    """Return whether ``order`` is an exact permutation of current zone ids.
+
+    The panel submits the whole list so a reorder is one atomic store update.
+    Rejecting partial or stale lists prevents a concurrent add/delete from being
+    hidden or accidentally removed from the user's preferred order.
+    """
+    return (
+        len(order) == len(inst.zones)
+        and len(set(order)) == len(order)
+        and set(order) == set(inst.zones)
+    )
 
 
 def _copy_slot_cycle_soak(src: ScheduleSlot, dst: ScheduleSlot) -> None:
@@ -449,7 +470,7 @@ class SimpleIrrigationPanelGlobalView(HomeAssistantView):
 
 
 class SimpleIrrigationPanelZoneView(HomeAssistantView):
-    """POST: add / update / delete zone."""
+    """POST: add / update / delete / reorder zone."""
 
     url = "/api/simple_irrigation/panel/zone"
     name = "api:simple_irrigation:panel_zone"
@@ -458,8 +479,9 @@ class SimpleIrrigationPanelZoneView(HomeAssistantView):
         vol.Schema(
             {
                 vol.Required("entry_id"): cv.string,
-                vol.Required("action"): vol.In(("add", "update", "delete")),
+                vol.Required("action"): vol.In(("add", "update", "delete", "reorder")),
                 vol.Optional("zone_id"): cv.string,
+                vol.Optional("zone_order"): [cv.string],
                 vol.Optional("zone"): vol.Schema(
                     {
                         vol.Optional("name"): cv.string,
@@ -493,6 +515,16 @@ class SimpleIrrigationPanelZoneView(HomeAssistantView):
             return self.json({"success": False, "error": "not_found"}, status_code=404)
         inst = coord.installation
         action = data["action"]
+
+        if action == "reorder":
+            requested = list(data.get("zone_order") or [])
+            if not _is_complete_zone_order(requested, inst):
+                return self.json(
+                    {"success": False, "error": "invalid_zone_order"}, status_code=400
+                )
+            inst.zone_order = requested
+            await coord.async_update_installation(inst)
+            return self.json({"success": True})
 
         if action == "add":
             zone_data = data.get("zone") or {}
@@ -537,6 +569,9 @@ class SimpleIrrigationPanelZoneView(HomeAssistantView):
                 countdown_entity_id=str(payload["countdown_entity_id"] or "").strip(),
                 countdown_unit=str(payload["countdown_unit"] or "").strip(),
             )
+            # Legacy stores have no explicit order.  Normalize first so their
+            # current creation order is retained and the new zone lands last.
+            inst.zone_order = normalize_zone_order(inst.zone_order, inst.zones)
             await coord.async_update_installation(inst)
             return self.json({"success": True, "zone_id": zid})
 
@@ -546,6 +581,7 @@ class SimpleIrrigationPanelZoneView(HomeAssistantView):
 
         if action == "delete":
             inst.zones.pop(zid, None)
+            inst.zone_order = normalize_zone_order(inst.zone_order, inst.zones)
             for slot in inst.schedule_slots:
                 slot.zone_ids_ordered = [x for x in slot.zone_ids_ordered if x != zid]
             await coord.async_update_installation(inst)

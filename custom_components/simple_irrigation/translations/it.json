@@ -652,6 +652,7 @@
     "cycle_preview_first_run": "Inizia il {when}.",
     "cycle_creates_title": "Questo crea:",
     "cycle_select_all": "Seleziona tutte",
+    "cycle_select_none": "Deseleziona tutte",
     "cycle_phase_alone": "fase {n} · da sola",
     "cycle_slots_n": "{n} fasce",
     "cycle_meta_zones": "{z} zone · {p} fasi · ~{m} min",

@@ -20,6 +20,11 @@ export function renderTime24Picker(
   onChange: (timeLocal: string) => void
 ): TemplateResult {
   const [hour = "00", minute = "00"] = formatTime24(timeLocal).split(":");
+  // Lit applies the select's `.value` property before it inserts the dynamic
+  // option list. A native select therefore falls back to option zero (00) on
+  // first render, even when `hour`/`minute` contain a saved schedule time.
+  // Marking the matching options selected as well makes initial rendering and
+  // later edits deterministic while retaining `.value` for normal updates.
   return html`<span class="time24-picker" role="group" aria-label=${label}>
     <select
       aria-label=${`${label} HH`}
@@ -28,7 +33,9 @@ export function renderTime24Picker(
         onChange(`${(event.target as HTMLSelectElement).value}:${minute}`);
       }}
     >
-      ${HOURS.map((value) => html`<option value=${value}>${value}</option>`)}
+      ${HOURS.map(
+        (value) => html`<option value=${value} .selected=${value === hour}>${value}</option>`
+      )}
     </select>
     <span aria-hidden="true">:</span>
     <select
@@ -38,7 +45,9 @@ export function renderTime24Picker(
         onChange(`${hour}:${(event.target as HTMLSelectElement).value}`);
       }}
     >
-      ${MINUTES.map((value) => html`<option value=${value}>${value}</option>`)}
+      ${MINUTES.map(
+        (value) => html`<option value=${value} .selected=${value === minute}>${value}</option>`
+      )}
     </select>
   </span>`;
 }

@@ -707,6 +707,17 @@ export class CycleWizard extends LitElement {
         >
           ${t(this.hass, "config_panel.cycle_select_all")}
         </button>
+        <button
+          type="button"
+          class="btn-outline"
+          style="margin-left:6px;margin-top:0;padding:4px 10px;font-size:0.8rem"
+          @click=${() => {
+            this._zoneIds = [];
+            this.requestUpdate();
+          }}
+        >
+          ${t(this.hass, "config_panel.cycle_select_none")}
+        </button>
       </div>
       ${allIds.map((id) => {
         const checked = this._zoneIds.includes(id);

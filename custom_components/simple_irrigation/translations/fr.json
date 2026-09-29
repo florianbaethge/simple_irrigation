@@ -663,6 +663,7 @@
     "cycle_preview_first_run": "Démarre le {when}.",
     "cycle_creates_title": "Ceci crée :",
     "cycle_select_all": "Tout sélectionner",
+    "cycle_select_none": "Tout désélectionner",
     "cycle_phase_alone": "phase {n} · seule",
     "cycle_slots_n": "{n} créneaux",
     "cycle_meta_zones": "{z} zones · {p} phases · ~{m} min",

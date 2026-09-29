@@ -663,6 +663,7 @@
     "cycle_preview_first_run": "Startet am {when}.",
     "cycle_creates_title": "Das erstellt:",
     "cycle_select_all": "Alle auswählen",
+    "cycle_select_none": "Keine auswählen",
     "cycle_phase_alone": "Phase {n} · allein",
     "cycle_slots_n": "{n} Slots",
     "cycle_meta_zones": "{z} Zonen · {p} Phasen · ~{m} Min.",

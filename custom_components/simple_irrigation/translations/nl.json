@@ -663,6 +663,7 @@
     "cycle_preview_first_run": "Begint op {when}.",
     "cycle_creates_title": "Dit maakt:",
     "cycle_select_all": "Alles selecteren",
+    "cycle_select_none": "Niets selecteren",
     "cycle_phase_alone": "fase {n} · alleen",
     "cycle_slots_n": "{n} slots",
     "cycle_meta_zones": "{z} zones · {p} fases · ~{m} min",

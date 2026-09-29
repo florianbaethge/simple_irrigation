@@ -25,6 +25,7 @@ from .const import (
     DOMAIN,
     GUARD_OPERATORS,
     MAX_SCRIPT_TIMEOUT_SEC,
+    MAX_ZONE_DURATION_MIN,
     MODES,
     OUTPUT_ENTITY_DOMAINS,
     PANEL_API_REGISTERED_KEY,
@@ -44,6 +45,7 @@ from .validation import (
     parse_zone_switch_entities,
     validate_max_parallel,
     validate_mode,
+    validate_mode_for_installation,
     validate_pre_start_entities,
     validate_script_entity,
     validate_script_timeout,
@@ -375,8 +377,8 @@ class SimpleIrrigationPanelGlobalView(HomeAssistantView):
                 return self.json({"success": False, "error": err}, status_code=400)
             inst.pre_start_switches = list(data["pre_start_switches"])
         if "mode" in data:
-            if validate_mode(data["mode"]):
-                return self.json({"success": False, "error": "invalid_mode"}, status_code=400)
+            if error := validate_mode_for_installation(inst, data["mode"]):
+                return self.json({"success": False, "error": error}, status_code=400)
             inst.mode = data["mode"]
         if "max_parallel_zones" in data:
             if validate_max_parallel(data["max_parallel_zones"]):
@@ -548,6 +550,7 @@ class SimpleIrrigationPanelZoneView(HomeAssistantView):
             inst.zones.pop(zid, None)
             for slot in inst.schedule_slots:
                 slot.zone_ids_ordered = [x for x in slot.zone_ids_ordered if x != zid]
+                slot.zone_durations_min.pop(zid, None)
             await coord.async_update_installation(inst)
             return self.json({"success": True})
 
@@ -639,6 +642,7 @@ class SimpleIrrigationPanelSlotView(HomeAssistantView):
                 vol.Optional("zone_id"): cv.string,
                 vol.Optional("direction"): vol.In(("up", "down")),
                 vol.Optional("zone_ids_ordered"): [cv.string],
+                vol.Optional("zone_durations_min"): dict,
                 vol.Optional("name"): cv.string,
                 vol.Optional("week_parity"): vol.In(WEEK_PARITIES),
                 vol.Optional("guards"): GUARD_LIST_SCHEMA,
@@ -688,6 +692,31 @@ class SimpleIrrigationPanelSlotView(HomeAssistantView):
                 return normalize_weekdays([data["weekday"]])
             return fallback
 
+        def _duration_map(
+            zone_ids: list[str], fallback: dict[str, int] | None = None
+        ) -> tuple[dict[str, int], str | None]:
+            """Validate and normalize runtimes without mutating a slot."""
+            raw = data.get("zone_durations_min", fallback or {})
+            if not isinstance(raw, dict):
+                return {}, "invalid_zone_duration"
+            result: dict[str, int] = {}
+            for zid, value in raw.items():
+                if zid not in zone_ids or isinstance(value, bool):
+                    return {}, "invalid_zone_duration"
+                try:
+                    duration = int(value)
+                except (TypeError, ValueError):
+                    return {}, "invalid_zone_duration"
+                if isinstance(value, float) and not value.is_integer():
+                    return {}, "invalid_zone_duration"
+                if duration < 0 or duration > MAX_ZONE_DURATION_MIN:
+                    return {}, "invalid_zone_duration"
+                result[str(zid)] = duration
+            if inst.mode == "schedule_specific" and bool(data.get("enabled", True)):
+                if any(zid not in result for zid in zone_ids):
+                    return {}, "schedule_durations_incomplete"
+            return result, None
+
         if action == "add":
             t = data.get("time_local", "06:00")
             if parse_hh_mm(str(t).strip()) is None:
@@ -729,11 +758,20 @@ class SimpleIrrigationPanelSlotView(HomeAssistantView):
                 if zid in seen_z:
                     return self.json({"success": False, "error": "duplicate_zone"}, status_code=400)
                 seen_z.add(zid)
+            incoming_id = str(data.get("cycle_id") or "")  # set when editing an existing cycle
+            existing = (
+                [s for s in inst.schedule_slots if incoming_id and s.cycle_id == incoming_id]
+                if incoming_id
+                else []
+            )
+            fallback_durations = existing[0].zone_durations_min if existing else None
+            durations, duration_err = _duration_map(zone_ids, fallback_durations)
+            if duration_err:
+                return self.json({"success": False, "error": duration_err}, status_code=400)
             for tstr in meta.get("times") or []:
                 if parse_hh_mm(str(tstr).strip()) is None:
                     return self.json({"success": False, "error": "invalid_time"}, status_code=400)
             enabled = bool(data.get("enabled", True))
-            incoming_id = str(data.get("cycle_id") or "")  # set when editing an existing cycle
             anchor = int(meta.get("anchor_weekday", 0))
             p0 = anchor_week_parity(anchor, dt_util.now().date())
             specs = generate_cycle_slots(kind, meta, anchor_parity=p0)
@@ -748,11 +786,6 @@ class SimpleIrrigationPanelSlotView(HomeAssistantView):
             is_cycle = len(specs) >= 2
             new_cid = (incoming_id or uuid.uuid4().hex) if is_cycle else None
 
-            existing = (
-                [s for s in inst.schedule_slots if incoming_id and s.cycle_id == incoming_id]
-                if incoming_id
-                else []
-            )
             reused_ids = [s.slot_id for s in existing]
 
             # Guards: take them from the payload, else keep what the edited cycle
@@ -775,6 +808,7 @@ class SimpleIrrigationPanelSlotView(HomeAssistantView):
                     time_local=spec["time_local"],
                     enabled=enabled,
                     zone_ids_ordered=list(zone_ids),
+                    zone_durations_min=dict(durations),
                     name=label,
                     week_parity=spec["week_parity"],
                     guards=list(cycle_guards),
@@ -853,6 +887,7 @@ class SimpleIrrigationPanelSlotView(HomeAssistantView):
                     time_local=slot.time_local,
                     enabled=slot.enabled,
                     zone_ids_ordered=list(slot.zone_ids_ordered),
+                    zone_durations_min=dict(slot.zone_durations_min),
                     name=slot.name,
                     week_parity=slot.week_parity,
                     guards=list(slot.guards),
@@ -870,6 +905,24 @@ class SimpleIrrigationPanelSlotView(HomeAssistantView):
             )
 
         if action == "update":
+            prospective_zones = list(data.get("zone_ids_ordered", slot.zone_ids_ordered))
+            if "zone_durations_min" in data:
+                durations, duration_err = _duration_map(prospective_zones)
+            else:
+                durations = {
+                    zid: duration
+                    for zid, duration in slot.zone_durations_min.items()
+                    if zid in prospective_zones
+                }
+                duration_err = None
+                if (
+                    inst.mode == "schedule_specific"
+                    and bool(data.get("enabled", slot.enabled))
+                    and any(zid not in durations for zid in prospective_zones)
+                ):
+                    duration_err = "schedule_durations_incomplete"
+            if duration_err:
+                return self.json({"success": False, "error": duration_err}, status_code=400)
             weekdays = _resolve_weekdays()
             if weekdays is not None:
                 if not weekdays:
@@ -894,6 +947,7 @@ class SimpleIrrigationPanelSlotView(HomeAssistantView):
                         return self.json({"success": False, "error": "duplicate_zone"}, status_code=400)
                     seen.add(zid)
                 slot.zone_ids_ordered = new_order
+            slot.zone_durations_min = durations
             if "name" in data:
                 slot.name = str(data["name"] or "").strip()
             if "week_parity" in data:

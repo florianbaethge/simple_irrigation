@@ -12,7 +12,7 @@ import { formatVolumeNumber, litresToUnit, volumeUnit } from "../units";
 import { mondayBasedWeekday, weekParityMatches, type CycleMeta } from "../cycle";
 import type { HomeAssistant, ScheduleNext } from "../types";
 
-const MODES = ["eco", "normal", "extra"] as const;
+const MODES = ["eco", "normal", "extra", "schedule_specific"] as const;
 type Mode = (typeof MODES)[number];
 
 interface UpcomingRun {
@@ -325,7 +325,11 @@ export class ViewOverview extends LitElement {
     const preStart = Math.max(0, Number(this._inst.pre_start_delay_sec ?? 10)) / 60;
     const minutes = programMinutes(phases, cycleSoakOf(slot), (zid) => {
       const z = zones[zid];
-      return z && Boolean(z.enabled ?? true) ? durationForMode(z, mode) : 0;
+      if (!z || !Boolean(z.enabled ?? true)) return 0;
+      const durations = (slot.zone_durations_min ?? {}) as Record<string, number>;
+      return mode === "schedule_specific"
+        ? Math.max(0, Number(durations[zid] ?? 0))
+        : durationForMode(z, mode);
     });
     return Math.round(preStart + minutes);
   }
@@ -398,7 +402,8 @@ export class ViewOverview extends LitElement {
             zoneIds,
             this._inst.zones as Record<string, Record<string, unknown>> | undefined,
             mode,
-            cycleSoakOf(slot).repetitions
+            cycleSoakOf(slot).repetitions,
+            (slot.zone_durations_min ?? {}) as Record<string, number>
           ),
           slotId: String(slot.slot_id ?? ""),
         });

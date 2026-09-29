@@ -86,7 +86,9 @@ CONF_MAX_PARALLEL_ZONES: Final = "max_parallel_zones"
 MODE_ECO: Final = "eco"
 MODE_NORMAL: Final = "normal"
 MODE_EXTRA: Final = "extra"
-MODES: Final = (MODE_ECO, MODE_NORMAL, MODE_EXTRA)
+MODE_SCHEDULE_SPECIFIC: Final = "schedule_specific"
+MODES: Final = (MODE_ECO, MODE_NORMAL, MODE_EXTRA, MODE_SCHEDULE_SPECIFIC)
+MAX_ZONE_DURATION_MIN: Final = 240
 
 PRE_START_DELAY_SEC: Final = 10
 

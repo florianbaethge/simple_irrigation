@@ -5,11 +5,13 @@ from __future__ import annotations
 from homeassistant.components.select import SelectEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN, MODES
 from .coordinator import SimpleIrrigationCoordinator
 from .entity import SimpleIrrigationEntity
+from .validation import validate_mode_for_installation
 
 
 async def async_setup_entry(
@@ -40,5 +42,7 @@ class SimpleIrrigationModeSelect(SimpleIrrigationEntity, SelectEntity):
     async def async_select_option(self, option: str) -> None:
         """Set mode."""
         inst = self.coordinator.installation
+        if error := validate_mode_for_installation(inst, option):
+            raise HomeAssistantError(error)
         inst.mode = option
         await self.coordinator.async_update_installation(inst)

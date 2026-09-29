@@ -34,6 +34,7 @@ from .const import (
     SERVICE_STOP_ZONE,
 )
 from .models import Installation
+from .validation import validate_mode_for_installation
 
 
 def _get_domain_data(hass: HomeAssistant, call: ServiceCall) -> dict[str, Any]:
@@ -93,6 +94,8 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         coordinator = data["coordinator"]
         mode = call.data[ATTR_MODE]
         inst: Installation = coordinator.installation
+        if error := validate_mode_for_installation(inst, mode):
+            raise HomeAssistantError(error)
         inst.mode = mode
         await coordinator.async_update_installation(inst)
 

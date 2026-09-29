@@ -10,6 +10,7 @@ from typing import Any
 from .const import (
     MAX_REPETITIONS,
     MAX_SOAK_MIN,
+    MAX_ZONE_DURATION_MIN,
     GUARD_BOOLEAN_OPERATORS,
     GUARD_NUMERIC_OPERATORS,
     GUARD_OP_ABOVE,
@@ -233,6 +234,9 @@ class ScheduleSlot:
     time_local: str  # "HH:MM"
     enabled: bool = True
     zone_ids_ordered: list[str] = field(default_factory=list)
+    # Per-zone runtimes used only in schedule-specific mode. Keeping this on
+    # the slot lets the same physical zone have a different runtime elsewhere.
+    zone_durations_min: dict[str, int] = field(default_factory=dict)
     name: str = ""  # optional label for automations / recognition in the UI
     week_parity: str = WEEK_PARITY_EVERY  # every | odd | even (ISO calendar week)
     # Conditions for this slot; AND-combined with the installation's guards
@@ -282,6 +286,7 @@ class ScheduleSlot:
             "time_local": self.time_local,
             "enabled": self.enabled,
             "zone_ids_ordered": list(self.zone_ids_ordered),
+            "zone_durations_min": dict(self.zone_durations_min),
             "name": self.name,
             "week_parity": self.week_parity,
             "guards": [g.to_dict() for g in self.guards],
@@ -322,6 +327,15 @@ class ScheduleSlot:
             time_local=str(data["time_local"]),
             enabled=bool(data.get("enabled", True)),
             zone_ids_ordered=list(data.get("zone_ids_ordered", [])),
+            zone_durations_min={
+                str(zone_id): max(0, min(MAX_ZONE_DURATION_MIN, int(duration)))
+                for zone_id, duration in (
+                    data.get("zone_durations_min", {}).items()
+                    if isinstance(data.get("zone_durations_min"), dict)
+                    else []
+                )
+                if isinstance(duration, (int, float)) and not isinstance(duration, bool)
+            },
             name=str(data.get("name") or ""),
             week_parity=parity,
             guards=parse_guards(data.get("guards")),

@@ -68,7 +68,8 @@ export function plannedLitres(
   zoneIds: string[],
   zones: Record<string, Record<string, unknown> | undefined> | undefined,
   mode: string,
-  repetitions = 1
+  repetitions = 1,
+  scheduleDurations: Record<string, number> = {}
 ): number | null {
   if (!zones) return null;
   let total = 0;
@@ -79,7 +80,11 @@ export function plannedLitres(
     const rate = Number(z.flow_rate_lpm ?? 0);
     if (!Number.isFinite(rate) || rate <= 0) continue;
     known = true;
-    total += rate * durationForMode(z, mode) * Math.max(1, repetitions);
+    const duration =
+      mode === "schedule_specific"
+        ? Math.max(0, Number(scheduleDurations[zid] ?? 0))
+        : durationForMode(z, mode);
+    total += rate * duration * Math.max(1, repetitions);
   }
   return known ? total : null;
 }
@@ -154,6 +159,14 @@ export function buildTimetableEntries(installation: Record<string, unknown>): Ti
   }
 
   for (const slot of slots) {
+    const slotDurations =
+      slot.zone_durations_min && typeof slot.zone_durations_min === "object"
+        ? (slot.zone_durations_min as Record<string, number>)
+        : {};
+    const scheduledDuration = (zid: string, zone: Record<string, unknown>): number =>
+      mode === "schedule_specific"
+        ? Math.max(0, Number(slotDurations[zid] ?? 0))
+        : durationForMode(zone, mode);
     const slotId = String(slot.slot_id ?? "");
     const slotEnabled = Boolean(slot.enabled ?? true);
     const rawWeekdays = Array.isArray(slot.weekdays)
@@ -191,7 +204,7 @@ export function buildTimetableEntries(installation: Record<string, unknown>): Ti
           const z = zones[zid];
           if (!z) continue;
           if (Boolean(z.enabled ?? true)) {
-            const d = durationForMode(z, mode);
+            const d = scheduledDuration(zid, z);
             phaseLenMin = Math.max(phaseLenMin, d);
           }
         }
@@ -200,7 +213,7 @@ export function buildTimetableEntries(installation: Record<string, unknown>): Ti
           const z = zones[zid];
           if (!z) continue;
           const zoneEnabled = Boolean(z.enabled ?? true);
-          const dur = durationForMode(z, mode);
+          const dur = scheduledDuration(zid, z);
           const startMin = phaseStart;
           const endMin = phaseStart + dur;
           entries.push({

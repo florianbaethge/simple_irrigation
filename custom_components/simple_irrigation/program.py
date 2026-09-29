@@ -21,7 +21,21 @@ class Soak:
     seconds: int
 
 
-RunStep: TypeAlias = list[str] | Soak
+@dataclass(frozen=True)
+class PlannedZone:
+    """One scheduled zone occurrence with its slot-specific runtime."""
+
+    zone_id: str
+    duration_min: int
+
+
+ZoneRun: TypeAlias = str | PlannedZone
+RunStep: TypeAlias = list[ZoneRun] | Soak
+
+
+def zone_id_of(zone: ZoneRun) -> str:
+    """Return the persisted zone id from either run-step representation."""
+    return zone.zone_id if isinstance(zone, PlannedZone) else zone
 
 
 def is_soak(step: object) -> bool:
@@ -56,7 +70,11 @@ def expand_program(phases: list[list[str]], slot: ScheduleSlot) -> list[RunStep]
 
 def watering_steps(steps: list[RunStep]) -> list[list[str]]:
     """Only the phases of a queue, in order — what the UI lists as upcoming."""
-    return [list(step) for step in steps if not isinstance(step, Soak)]
+    return [
+        [zone_id_of(zone) for zone in step]
+        for step in steps
+        if not isinstance(step, Soak)
+    ]
 
 
 def soak_minutes(phase_count: int, slot: ScheduleSlot) -> int:

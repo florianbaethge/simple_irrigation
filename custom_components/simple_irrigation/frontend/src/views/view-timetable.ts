@@ -493,7 +493,9 @@ export class ViewTimetable extends LitElement {
     const start = formatSlotTimeForProfile(this.hass, minutesToTimeLocal(e.startMin));
     const end = formatSlotTimeForProfile(this.hass, minutesToTimeLocal(e.endMin));
     const modeKey =
-      e.mode === "eco"
+      e.mode === "schedule_specific"
+        ? "config_panel.general_mode_schedule_specific"
+        : e.mode === "eco"
         ? "config_panel.timetable_mode_eco"
         : e.mode === "extra"
           ? "config_panel.timetable_mode_extra"

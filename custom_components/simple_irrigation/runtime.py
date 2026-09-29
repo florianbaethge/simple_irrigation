@@ -30,7 +30,7 @@ from .countdown import async_set_countdown, clear_value, countdown_value
 from .grouping import can_join_active_phase, compute_phases
 from .guards import guards_allow_run
 from .models import RunState, ScheduleSlot, Zone
-from .program import RunStep, Soak, watering_steps
+from .program import PlannedZone, RunStep, Soak, zone_id_of, watering_steps
 from .scheduler import phases_for_slot, program_for_slot
 from .scripts import ScriptCall, effective_post_run_script, effective_pre_start_script
 from .water import (
@@ -557,7 +557,9 @@ class IrrigationRuntime:
                 blocking=False,
             )
 
-    async def _async_run_phase_expandable(self, initial_zone_ids: list[str], mode: str) -> None:
+    async def _async_run_phase_expandable(
+        self, initial_zone_ids: list[str | PlannedZone], mode: str
+    ) -> None:
         """Run one phase; extra manual zones may join mid-phase when parallel rules allow."""
         inst = self.coordinator.installation
         rs = self.coordinator.run_state
@@ -565,7 +567,8 @@ class IrrigationRuntime:
 
         tasks_by_zone: dict[str, asyncio.Task[None]] = {}
 
-        async def _run_one_zone(zid: str) -> None:
+        async def _run_one_zone(planned: str | PlannedZone) -> None:
+            zid = zone_id_of(planned)
             zone = inst.zones.get(zid)
             if zone is None or not zone.enabled:
                 return
@@ -573,16 +576,18 @@ class IrrigationRuntime:
                 # Stopped in the moment between launch and first poll.
                 self._zone_stop_requests.discard(zid)
                 return
-            duration = self._duration_overrides.get(
-                zid,
-                zone.duration_for_mode(mode),
+            duration = (
+                planned.duration_min
+                if isinstance(planned, PlannedZone)
+                else self._duration_overrides.get(zid, zone.duration_for_mode(mode))
             )
             await self._async_zone_run(zone, duration)
 
-        def _launch(zid: str) -> None:
+        def _launch(planned: str | PlannedZone) -> None:
+            zid = zone_id_of(planned)
             if zid in tasks_by_zone:
                 return
-            tasks_by_zone[zid] = asyncio.create_task(_run_one_zone(zid))
+            tasks_by_zone[zid] = asyncio.create_task(_run_one_zone(planned))
 
         for zid in initial_zone_ids:
             _launch(zid)
@@ -651,7 +656,9 @@ class IrrigationRuntime:
         if zone_id in self._mid_phase_extensions:
             return True
         for step in self._phase_queue:
-            if not isinstance(step, Soak) and zone_id in step:
+            if not isinstance(step, Soak) and any(
+                zone_id_of(planned) == zone_id for planned in step
+            ):
                 return True
         return False
 
@@ -847,7 +854,15 @@ class IrrigationRuntime:
             raise ZoneManualRunError("zone_no_outputs", "Zone has no outputs configured")
 
         mode = inst.mode
-        dur = duration_min if duration_min is not None else zone.duration_for_mode(mode)
+        # A standalone manual run has no schedule from which to obtain a
+        # runtime. In schedule-specific mode it deliberately uses Normal.
+        dur = (
+            duration_min
+            if duration_min is not None
+            else zone.duration_normal_min
+            if mode == "schedule_specific"
+            else zone.duration_for_mode(mode)
+        )
 
         async with self._run_lock:
             rs = self.coordinator.run_state
@@ -927,7 +942,7 @@ class IrrigationRuntime:
         if self.is_busy():
             raise ScheduleSlotRunError("busy", "Irrigation is already running")
         await self.async_run_phases(
-            program_for_slot(slot, inst.zones, inst.max_parallel_zones),
+            program_for_slot(slot, inst.zones, inst.max_parallel_zones, inst.mode),
             scheduled=False,
             slot_ids=[slot.slot_id],
         )
@@ -959,7 +974,9 @@ class IrrigationRuntime:
                     due_slots.append(slot)
         merged: list[RunStep] = []
         for slot in due_slots:
-            merged.extend(program_for_slot(slot, inst.zones, inst.max_parallel_zones))
+            merged.extend(
+                program_for_slot(slot, inst.zones, inst.max_parallel_zones, inst.mode)
+            )
         if merged:
             await self.async_run_phases(
                 merged,
@@ -991,9 +1008,9 @@ class IrrigationRuntime:
             if isinstance(step, Soak):
                 kept.append(step)
                 continue
-            if zone_id in step:
+            if any(zone_id_of(planned) == zone_id for planned in step):
                 found = True
-                step = [z for z in step if z != zone_id]
+                step = [z for z in step if zone_id_of(z) != zone_id]
             if step:
                 kept.append(step)
         self._phase_queue[:] = kept

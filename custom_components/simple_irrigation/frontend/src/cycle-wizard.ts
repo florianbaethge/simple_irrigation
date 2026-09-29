@@ -216,6 +216,7 @@ export class CycleWizard extends LitElement {
   @state() private _anchor = 0;
   @state() private _weekDays: number[] = [0, 3];
   @state() private _zoneIds: string[] = [];
+  @state() private _zoneDurations: Record<string, number> = {};
   @state() private _enabled = true;
   @state() private _label = "";
   @state() private _guards: Guard[] = [];
@@ -244,6 +245,9 @@ export class CycleWizard extends LitElement {
       this._optionId = opts?.optionId ?? "daily";
       this._cycleId = opts?.cycleId ?? null;
       this._zoneIds = this._defaultZoneIds();
+      this._zoneDurations = Object.fromEntries(
+        this._zoneIds.map((id) => [id, this._normalDuration(id)])
+      );
       this._enabled = true;
       this._label = "";
       this._guards = [];
@@ -280,6 +284,13 @@ export class CycleWizard extends LitElement {
     this._zoneIds = Array.isArray(first.zone_ids_ordered)
       ? [...(first.zone_ids_ordered as string[])]
       : this._defaultZoneIds();
+    const savedDurations =
+      first.zone_durations_min && typeof first.zone_durations_min === "object"
+        ? (first.zone_durations_min as Record<string, number>)
+        : {};
+    this._zoneDurations = Object.fromEntries(
+      this._zoneIds.map((id) => [id, savedDurations[id] ?? this._normalDuration(id)])
+    );
     this._enabled = Boolean(first.enabled ?? true);
     this._guards = normalizeGuards(first.guards);
     this._ignoreGlobalGuards = Boolean(first.ignore_global_guards ?? false);
@@ -360,6 +371,11 @@ export class CycleWizard extends LitElement {
     return durationForMode(zones?.[id], this._mode());
   }
 
+  private _normalDuration(id: string): number {
+    const zones = this.installation?.zones as Record<string, Record<string, unknown>> | undefined;
+    return Math.max(0, Number(zones?.[id]?.duration_normal_min ?? 0));
+  }
+
   private _estimateMin(): number {
     const zones = this.installation?.zones as Record<string, Record<string, unknown>> | undefined;
     if (!zones) return 0;
@@ -368,7 +384,10 @@ export class CycleWizard extends LitElement {
     const mode = this._mode();
     const minutes = programMinutes(phases, this._cycleSoak, (zid) => {
       const z = zones[zid];
-      return z && Boolean(z.enabled ?? true) ? durationForMode(z, mode) : 0;
+      if (!z || !Boolean(z.enabled ?? true)) return 0;
+      return mode === "schedule_specific"
+        ? Number(this._zoneDurations[zid] ?? 0)
+        : durationForMode(z, mode);
     });
     return Math.round(preStart + minutes);
   }
@@ -441,6 +460,7 @@ export class CycleWizard extends LitElement {
         cycle_kind: opt.kind,
         cycle_meta: this._meta() as Record<string, unknown>,
         zone_ids_ordered: this._zoneIds,
+        zone_durations_min: this._zoneDurations,
         enabled: this._enabled,
         guards: guardsForSave(this._guards),
         ignore_global_guards: this._ignoreGlobalGuards,
@@ -629,6 +649,9 @@ export class CycleWizard extends LitElement {
           style="margin-left:auto;margin-top:0;padding:4px 10px;font-size:0.8rem"
           @click=${() => {
             this._zoneIds = allIds.filter((id) => Boolean(zones?.[id]?.enabled ?? true));
+            this._zoneDurations = Object.fromEntries(
+              this._zoneIds.map((id) => [id, this._zoneDurations[id] ?? this._normalDuration(id)])
+            );
             this.requestUpdate();
           }}
         >
@@ -650,6 +673,13 @@ export class CycleWizard extends LitElement {
                 this._zoneIds = on
                   ? [...this._zoneIds, id]
                   : this._zoneIds.filter((x) => x !== id);
+                if (on && this._zoneDurations[id] === undefined) {
+                  this._zoneDurations = { ...this._zoneDurations, [id]: this._normalDuration(id) };
+                } else if (!on) {
+                  const next = { ...this._zoneDurations };
+                  delete next[id];
+                  this._zoneDurations = next;
+                }
                 this.requestUpdate();
               }}
             />
@@ -674,6 +704,20 @@ export class CycleWizard extends LitElement {
             </div>
             ${checked
               ? html`
+                  <label class="field-row" style="max-width:130px">
+                    <input
+                      type="number"
+                      min="0"
+                      max="240"
+                      .value=${String(this._zoneDurations[id] ?? this._normalDuration(id))}
+                      @input=${(e: Event) => {
+                        this._zoneDurations = {
+                          ...this._zoneDurations,
+                          [id]: Math.max(0, Math.min(240, Number((e.target as HTMLInputElement).value) || 0)),
+                        };
+                      }}
+                    /> min
+                  </label>
                   <button
                     type="button"
                     class="iconbtn"

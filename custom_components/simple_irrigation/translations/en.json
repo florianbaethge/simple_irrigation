@@ -23,7 +23,8 @@
       "options": {
         "eco": "Eco",
         "normal": "Normal",
-        "extra": "Extra"
+        "extra": "Extra",
+        "schedule_specific": "Schedule-specific"
       }
     }
   },
@@ -34,7 +35,8 @@
         "state": {
           "eco": "Eco",
           "normal": "Normal",
-          "extra": "Extra"
+          "extra": "Extra",
+          "schedule_specific": "Schedule-specific"
         }
       }
     },
@@ -283,6 +285,8 @@
     "entry_picker_empty": "No installations yet. Add the integration under Settings → Devices & services → Add integration, then search for Simple Irrigation.",
     "entry_picker_howto": "Add another plan (e.g. spring / summer / another garden): use Settings → Devices & services → Add integration → Simple Irrigation. Each plan appears in the list above.",
     "errors_request_failed": "Request failed",
+    "errors_invalid_zone_duration": "Each schedule runtime must be between 0 and 240 minutes.",
+    "errors_schedule_durations_incomplete": "Add a runtime for every zone in every enabled schedule before selecting Schedule-specific mode.",
     "errors_not_running": "Nothing is running right now.",
     "errors_busy": "Irrigation is already running.",
     "entity_placeholder_example": "Search by name or entity ID",
@@ -344,6 +348,8 @@
     "general_mode_eco": "Eco",
     "general_mode_normal": "Normal",
     "general_mode_extra": "Extra",
+    "general_mode_schedule_specific": "Schedule-specific",
+    "general_mode_schedule_specific_hint": "Scheduled runs use the runtime saved for each zone in that schedule. Run zone now uses the zone's Normal runtime.",
     "general_max_parallel": "Max parallel zones",
     "general_max_parallel_desc": "How many zones may irrigate at the same time. Exclusive zones always run alone.",
     "general_max_parallel_field": "Max parallel zones",

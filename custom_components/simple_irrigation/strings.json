@@ -23,7 +23,8 @@
       "options": {
         "eco": "Eco",
         "normal": "Normal",
-        "extra": "Extra"
+        "extra": "Extra",
+        "schedule_specific": "Schedule-specific"
       }
     }
   }

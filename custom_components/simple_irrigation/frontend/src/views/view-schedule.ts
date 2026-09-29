@@ -62,6 +62,7 @@ interface SlotRow {
   time_local: string;
   enabled: boolean;
   zone_ids_ordered: string[];
+  zone_durations_min: Record<string, number>;
   name: string;
   week_parity: WeekParity;
   guards: Guard[];
@@ -241,6 +242,15 @@ export class ViewSchedule extends LitElement {
         time_local: String(o.time_local ?? "06:00"),
         enabled: Boolean(o.enabled ?? true),
         zone_ids_ordered: Array.isArray(o.zone_ids_ordered) ? [...(o.zone_ids_ordered as string[])] : [],
+        zone_durations_min: Object.fromEntries(
+          (Array.isArray(o.zone_ids_ordered) ? (o.zone_ids_ordered as string[]) : []).map((zid) => {
+            const saved =
+              o.zone_durations_min && typeof o.zone_durations_min === "object"
+                ? (o.zone_durations_min as Record<string, number>)[zid]
+                : undefined;
+            return [zid, saved ?? this._normalDuration(zid)];
+          })
+        ),
         name: String(o.name ?? "").trim(),
         week_parity:
           o.week_parity === "odd" || o.week_parity === "even" ? (o.week_parity as WeekParity) : "every",
@@ -298,6 +308,7 @@ export class ViewSchedule extends LitElement {
       ...s,
       weekdays: [...s.weekdays],
       zone_ids_ordered: [...s.zone_ids_ordered],
+      zone_durations_min: { ...s.zone_durations_min },
       guards: s.guards.map((g) => ({ ...g })),
       pre_start_script: { ...s.pre_start_script },
       post_run_script: { ...s.post_run_script },
@@ -328,7 +339,13 @@ export class ViewSchedule extends LitElement {
 
   /** "~120 L" for one run of the slot, from the zones' flow rates. */
   private _renderWaterMeta(s: SlotRow): TemplateResult | typeof nothing {
-    const litres = plannedLitres(s.zone_ids_ordered, this._zonesMap(), this._mode(), s.cycle_soak.repetitions);
+    const litres = plannedLitres(
+      s.zone_ids_ordered,
+      this._zonesMap(),
+      this._mode(),
+      s.cycle_soak.repetitions,
+      s.zone_durations_min
+    );
     if (litres === null) return nothing;
     const unit = volumeUnit(this.hass);
     return html`<span class="meta"
@@ -389,6 +406,10 @@ export class ViewSchedule extends LitElement {
     return z ? String(z.name ?? zid) : zid;
   }
 
+  private _normalDuration(zid: string): number {
+    return Math.max(0, Number(this._zonesMap()?.[zid]?.duration_normal_min ?? 0));
+  }
+
   private _mode(): string {
     return String(this.installation?.mode ?? "normal");
   }
@@ -408,7 +429,11 @@ export class ViewSchedule extends LitElement {
     return out;
   }
 
-  private _estimateMin(zoneIds: string[], cs: CycleSoak): number {
+  private _estimateMin(
+    zoneIds: string[],
+    cs: CycleSoak,
+    durations: Record<string, number> = {}
+  ): number {
     const zones = this._zonesMap();
     if (!zones) return 0;
     const phases = computePhases(zoneIds, this._zonesPhaseInput(), this._maxParallel(), true);
@@ -416,7 +441,8 @@ export class ViewSchedule extends LitElement {
     const mode = this._mode();
     const minutes = programMinutes(phases, cs, (zid) => {
       const z = zones[zid];
-      return z && Boolean(z.enabled ?? true) ? durationForMode(z, mode) : 0;
+      if (!z || !Boolean(z.enabled ?? true)) return 0;
+      return mode === "schedule_specific" ? Number(durations[zid] ?? 0) : durationForMode(z, mode);
     });
     return Math.round(preStart + minutes);
   }
@@ -655,6 +681,9 @@ export class ViewSchedule extends LitElement {
           cycle_kind: kind,
           cycle_meta: p.meta as Record<string, unknown>,
           zone_ids_ordered: p.zoneIds,
+          zone_durations_min: Object.fromEntries(
+            p.zoneIds.map((zid) => [zid, this._normalDuration(zid)])
+          ),
           enabled: true,
         });
         if (!res.success) {
@@ -770,6 +799,7 @@ export class ViewSchedule extends LitElement {
       time_local: d.time_local,
       enabled: d.enabled,
       zone_ids_ordered: d.zone_ids_ordered,
+      zone_durations_min: d.zone_durations_min,
       name: d.name.trim(),
       week_parity: d.week_parity,
       guards: guardsForSave(d.guards),
@@ -895,7 +925,11 @@ export class ViewSchedule extends LitElement {
     const anyEnabled = g.members.some((m) => m.enabled);
     const expanded = this._expanded.has(g.cycle_id);
     const zoneIds = g.members[0]?.zone_ids_ordered ?? [];
-    const est = this._estimateMin(zoneIds, g.members[0]?.cycle_soak ?? cycleSoakOf(undefined));
+    const est = this._estimateMin(
+      zoneIds,
+      g.members[0]?.cycle_soak ?? cycleSoakOf(undefined),
+      g.members[0]?.zone_durations_min
+    );
     const phases = this._phaseCount(zoneIds);
     const times = [...new Set(g.members.map((m) => m.time_local))].sort();
     const next = this._nextFire(g.members);
@@ -1036,7 +1070,7 @@ export class ViewSchedule extends LitElement {
   }
 
   private _renderCustomRow(s: SlotRow): TemplateResult {
-    const est = this._estimateMin(s.zone_ids_ordered, s.cycle_soak);
+    const est = this._estimateMin(s.zone_ids_ordered, s.cycle_soak, s.zone_durations_min);
     const phases = this._phaseCount(s.zone_ids_ordered);
     const accent = s.enabled ? "" : "inactive";
     const expanded = this._expanded.has(s.slot_id);
@@ -1307,6 +1341,21 @@ export class ViewSchedule extends LitElement {
                   : nothing}
                 <li>
                   <span>${idx + 1}. ${this._zoneName(zid)}</span>
+                  <label class="field-row" style="max-width:150px">
+                    <input
+                      type="number"
+                      min="0"
+                      max="240"
+                      .value=${String(draft.zone_durations_min[zid] ?? this._normalDuration(zid))}
+                      @input=${(e: Event) => {
+                        draft.zone_durations_min[zid] = Math.max(
+                          0,
+                          Math.min(240, Number((e.target as HTMLInputElement).value) || 0)
+                        );
+                        this.requestUpdate();
+                      }}
+                    /> min
+                  </label>
                   <span class="zone-actions">
                     <button type="button" class="btn-outline" @click=${() => {
                       if (idx > 0) {
@@ -1324,6 +1373,7 @@ export class ViewSchedule extends LitElement {
                     }}>${t(this.hass, "config_panel.schedule_down")}</button>
                     <button type="button" class="btn-outline" @click=${() => {
                       draft.zone_ids_ordered = draft.zone_ids_ordered.filter((x) => x !== zid);
+                      delete draft.zone_durations_min[zid];
                       this.requestUpdate();
                     }}>${t(this.hass, "config_panel.schedule_remove")}</button>
                   </span>
@@ -1343,6 +1393,7 @@ export class ViewSchedule extends LitElement {
               <button type="button" class="btn-outline" ?disabled=${!this._addZonePick} @click=${() => {
                 if (this._addZonePick && !draft.zone_ids_ordered.includes(this._addZonePick)) {
                   draft.zone_ids_ordered = [...draft.zone_ids_ordered, this._addZonePick];
+                  draft.zone_durations_min[this._addZonePick] = this._normalDuration(this._addZonePick);
                   this._addZonePick = "";
                   this.requestUpdate();
                 }

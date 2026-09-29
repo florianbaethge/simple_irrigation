@@ -23,7 +23,8 @@
       "options": {
         "eco": "Eco",
         "normal": "Normal",
-        "extra": "Extra"
+        "extra": "Extra",
+        "schedule_specific": "Zeitplanspezifisch"
       }
     }
   },
@@ -34,7 +35,8 @@
         "state": {
           "eco": "Eco",
           "normal": "Normal",
-          "extra": "Extra"
+          "extra": "Extra",
+          "schedule_specific": "Zeitplanspezifisch"
         }
       }
     },
@@ -283,6 +285,8 @@
     "entry_picker_empty": "Noch keine Installation. Fügen Sie die Integration unter Einstellungen → Geräte & Dienste → Integration hinzufügen hinzu und suchen Sie nach Simple Irrigation.",
     "entry_picker_howto": "Weiteren Plan hinzufügen (z. B. Frühling / Sommer / anderer Garten): Einstellungen → Geräte & Dienste → Integration hinzufügen → Simple Irrigation. Jeder Plan erscheint in der Liste oben.",
     "errors_request_failed": "Anfrage fehlgeschlagen",
+    "errors_invalid_zone_duration": "Jede Zeitplanlaufzeit muss zwischen 0 und 240 Minuten liegen.",
+    "errors_schedule_durations_incomplete": "Lege für jede Zone in jedem aktivierten Zeitplan eine Laufzeit fest, bevor du den zeitplanspezifischen Modus auswählst.",
     "errors_not_running": "Aktuell läuft nichts.",
     "errors_busy": "Bewässerung läuft bereits.",
     "entity_placeholder_example": "Nach Name oder Entity-ID suchen",
@@ -344,6 +348,8 @@
     "general_mode_eco": "Eco",
     "general_mode_normal": "Normal",
     "general_mode_extra": "Extra",
+    "general_mode_schedule_specific": "Zeitplanspezifisch",
+    "general_mode_schedule_specific_hint": "Geplante Läufe verwenden die je Zone im Zeitplan gespeicherte Laufzeit. Zone jetzt starten verwendet die normale Laufzeit.",
     "general_max_parallel": "Max. parallele Zonen",
     "general_max_parallel_desc": "Wie viele Zonen gleichzeitig laufen dürfen. Exklusive Zonen laufen immer allein.",
     "general_max_parallel_field": "Max. parallele Zonen",

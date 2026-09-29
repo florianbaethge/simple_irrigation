@@ -11,11 +11,13 @@ from .const import (
     GUARD_OPERATORS,
     MAX_GUARDS,
     MAX_SCRIPT_TIMEOUT_SEC,
+    MAX_ZONE_DURATION_MIN,
+    MODE_SCHEDULE_SPECIFIC,
     MODES,
     OUTPUT_ENTITY_DOMAINS,
     SCRIPT_DOMAIN,
 )
-from .models import Guard
+from .models import Guard, Installation, ScheduleSlot
 
 DURATION_UNITS = {"minutes", "seconds"}
 SERVICE_REF_PATTERN = re.compile(r"^[a-z0-9_]+\.[a-z0-9_]+$")
@@ -289,6 +291,30 @@ def validate_mode(mode: str) -> str | None:
     """Return error key or None."""
     if mode not in MODES:
         return "invalid_mode"
+    return None
+
+
+def schedule_specific_incomplete_slots(inst: Installation) -> list[ScheduleSlot]:
+    """Enabled slots missing an explicit valid runtime for any selected zone."""
+    return [
+        slot
+        for slot in inst.schedule_slots
+        if slot.enabled
+        and any(
+            zid not in slot.zone_durations_min
+            or not 0 <= slot.zone_durations_min[zid] <= MAX_ZONE_DURATION_MIN
+            for zid in slot.zone_ids_ordered
+        )
+    ]
+
+
+def validate_mode_for_installation(inst: Installation, mode: str) -> str | None:
+    """Validate a mode transition, including its schedule data requirements."""
+    error = validate_mode(mode)
+    if error:
+        return error
+    if mode == MODE_SCHEDULE_SPECIFIC and schedule_specific_incomplete_slots(inst):
+        return "schedule_durations_incomplete"
     return None
 
 

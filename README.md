@@ -13,7 +13,7 @@
 **Irrigation scheduler for [Home Assistant](https://www.home-assistant.io/) with a built-in dashboard panel — zones, watering cycles & modes.**
 
 - **Watering cycles, not raw cron** — a guided wizard turns *“every 2 days, evenings”* into a working schedule; the panel previews the **next 14 days** live before you save.
-- **Three watering modes** — Eco / Normal / Extra, switchable by hand or from automations (weather, tank level, season …).
+- **Four watering modes** — Eco / Normal / Extra plus Schedule-specific, switchable by hand or from automations (weather, tank level, season …).
 - **Smart runs** — ordered zones grouped into **phases**, configurable parallelism, and **exclusive** zones that always run alone.
 - **Cycle & Soak** — a slot can water in several short passes with rests in between, so the water soaks in instead of running off. Every output is closed while it rests.
 - **Water use, honestly** — litres per run from a meter on the line or a flow rate you measured once, marked as measured or estimated, handed to Home Assistant's statistics and Energy dashboard through plain water sensors.
@@ -103,7 +103,8 @@ You can add **multiple** config entries for separate gardens or seasonal plans (
 ### Zones
 
 - **Outputs:** any mix of `switch`, `input_boolean`, `group` and `valve` entities. Most use `turn_on` / `turn_off`; valves use `open_valve` / `close_valve`. A zone can drive **several outputs** at once.
-- **Runtimes:** three values per zone — Eco / Normal / Extra. The installation’s active **mode** picks which one is used.
+- **Runtimes:** three reusable values per zone — Eco / Normal / Extra. The installation’s active **mode** picks which one is used. **Schedule-specific** instead uses the runtime saved beside each zone in that schedule, so the same zone can run for different lengths in different cycles. Every enabled schedule must have all its runtimes filled before this mode can be selected.
+- **Manual runs in Schedule-specific mode:** *Run zone now* has no schedule context, so it uses that zone's **Normal** runtime. *Run this slot now* uses the selected slot's schedule-specific runtimes.
 - **Exclusive:** the zone never runs in parallel with others (high-flow lines, shared supply, drip circuits).
 - **Issues filter:** zones whose output entity is missing or `unavailable` are flagged so you can spot broken wiring at a glance.
 
@@ -226,7 +227,7 @@ Manual runs (*Run now*, *Run zone now*) always start, regardless of conditions.
 
 ### Modes, pre-start, pause
 
-- **Watering mode (Eco / Normal / Extra):** chosen on Overview or Settings, or via `simple_irrigation.set_mode` for weather/tank automations.
+- **Watering mode (Eco / Normal / Extra / Schedule-specific):** chosen on Overview or Settings, or via `simple_irrigation.set_mode` for weather/tank automations. Switching to Schedule-specific is rejected until every enabled schedule has a runtime for every selected zone.
 - **Max parallel zones:** caps concurrency; exclusive zones still run alone.
 - **Pre-start / post-run scripts:** optional scripts run **before** the pre-start outputs and **after** the last one goes off — see below.
 - **Pre-start outputs & delay:** outputs turned on before any zone (pump / master valve), with an editable delay to build pressure — both configured on **Settings**.
@@ -320,7 +321,7 @@ type: custom:simple-irrigation-card
 | `entry_id` | auto | Which installation. Optional — a single installation is picked automatically, and with several the one marked as default wins. |
 | `view` | `status` | `status` · `zones` · `schedule` · `week` · `run` |
 | `compact` | `false` | One tile-style row instead of the full card. In the `zones` view, a compact zone list. |
-| `show_mode` | `true` | Eco / Normal / Extra selector on the status view |
+| `show_mode` | `true` | Eco / Normal / Extra / Schedule-specific selector on the status view |
 | `manual_start` | `off` | `off` · `zones` · `slot` · `both` — adds a collapsible **Run now** section below the card |
 | `manual_duration` | `false` | Offer a duration override in the zones picker |
 | `actions` | `run_next, skip_today, pause_48h` | Any of `run_next` · `stop` · `skip_today` · `pause_48h` · `pause_until`. The first one is the primary button; `stop` only appears while something is running. |

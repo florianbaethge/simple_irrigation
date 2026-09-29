@@ -23,7 +23,8 @@
       "options": {
         "eco": "Eco",
         "normal": "Normaal",
-        "extra": "Extra"
+        "extra": "Extra",
+        "schedule_specific": "Per schema"
       }
     }
   },
@@ -34,7 +35,8 @@
         "state": {
           "eco": "Eco",
           "normal": "Normaal",
-          "extra": "Extra"
+          "extra": "Extra",
+          "schedule_specific": "Per schema"
         }
       }
     },
@@ -283,6 +285,8 @@
     "entry_picker_empty": "Nog geen installaties. Voeg de integratie toe onder Instellingen → Apparaten & services → Integratie toevoegen en zoek naar Simple Irrigation.",
     "entry_picker_howto": "Voeg nog een plan toe (bijv. lente / zomer / andere tuin): gebruik Instellingen → Apparaten & services → Integratie toevoegen → Simple Irrigation. Elk plan verschijnt in de lijst hierboven.",
     "errors_request_failed": "Aanvraag mislukt",
+    "errors_invalid_zone_duration": "Elke schemaduur moet tussen 0 en 240 minuten liggen.",
+    "errors_schedule_durations_incomplete": "Voeg voor elke zone in elk ingeschakeld schema een duur toe voordat je Per schema kiest.",
     "errors_not_running": "Er wordt momenteel niets uitgevoerd.",
     "errors_busy": "Irrigatie wordt al uitgevoerd.",
     "entity_placeholder_example": "Zoek op naam of entity ID",
@@ -344,6 +348,8 @@
     "general_mode_eco": "Eco",
     "general_mode_normal": "Normaal",
     "general_mode_extra": "Extra",
+    "general_mode_schedule_specific": "Per schema",
+    "general_mode_schedule_specific_hint": "Geplande runs gebruiken de per zone opgeslagen duur van dat schema. Zone nu starten gebruikt de normale duur.",
     "general_max_parallel": "Max parallelle zones",
     "general_max_parallel_desc": "Hoeveel zones tegelijkertijd mogen bewateren. Exclusieve zones worden altijd alleen uitgevoerd.",
     "general_max_parallel_field": "Max parallelle zones",

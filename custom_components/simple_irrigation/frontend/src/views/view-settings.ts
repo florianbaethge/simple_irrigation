@@ -446,7 +446,7 @@ export class ViewSettings extends LitElement {
                   this._markDirty();
                 }}
               >
-                ${["eco", "normal", "extra"].map(
+                ${["eco", "normal", "extra", "schedule_specific"].map(
                   (m) =>
                     html`<option value=${m} ?selected=${this._mode === m}>
                       ${t(this.hass, `config_panel.general_mode_${m}`)}
@@ -454,6 +454,12 @@ export class ViewSettings extends LitElement {
                 )}
               </select>
             </div>
+            ${this._mode === "schedule_specific"
+              ? html`<p class="hint">
+                  <ha-icon icon="mdi:information-outline"></ha-icon>
+                  ${t(this.hass, "config_panel.general_mode_schedule_specific_hint")}
+                </p>`
+              : nothing}
           </div>
           <div class="field-block">
             <span class="field-title">${t(this.hass, "config_panel.general_max_parallel")}</span>

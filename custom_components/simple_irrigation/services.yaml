@@ -75,6 +75,7 @@ set_mode:
             - eco
             - normal
             - extra
+            - schedule_specific
     config_entry_id:
       required: false
       selector:

@@ -42,7 +42,7 @@ export type RunState =
   | "paused"
   | "error";
 
-export type Mode = "eco" | "normal" | "extra";
+export type Mode = "eco" | "normal" | "extra" | "schedule_specific";
 
 export interface ZoneIssue {
   reason: "missing" | "unavailable" | "no_output";

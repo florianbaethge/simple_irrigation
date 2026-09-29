@@ -39,6 +39,7 @@ export const upsertCycle = (
     cycle_kind: string;
     cycle_meta: Record<string, unknown>;
     zone_ids_ordered: string[];
+    zone_durations_min: Record<string, number>;
     enabled: boolean;
     guards?: Guard[];
     ignore_global_guards?: boolean;

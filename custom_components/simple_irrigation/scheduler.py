@@ -11,10 +11,11 @@ from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
 from homeassistant.helpers.event import async_track_point_in_time
 from homeassistant.util import dt as dt_util
 
+from .const import MODE_SCHEDULE_SPECIFIC
 from .grouping import compute_phases
 from .guards import guards_allow_run
 from .models import Installation, ScheduleSlot, Zone
-from .program import RunStep, expand_program
+from .program import PlannedZone, RunStep, expand_program
 from .time_util import next_slot_fire_local_any
 
 if TYPE_CHECKING:
@@ -77,9 +78,19 @@ def program_for_slot(
     slot: ScheduleSlot,
     zones: dict[str, Zone],
     max_parallel: int,
+    mode: str = "normal",
 ) -> list[RunStep]:
     """The slot's phases as run steps, repeated and rested per Cycle & Soak."""
-    return expand_program(phases_for_slot(slot, zones, max_parallel), slot)
+    phases = phases_for_slot(slot, zones, max_parallel)
+    if mode == MODE_SCHEDULE_SPECIFIC:
+        # Embed the duration in each occurrence. A plain zone-id keyed override
+        # cannot represent two simultaneously due slots that use the same zone
+        # with different runtimes.
+        phases = [
+            [PlannedZone(zid, slot.zone_durations_min[zid]) for zid in phase]
+            for phase in phases
+        ]
+    return expand_program(phases, slot)
 
 
 class IrrigationScheduler:
@@ -218,7 +229,7 @@ class IrrigationScheduler:
             merged_steps: list[RunStep] = []
             for slot in due_slots:
                 merged_steps.extend(
-                    program_for_slot(slot, inst.zones, inst.max_parallel_zones),
+                    program_for_slot(slot, inst.zones, inst.max_parallel_zones, inst.mode),
                 )
 
             if not merged_steps:

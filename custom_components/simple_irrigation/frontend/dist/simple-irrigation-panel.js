@@ -1578,7 +1578,7 @@ function durationForMode(zone, mode) {
  * flow rates (`flow_rate_lpm`) times minutes times Cycle & Soak repetitions.
  * Null when no zone has a rate -- a meter only tells afterwards.
  */
-function plannedLitres(zoneIds, zones, mode, repetitions = 1) {
+function plannedLitres(zoneIds, zones, mode, repetitions = 1, scheduleDurations = {}) {
     if (!zones)
         return null;
     let total = 0;
@@ -1591,7 +1591,10 @@ function plannedLitres(zoneIds, zones, mode, repetitions = 1) {
         if (!Number.isFinite(rate) || rate <= 0)
             continue;
         known = true;
-        total += rate * durationForMode(z, mode) * Math.max(1, repetitions);
+        const duration = mode === "schedule_specific"
+            ? Math.max(0, Number(scheduleDurations[zid] ?? 0))
+            : durationForMode(z, mode);
+        total += rate * duration * Math.max(1, repetitions);
     }
     return known ? total : null;
 }
@@ -1657,6 +1660,12 @@ function buildTimetableEntries(installation) {
         return entries;
     }
     for (const slot of slots) {
+        const slotDurations = slot.zone_durations_min && typeof slot.zone_durations_min === "object"
+            ? slot.zone_durations_min
+            : {};
+        const scheduledDuration = (zid, zone) => mode === "schedule_specific"
+            ? Math.max(0, Number(slotDurations[zid] ?? 0))
+            : durationForMode(zone, mode);
         const slotId = String(slot.slot_id ?? "");
         const slotEnabled = Boolean(slot.enabled ?? true);
         const rawWeekdays = Array.isArray(slot.weekdays)
@@ -1692,7 +1701,7 @@ function buildTimetableEntries(installation) {
                     if (!z)
                         continue;
                     if (Boolean(z.enabled ?? true)) {
-                        const d = durationForMode(z, mode);
+                        const d = scheduledDuration(zid, z);
                         phaseLenMin = Math.max(phaseLenMin, d);
                     }
                 }
@@ -1701,7 +1710,7 @@ function buildTimetableEntries(installation) {
                     if (!z)
                         continue;
                     const zoneEnabled = Boolean(z.enabled ?? true);
-                    const dur = durationForMode(z, mode);
+                    const dur = scheduledDuration(zid, z);
                     const startMin = phaseStart;
                     const endMin = phaseStart + dur;
                     entries.push({
@@ -2023,7 +2032,7 @@ function firstRunDate(slots, start, days = 28) {
     return null;
 }
 
-const MODES = ["eco", "normal", "extra"];
+const MODES = ["eco", "normal", "extra", "schedule_specific"];
 class ViewOverview extends i$2 {
     constructor() {
         super(...arguments);
@@ -2307,7 +2316,12 @@ class ViewOverview extends i$2 {
         const preStart = Math.max(0, Number(this._inst.pre_start_delay_sec ?? 10)) / 60;
         const minutes = programMinutes(phases, cycleSoakOf(slot), (zid) => {
             const z = zones[zid];
-            return z && Boolean(z.enabled ?? true) ? durationForMode(z, mode) : 0;
+            if (!z || !Boolean(z.enabled ?? true))
+                return 0;
+            const durations = (slot.zone_durations_min ?? {});
+            return mode === "schedule_specific"
+                ? Math.max(0, Number(durations[zid] ?? 0))
+                : durationForMode(z, mode);
         });
         return Math.round(preStart + minutes);
     }
@@ -2378,7 +2392,7 @@ class ViewOverview extends i$2 {
                     kind: this._kindLabel(slot),
                     zoneNames: zoneIds.map((id) => this._zoneName(id)),
                     est: this._slotEstimateMin(slot, mode),
-                    waterL: plannedLitres(zoneIds, this._inst.zones, mode, cycleSoakOf(slot).repetitions),
+                    waterL: plannedLitres(zoneIds, this._inst.zones, mode, cycleSoakOf(slot).repetitions, (slot.zone_durations_min ?? {})),
                     slotId: String(slot.slot_id ?? ""),
                 });
             }
@@ -3478,6 +3492,7 @@ class CycleWizard extends i$2 {
         this._anchor = 0;
         this._weekDays = [0, 3];
         this._zoneIds = [];
+        this._zoneDurations = {};
         this._enabled = true;
         this._label = "";
         this._guards = [];
@@ -3627,6 +3642,7 @@ class CycleWizard extends i$2 {
             this._optionId = opts?.optionId ?? "daily";
             this._cycleId = opts?.cycleId ?? null;
             this._zoneIds = this._defaultZoneIds();
+            this._zoneDurations = Object.fromEntries(this._zoneIds.map((id) => [id, this._normalDuration(id)]));
             this._enabled = true;
             this._label = "";
             this._guards = [];
@@ -3662,6 +3678,10 @@ class CycleWizard extends i$2 {
         this._zoneIds = Array.isArray(first.zone_ids_ordered)
             ? [...first.zone_ids_ordered]
             : this._defaultZoneIds();
+        const savedDurations = first.zone_durations_min && typeof first.zone_durations_min === "object"
+            ? first.zone_durations_min
+            : {};
+        this._zoneDurations = Object.fromEntries(this._zoneIds.map((id) => [id, savedDurations[id] ?? this._normalDuration(id)]));
         this._enabled = Boolean(first.enabled ?? true);
         this._guards = normalizeGuards(first.guards);
         this._ignoreGlobalGuards = Boolean(first.ignore_global_guards ?? false);
@@ -3735,6 +3755,10 @@ class CycleWizard extends i$2 {
         const zones = this.installation?.zones;
         return durationForMode(zones?.[id], this._mode());
     }
+    _normalDuration(id) {
+        const zones = this.installation?.zones;
+        return Math.max(0, Number(zones?.[id]?.duration_normal_min ?? 0));
+    }
     _estimateMin() {
         const zones = this.installation?.zones;
         if (!zones)
@@ -3744,7 +3768,11 @@ class CycleWizard extends i$2 {
         const mode = this._mode();
         const minutes = programMinutes(phases, this._cycleSoak, (zid) => {
             const z = zones[zid];
-            return z && Boolean(z.enabled ?? true) ? durationForMode(z, mode) : 0;
+            if (!z || !Boolean(z.enabled ?? true))
+                return 0;
+            return mode === "schedule_specific"
+                ? Number(this._zoneDurations[zid] ?? 0)
+                : durationForMode(z, mode);
         });
         return Math.round(preStart + minutes);
     }
@@ -3817,6 +3845,7 @@ class CycleWizard extends i$2 {
                 cycle_kind: opt.kind,
                 cycle_meta: this._meta(),
                 zone_ids_ordered: this._zoneIds,
+                zone_durations_min: this._zoneDurations,
                 enabled: this._enabled,
                 guards: guardsForSave(this._guards),
                 ignore_global_guards: this._ignoreGlobalGuards,
@@ -3997,6 +4026,7 @@ class CycleWizard extends i$2 {
           style="margin-left:auto;margin-top:0;padding:4px 10px;font-size:0.8rem"
           @click=${() => {
             this._zoneIds = allIds.filter((id) => Boolean(zones?.[id]?.enabled ?? true));
+            this._zoneDurations = Object.fromEntries(this._zoneIds.map((id) => [id, this._zoneDurations[id] ?? this._normalDuration(id)]));
             this.requestUpdate();
         }}
         >
@@ -4018,6 +4048,14 @@ class CycleWizard extends i$2 {
                 this._zoneIds = on
                     ? [...this._zoneIds, id]
                     : this._zoneIds.filter((x) => x !== id);
+                if (on && this._zoneDurations[id] === undefined) {
+                    this._zoneDurations = { ...this._zoneDurations, [id]: this._normalDuration(id) };
+                }
+                else if (!on) {
+                    const next = { ...this._zoneDurations };
+                    delete next[id];
+                    this._zoneDurations = next;
+                }
                 this.requestUpdate();
             }}
             />
@@ -4038,6 +4076,20 @@ class CycleWizard extends i$2 {
             </div>
             ${checked
                 ? b `
+                  <label class="field-row" style="max-width:130px">
+                    <input
+                      type="number"
+                      min="0"
+                      max="240"
+                      .value=${String(this._zoneDurations[id] ?? this._normalDuration(id))}
+                      @input=${(e) => {
+                    this._zoneDurations = {
+                        ...this._zoneDurations,
+                        [id]: Math.max(0, Math.min(240, Number(e.target.value) || 0)),
+                    };
+                }}
+                    /> min
+                  </label>
                   <button
                     type="button"
                     class="iconbtn"
@@ -4238,6 +4290,9 @@ __decorate([
 ], CycleWizard.prototype, "_zoneIds", void 0);
 __decorate([
     r()
+], CycleWizard.prototype, "_zoneDurations", void 0);
+__decorate([
+    r()
 ], CycleWizard.prototype, "_enabled", void 0);
 __decorate([
     r()
@@ -4412,6 +4467,12 @@ class ViewSchedule extends i$2 {
                 time_local: String(o.time_local ?? "06:00"),
                 enabled: Boolean(o.enabled ?? true),
                 zone_ids_ordered: Array.isArray(o.zone_ids_ordered) ? [...o.zone_ids_ordered] : [],
+                zone_durations_min: Object.fromEntries((Array.isArray(o.zone_ids_ordered) ? o.zone_ids_ordered : []).map((zid) => {
+                    const saved = o.zone_durations_min && typeof o.zone_durations_min === "object"
+                        ? o.zone_durations_min[zid]
+                        : undefined;
+                    return [zid, saved ?? this._normalDuration(zid)];
+                })),
                 name: String(o.name ?? "").trim(),
                 week_parity: o.week_parity === "odd" || o.week_parity === "even" ? o.week_parity : "every",
                 guards: normalizeGuards(o.guards),
@@ -4468,6 +4529,7 @@ class ViewSchedule extends i$2 {
             ...s,
             weekdays: [...s.weekdays],
             zone_ids_ordered: [...s.zone_ids_ordered],
+            zone_durations_min: { ...s.zone_durations_min },
             guards: s.guards.map((g) => ({ ...g })),
             pre_start_script: { ...s.pre_start_script },
             post_run_script: { ...s.post_run_script },
@@ -4492,7 +4554,7 @@ class ViewSchedule extends i$2 {
     }
     /** "~120 L" for one run of the slot, from the zones' flow rates. */
     _renderWaterMeta(s) {
-        const litres = plannedLitres(s.zone_ids_ordered, this._zonesMap(), this._mode(), s.cycle_soak.repetitions);
+        const litres = plannedLitres(s.zone_ids_ordered, this._zonesMap(), this._mode(), s.cycle_soak.repetitions, s.zone_durations_min);
         if (litres === null)
             return A;
         const unit = volumeUnit(this.hass);
@@ -4545,6 +4607,9 @@ class ViewSchedule extends i$2 {
         const z = this._zonesMap()?.[zid];
         return z ? String(z.name ?? zid) : zid;
     }
+    _normalDuration(zid) {
+        return Math.max(0, Number(this._zonesMap()?.[zid]?.duration_normal_min ?? 0));
+    }
     _mode() {
         return String(this.installation?.mode ?? "normal");
     }
@@ -4562,7 +4627,7 @@ class ViewSchedule extends i$2 {
         }
         return out;
     }
-    _estimateMin(zoneIds, cs) {
+    _estimateMin(zoneIds, cs, durations = {}) {
         const zones = this._zonesMap();
         if (!zones)
             return 0;
@@ -4571,7 +4636,9 @@ class ViewSchedule extends i$2 {
         const mode = this._mode();
         const minutes = programMinutes(phases, cs, (zid) => {
             const z = zones[zid];
-            return z && Boolean(z.enabled ?? true) ? durationForMode(z, mode) : 0;
+            if (!z || !Boolean(z.enabled ?? true))
+                return 0;
+            return mode === "schedule_specific" ? Number(durations[zid] ?? 0) : durationForMode(z, mode);
         });
         return Math.round(preStart + minutes);
     }
@@ -4813,6 +4880,7 @@ class ViewSchedule extends i$2 {
                     cycle_kind: kind,
                     cycle_meta: p.meta,
                     zone_ids_ordered: p.zoneIds,
+                    zone_durations_min: Object.fromEntries(p.zoneIds.map((zid) => [zid, this._normalDuration(zid)])),
                     enabled: true,
                 });
                 if (!res.success) {
@@ -4921,6 +4989,7 @@ class ViewSchedule extends i$2 {
             time_local: d.time_local,
             enabled: d.enabled,
             zone_ids_ordered: d.zone_ids_ordered,
+            zone_durations_min: d.zone_durations_min,
             name: d.name.trim(),
             week_parity: d.week_parity,
             guards: guardsForSave(d.guards),
@@ -5044,7 +5113,7 @@ class ViewSchedule extends i$2 {
         const anyEnabled = g.members.some((m) => m.enabled);
         const expanded = this._expanded.has(g.cycle_id);
         const zoneIds = g.members[0]?.zone_ids_ordered ?? [];
-        const est = this._estimateMin(zoneIds, g.members[0]?.cycle_soak ?? cycleSoakOf(undefined));
+        const est = this._estimateMin(zoneIds, g.members[0]?.cycle_soak ?? cycleSoakOf(undefined), g.members[0]?.zone_durations_min);
         const phases = this._phaseCount(zoneIds);
         const times = [...new Set(g.members.map((m) => m.time_local))].sort();
         const next = this._nextFire(g.members);
@@ -5157,7 +5226,7 @@ class ViewSchedule extends i$2 {
     `;
     }
     _renderCustomRow(s) {
-        const est = this._estimateMin(s.zone_ids_ordered, s.cycle_soak);
+        const est = this._estimateMin(s.zone_ids_ordered, s.cycle_soak, s.zone_durations_min);
         const phases = this._phaseCount(s.zone_ids_ordered);
         const accent = s.enabled ? "" : "inactive";
         const expanded = this._expanded.has(s.slot_id);
@@ -5385,6 +5454,18 @@ class ViewSchedule extends i$2 {
                     : A}
                 <li>
                   <span>${idx + 1}. ${this._zoneName(zid)}</span>
+                  <label class="field-row" style="max-width:150px">
+                    <input
+                      type="number"
+                      min="0"
+                      max="240"
+                      .value=${String(draft.zone_durations_min[zid] ?? this._normalDuration(zid))}
+                      @input=${(e) => {
+                    draft.zone_durations_min[zid] = Math.max(0, Math.min(240, Number(e.target.value) || 0));
+                    this.requestUpdate();
+                }}
+                    /> min
+                  </label>
                   <span class="zone-actions">
                     <button type="button" class="btn-outline" @click=${() => {
                     if (idx > 0) {
@@ -5402,6 +5483,7 @@ class ViewSchedule extends i$2 {
                 }}>${t(this.hass, "config_panel.schedule_down")}</button>
                     <button type="button" class="btn-outline" @click=${() => {
                     draft.zone_ids_ordered = draft.zone_ids_ordered.filter((x) => x !== zid);
+                    delete draft.zone_durations_min[zid];
                     this.requestUpdate();
                 }}>${t(this.hass, "config_panel.schedule_remove")}</button>
                   </span>
@@ -5421,6 +5503,7 @@ class ViewSchedule extends i$2 {
               <button type="button" class="btn-outline" ?disabled=${!this._addZonePick} @click=${() => {
                 if (this._addZonePick && !draft.zone_ids_ordered.includes(this._addZonePick)) {
                     draft.zone_ids_ordered = [...draft.zone_ids_ordered, this._addZonePick];
+                    draft.zone_durations_min[this._addZonePick] = this._normalDuration(this._addZonePick);
                     this._addZonePick = "";
                     this.requestUpdate();
                 }
@@ -5979,11 +6062,17 @@ class ViewSettings extends i$2 {
             this._markDirty();
         }}
               >
-                ${["eco", "normal", "extra"].map((m) => b `<option value=${m} ?selected=${this._mode === m}>
+                ${["eco", "normal", "extra", "schedule_specific"].map((m) => b `<option value=${m} ?selected=${this._mode === m}>
                       ${t(this.hass, `config_panel.general_mode_${m}`)}
                     </option>`)}
               </select>
             </div>
+            ${this._mode === "schedule_specific"
+            ? b `<p class="hint">
+                  <ha-icon icon="mdi:information-outline"></ha-icon>
+                  ${t(this.hass, "config_panel.general_mode_schedule_specific_hint")}
+                </p>`
+            : A}
           </div>
           <div class="field-block">
             <span class="field-title">${t(this.hass, "config_panel.general_max_parallel")}</span>
@@ -6611,11 +6700,13 @@ class ViewTimetable extends i$2 {
     _entryTooltip(e) {
         const start = formatSlotTimeForProfile(this.hass, minutesToTimeLocal(e.startMin));
         const end = formatSlotTimeForProfile(this.hass, minutesToTimeLocal(e.endMin));
-        const modeKey = e.mode === "eco"
-            ? "config_panel.timetable_mode_eco"
-            : e.mode === "extra"
-                ? "config_panel.timetable_mode_extra"
-                : "config_panel.timetable_mode_normal";
+        const modeKey = e.mode === "schedule_specific"
+            ? "config_panel.general_mode_schedule_specific"
+            : e.mode === "eco"
+                ? "config_panel.timetable_mode_eco"
+                : e.mode === "extra"
+                    ? "config_panel.timetable_mode_extra"
+                    : "config_panel.timetable_mode_normal";
         const modeLabel = t(this.hass, modeKey);
         const base = t(this.hass, "config_panel.timetable_bar_tooltip", {
             start,

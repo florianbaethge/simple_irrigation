@@ -23,7 +23,8 @@
       "options": {
         "eco": "Eco",
         "normal": "Normal",
-        "extra": "Extra"
+        "extra": "Extra",
+        "schedule_specific": "Selon le programme"
       }
     }
   },
@@ -34,7 +35,8 @@
         "state": {
           "eco": "Eco",
           "normal": "Normal",
-          "extra": "Extra"
+          "extra": "Extra",
+          "schedule_specific": "Selon le programme"
         }
       }
     },
@@ -283,6 +285,8 @@
     "entry_picker_empty": "Aucune installation pour l’instant. Ajoutez l’intégration via Paramètres → Appareils et services → Ajouter une intégration, puis recherchez Simple Irrigation.",
     "entry_picker_howto": "Ajouter un autre plan (par ex. printemps / été / un autre jardin) : utilisez Paramètres → Appareils et services → Ajouter une intégration → Simple Irrigation. Chaque plan apparaît dans la liste ci-dessus.",
     "errors_request_failed": "Échec de la requête",
+    "errors_invalid_zone_duration": "Chaque durée planifiée doit être comprise entre 0 et 240 minutes.",
+    "errors_schedule_durations_incomplete": "Ajoutez une durée pour chaque zone de chaque programme activé avant de sélectionner le mode selon le programme.",
     "errors_not_running": "Rien n’est en cours d’exécution pour le moment.",
     "errors_busy": "L’irrigation est déjà en cours.",
     "entity_placeholder_example": "Rechercher par nom ou ID d’entité",
@@ -344,6 +348,8 @@
     "general_mode_eco": "Eco",
     "general_mode_normal": "Normal",
     "general_mode_extra": "Extra",
+    "general_mode_schedule_specific": "Selon le programme",
+    "general_mode_schedule_specific_hint": "Les exécutions planifiées utilisent la durée enregistrée pour chaque zone. Exécuter la zone maintenant utilise la durée normale.",
     "general_max_parallel": "Zones parallèles max",
     "general_max_parallel_desc": "Nombre de zones pouvant arroser en même temps. Les zones exclusives s’exécutent toujours seules.",
     "general_max_parallel_field": "Zones parallèles max",

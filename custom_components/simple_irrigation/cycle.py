@@ -16,6 +16,7 @@ from datetime import date, timedelta
 from typing import Any
 
 from .const import WEEK_PARITY_EVEN, WEEK_PARITY_EVERY, WEEK_PARITY_ODD
+from .time_util import parse_hh_mm
 
 CYCLE_KINDS = (
     "daily",
@@ -26,6 +27,26 @@ CYCLE_KINDS = (
     "biweekly",
     "custom",
 )
+
+# A generous practical limit for grow-in programs while preventing a malformed
+# API request from multiplying a cadence into an unbounded number of slots.
+MAX_CYCLE_START_TIMES = 8
+
+
+def validate_cycle_start_times(raw: Any) -> tuple[list[str], str | None]:
+    """Normalize API start times or return a stable panel error code."""
+    values = list(raw) if isinstance(raw, (list, tuple)) else []
+    if len(values) > MAX_CYCLE_START_TIMES:
+        return [], "too_many_start_times"
+    normalized: list[str] = []
+    for value in values:
+        time_local = str(value).strip()
+        if parse_hh_mm(time_local) is None:
+            return [], "invalid_time"
+        if time_local in normalized:
+            return [], "duplicate_start_time"
+        normalized.append(time_local)
+    return normalized, None
 
 
 def round_half_up(x: float) -> int:
@@ -139,6 +160,17 @@ def _every_n_days_slots(n: int, anchor: int, time_local: str, p0: str) -> list[d
     return slots
 
 
+def _at_each_time(
+    slots: list[dict[str, Any]], times: list[str]
+) -> list[dict[str, Any]]:
+    """Expand cadence slots so each one runs at every requested start time."""
+    return [
+        {**slot, "time_local": time_local}
+        for slot in slots
+        for time_local in times
+    ]
+
+
 def generate_cycle_slots(
     kind: str,
     meta: dict[str, Any] | None,
@@ -156,9 +188,14 @@ def generate_cycle_slots(
     all_days = [0, 1, 2, 3, 4, 5, 6]
 
     if kind == "daily":
-        return [{"weekdays": all_days, "time_local": times[0], "week_parity": WEEK_PARITY_EVERY}]
+        return _at_each_time(
+            [{"weekdays": all_days, "time_local": times[0], "week_parity": WEEK_PARITY_EVERY}],
+            times,
+        )
 
     if kind == "twice_daily":
+        # Kept for stores created by older releases. The current wizard uses the
+        # generic multi-time daily cycle instead of a separate cadence kind.
         t2 = times[1] if len(times) > 1 else times[0]
         return [
             {"weekdays": all_days, "time_local": times[0], "week_parity": WEEK_PARITY_EVERY},
@@ -166,21 +203,36 @@ def generate_cycle_slots(
         ]
 
     if kind == "weekly":
-        return [{"weekdays": [anchor], "time_local": times[0], "week_parity": WEEK_PARITY_EVERY}]
+        return _at_each_time(
+            [{"weekdays": [anchor], "time_local": times[0], "week_parity": WEEK_PARITY_EVERY}],
+            times,
+        )
 
     if kind == "biweekly":
-        return [{"weekdays": [anchor], "time_local": times[0], "week_parity": anchor_parity}]
+        return _at_each_time(
+            [{"weekdays": [anchor], "time_local": times[0], "week_parity": anchor_parity}],
+            times,
+        )
 
     if kind == "n_per_week":
         days = _week_days(meta) or [anchor]
-        return [{"weekdays": days, "time_local": times[0], "week_parity": WEEK_PARITY_EVERY}]
+        return _at_each_time(
+            [{"weekdays": days, "time_local": times[0], "week_parity": WEEK_PARITY_EVERY}],
+            times,
+        )
 
     if kind == "every_n_days":
-        return _every_n_days_slots(_n(meta), anchor, times[0], anchor_parity)
+        return _at_each_time(
+            _every_n_days_slots(_n(meta), anchor, times[0], anchor_parity),
+            times,
+        )
 
     # custom (or unknown): a single slot from the chosen weekdays.
     days = _week_days(meta) or [anchor]
-    return [{"weekdays": days, "time_local": times[0], "week_parity": WEEK_PARITY_EVERY}]
+    return _at_each_time(
+        [{"weekdays": days, "time_local": times[0], "week_parity": WEEK_PARITY_EVERY}],
+        times,
+    )
 
 
 def cycle_is_exact(kind: str, meta: dict[str, Any] | None) -> bool:

@@ -31,6 +31,7 @@ import {
   previewGaps,
   previewStrip,
   cycleIsExact,
+  MAX_CYCLE_START_TIMES,
   type CycleKind,
   type CycleMeta,
   type CycleSlotSpec,
@@ -54,17 +55,16 @@ interface KindOption {
   kind: CycleKind;
   n?: number;
   multiAnchor: boolean;
-  twoTimes: boolean;
 }
 
 const KIND_OPTIONS: KindOption[] = [
-  { id: "daily", kind: "daily", multiAnchor: false, twoTimes: false },
-  { id: "every_2_days", kind: "every_n_days", n: 2, multiAnchor: false, twoTimes: false },
-  { id: "every_3_days", kind: "every_n_days", n: 3, multiAnchor: false, twoTimes: false },
-  { id: "n_per_week", kind: "n_per_week", multiAnchor: true, twoTimes: false },
-  { id: "weekly", kind: "weekly", multiAnchor: false, twoTimes: false },
-  { id: "biweekly", kind: "biweekly", multiAnchor: false, twoTimes: false },
-  { id: "custom", kind: "custom", multiAnchor: true, twoTimes: false },
+  { id: "daily", kind: "daily", multiAnchor: false },
+  { id: "every_2_days", kind: "every_n_days", n: 2, multiAnchor: false },
+  { id: "every_3_days", kind: "every_n_days", n: 3, multiAnchor: false },
+  { id: "n_per_week", kind: "n_per_week", multiAnchor: true },
+  { id: "weekly", kind: "weekly", multiAnchor: false },
+  { id: "biweekly", kind: "biweekly", multiAnchor: false },
+  { id: "custom", kind: "custom", multiAnchor: true },
 ];
 
 const TIME_PRESETS: Array<{ key: string; time: string }> = [
@@ -165,8 +165,14 @@ export class CycleWizard extends LitElement {
       }
       .time-fields {
         display: flex;
-        flex-wrap: wrap;
-        gap: 12px;
+        flex-direction: column;
+        gap: 8px;
+        align-items: flex-start;
+      }
+      .time-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
       }
       .time-fields input[type="time"] {
         width: auto;
@@ -212,7 +218,7 @@ export class CycleWizard extends LitElement {
 
   @state() private _step = 1;
   @state() private _optionId = "daily";
-  @state() private _times: string[] = ["19:00", "06:00"];
+  @state() private _times: string[] = ["19:00"];
   @state() private _anchor = 0;
   @state() private _weekDays: number[] = [0, 3];
   @state() private _zoneIds: string[] = [];
@@ -243,6 +249,7 @@ export class CycleWizard extends LitElement {
     } else {
       this._optionId = opts?.optionId ?? "daily";
       this._cycleId = opts?.cycleId ?? null;
+      this._times = ["19:00"];
       this._zoneIds = this._defaultZoneIds();
       this._enabled = true;
       this._label = "";
@@ -264,14 +271,21 @@ export class CycleWizard extends LitElement {
     const meta = (first.cycle_meta as CycleMeta) ?? {};
     const kind = String(first.cycle_kind ?? "custom");
     this._optionId =
-      kind === "every_n_days"
+      kind === "twice_daily"
+        ? "daily"
+        : kind === "every_n_days"
         ? meta.n === 3
           ? "every_3_days"
           : "every_2_days"
         : kind;
     this._label = String(meta.label ?? first.name ?? "");
-    const times = slots.map((s) => String(s.time_local ?? "06:00"));
-    this._times = [times[0] ?? "19:00", times[1] ?? "06:00"];
+    const savedTimes = Array.isArray(meta.times)
+      ? meta.times.map(String)
+      : slots.map((s) => String(s.time_local ?? "06:00"));
+    // Multi-week cadences have one slot per parity and time. De-duplicate the
+    // slot fallback while preserving the user's saved order from cycle_meta.
+    this._times = [...new Set(savedTimes)].slice(0, MAX_CYCLE_START_TIMES);
+    if (!this._times.length) this._times = ["19:00"];
     this._anchor = Number(meta.anchor_weekday ?? 0);
     this._weekDays =
       Array.isArray(meta.week_days) && meta.week_days.length
@@ -308,7 +322,7 @@ export class CycleWizard extends LitElement {
 
   private _meta(): CycleMeta {
     const opt = this._option();
-    const meta: CycleMeta = { label: this._label.trim(), times: this._times.slice(0, opt.twoTimes ? 2 : 1) };
+    const meta: CycleMeta = { label: this._label.trim(), times: [...this._times] };
     if (opt.n) meta.n = opt.n;
     if (opt.multiAnchor) meta.week_days = [...this._weekDays].sort((a, b) => a - b);
     else meta.anchor_weekday = this._anchor;
@@ -384,6 +398,7 @@ export class CycleWizard extends LitElement {
     if (this._step === 2) {
       const opt = this._option();
       if (opt.multiAnchor && this._weekDays.length === 0) return false;
+      if (new Set(this._times).size !== this._times.length) return false;
     }
     if (this._step === 3 && this._zoneIds.length === 0) return false;
     return true;
@@ -400,6 +415,18 @@ export class CycleWizard extends LitElement {
       parity: s.week_parity,
     }));
     const existing = (this.installation?.schedule_slots as Array<Record<string, unknown>> | undefined) ?? [];
+    // Warn when two start times in this cycle overlap each other as well as
+    // when they overlap a previously saved schedule.
+    for (let i = 0; i < mine.length; i++) {
+      for (let j = i + 1; j < mine.length; j++) {
+        const shareDay = [...mine[i].days].some((d) => mine[j].days.has(d));
+        const shareWeek =
+          mine[i].parity === "every" ||
+          mine[j].parity === "every" ||
+          mine[i].parity === mine[j].parity;
+        if (shareDay && shareWeek && Math.abs(mine[i].start - mine[j].start) < est) return true;
+      }
+    }
     for (const slot of existing) {
       if (this._cycleId && String(slot.cycle_id ?? "") === this._cycleId) continue;
       if (!(slot.enabled ?? true)) continue;
@@ -424,6 +451,26 @@ export class CycleWizard extends LitElement {
       const min = Math.min(23 * 60 + 59, parseTimeLocalToMinutes(tl) + 60);
       return minutesToTimeLocal(min).padStart(5, "0");
     });
+  }
+
+  private _addStartTime(): void {
+    if (this._times.length >= MAX_CYCLE_START_TIMES) return;
+    const used = new Set(this._times);
+    const last = parseTimeLocalToMinutes(this._times.at(-1) ?? "06:00");
+    // Four-hour spacing is a useful grow-in default. If it collides after
+    // wrapping around midnight, walk forward by one hour until it is unique.
+    for (let offset = 4; offset < 28; offset++) {
+      const candidate = minutesToTimeLocal((last + offset * 60) % (24 * 60)).padStart(5, "0");
+      if (!used.has(candidate)) {
+        this._times = [...this._times, candidate];
+        return;
+      }
+    }
+  }
+
+  private _removeStartTime(index: number): void {
+    if (index <= 0) return;
+    this._times = this._times.filter((_time, i) => i !== index);
   }
 
   private async _create(): Promise<void> {
@@ -548,7 +595,7 @@ export class CycleWizard extends LitElement {
               type="button"
               class="chip ${this._times[0] === p.time ? "selected" : ""}"
               @click=${() => {
-                this._times = [p.time, this._times[1]];
+                this._times = [p.time, ...this._times.slice(1)];
                 this.requestUpdate();
               }}
             >
@@ -558,25 +605,46 @@ export class CycleWizard extends LitElement {
         )}
       </div>
       <div class="time-fields">
-        <input
-          type="time"
-          .value=${this._times[0]}
-          @input=${(e: Event) => {
-            this._times = [(e.target as HTMLInputElement).value || "06:00", this._times[1]];
-            this.requestUpdate();
-          }}
-        />
-        ${opt.twoTimes
-          ? html`<input
+        ${this._times.map(
+          (timeLocal, index) => html`<div class="time-row">
+            <input
               type="time"
-              .value=${this._times[1]}
+              .value=${timeLocal}
               @input=${(e: Event) => {
-                this._times = [this._times[0], (e.target as HTMLInputElement).value || "18:00"];
-                this.requestUpdate();
+                const next = [...this._times];
+                next[index] = (e.target as HTMLInputElement).value || "06:00";
+                this._times = next;
               }}
-            />`
-          : nothing}
+            />
+            ${index > 0
+              ? html`<button
+                  type="button"
+                  class="iconbtn"
+                  title=${t(this.hass, "config_panel.cycle_remove_start_time")}
+                  aria-label=${t(this.hass, "config_panel.cycle_remove_start_time")}
+                  @click=${() => this._removeStartTime(index)}
+                >
+                  <ha-icon icon="mdi:trash-can-outline"></ha-icon>
+                </button>`
+              : nothing}
+          </div>`
+        )}
       </div>
+      <button
+        type="button"
+        class="btn-outline"
+        ?disabled=${this._times.length >= MAX_CYCLE_START_TIMES}
+        @click=${() => this._addStartTime()}
+      >
+        <ha-icon icon="mdi:plus"></ha-icon>
+        ${t(this.hass, "config_panel.cycle_add_start_time")}
+      </button>
+      <p class="hint">
+        ${t(this.hass, "config_panel.cycle_start_times_hint", { n: MAX_CYCLE_START_TIMES })}
+      </p>
+      ${new Set(this._times).size !== this._times.length
+        ? html`<p class="error">${t(this.hass, "config_panel.errors_duplicate_start_time")}</p>`
+        : nothing}
 
       ${opt.kind === "daily" || opt.kind === "twice_daily"
         ? nothing

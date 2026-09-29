@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from contextlib import suppress
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
@@ -97,16 +98,60 @@ class IrrigationScheduler:
         self.runtime = runtime
         self._unsub: CALLBACK_TYPE | None = None
         self._lock = asyncio.Lock()
+        # Each due minute is a separate run so its slot scripts, water totals
+        # and lifecycle events remain intact. A later scheduled start waits here
+        # instead of being silently discarded while irrigation is busy.
+        self._pending_runs: list[tuple[list[RunStep], list[str]]] = []
+        self._pending_task: asyncio.Task[None] | None = None
+        self._shutting_down = False
 
     async def async_setup(self) -> None:
         """Start scheduling."""
+        self._shutting_down = False
         await self._async_update_next_runs_in_state()
         await self.async_reschedule_now()
 
     async def async_shutdown(self) -> None:
         """Cancel scheduled callback."""
+        self._shutting_down = True
         self._cancel_track()
         self._unsub = None
+        if self._pending_task is not None:
+            self._pending_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await self._pending_task
+            self._pending_task = None
+        self._pending_runs.clear()
+
+    def _queue_scheduled_run(self, steps: list[RunStep], slot_ids: list[str]) -> None:
+        """Append one due-minute batch to the FIFO execution queue."""
+        waiting = self.runtime.is_busy() or bool(self._pending_runs)
+        self._pending_runs.append((steps, slot_ids))
+        if waiting:
+            _LOGGER.info("Queued scheduled irrigation slots: %s", ", ".join(slot_ids))
+        if self._pending_task is None or self._pending_task.done():
+            self._pending_task = self.hass.async_create_task(self._async_drain_pending())
+
+    async def _async_drain_pending(self) -> None:
+        """Run due batches in FIFO order, waiting for complete runtime cleanup."""
+        try:
+            while self._pending_runs and not self._shutting_down:
+                await self.runtime.async_wait_for_current_run()
+                if self._shutting_down:
+                    return
+                steps, slot_ids = self._pending_runs[0]
+                if await self.runtime.async_run_phases(
+                    steps,
+                    scheduled=True,
+                    slot_ids=slot_ids,
+                ):
+                    self._pending_runs.pop(0)
+                    continue
+                # A run may have started between the wait and the locked start.
+                # Keep this batch at the head and try again after that run.
+                await asyncio.sleep(1)
+        finally:
+            self._pending_task = None
 
     def _cancel_track(self) -> None:
         if self._unsub is not None:
@@ -189,10 +234,6 @@ class IrrigationScheduler:
             if pause_until and now < pause_until:
                 return
 
-            if self.runtime.is_busy():
-                _LOGGER.debug("Scheduler skipped: runtime busy")
-                return
-
             due_slots: list[ScheduleSlot] = []
             for slot in inst.schedule_slots:
                 if not slot.enabled:
@@ -225,11 +266,7 @@ class IrrigationScheduler:
                 return
 
             slot_ids = [s.slot_id for s in due_slots]
-            await self.runtime.async_run_phases(
-                merged_steps,
-                scheduled=True,
-                slot_ids=slot_ids,
-            )
+            self._queue_scheduled_run(merged_steps, slot_ids)
         finally:
             await self._async_reschedule()
 

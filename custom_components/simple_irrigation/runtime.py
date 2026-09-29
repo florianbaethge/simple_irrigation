@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 from datetime import timedelta
 from contextlib import suppress
 from typing import TYPE_CHECKING
@@ -29,7 +30,7 @@ from .const import (
 from .countdown import async_set_countdown, clear_value, countdown_value
 from .grouping import can_join_active_phase, compute_phases
 from .guards import guards_allow_run
-from .models import RunState, ScheduleSlot, Zone
+from .models import RunState, ScheduleSlot, Zone, ZonePrerequisite
 from .program import RunStep, Soak, watering_steps
 from .scheduler import phases_for_slot, program_for_slot
 from .scripts import ScriptCall, effective_post_run_script, effective_pre_start_script
@@ -93,6 +94,8 @@ class IrrigationRuntime:
         self._skip_phase_event = asyncio.Event()
         self._run_lock = asyncio.Lock()
         self._touched_entities: set[str] = set()
+        # Supply outputs are always closed after their dependent zone outputs.
+        self._prerequisite_entities: set[str] = set()
         # Hardware countdowns armed for this run; cleared once their valve is shut.
         self._armed_countdowns: set[str] = set()
         self._duration_overrides: dict[str, int] = {}
@@ -176,6 +179,7 @@ class IrrigationRuntime:
             self._stop_event.clear()
             self._skip_phase_event.clear()
             self._touched_entities.clear()
+            self._prerequisite_entities.clear()
             self._task = self.hass.async_create_task(
                 self._async_run_pipeline(scheduled, slot_ids or []),
             )
@@ -713,26 +717,65 @@ class IrrigationRuntime:
     async def _async_zone_run(self, zone: Zone, duration_min: int) -> None:
         outputs = list(zone.switch_entity_ids)
         first = outputs[0] if outputs else ""
-        self.hass.bus.async_fire(
-            EVENT_ZONE_STARTED,
-            {
-                "zone_id": zone.zone_id,
-                "entity_id": first,
-                "entity_ids": outputs,
-            },
-        )
-        started = dt_util.utcnow()
-        meter_start = meter_litres(self.hass, zone.water_meter_entity_id)
-        await self._async_arm_countdown(zone, duration_min)
-        handled_by_service = await self._async_zone_run_with_duration_service(
-            zone,
-            duration_min,
-        )
-        if not handled_by_service:
-            await asyncio.gather(*(self._async_switch_turn_on(eid) for eid in outputs))
-            await self._async_wait_zone_duration(duration_min * 60, zone.zone_id)
-            await asyncio.gather(*(self._async_switch_turn_off(eid) for eid in outputs))
-        await self._async_disarm_countdown(zone.countdown_entity_id)
+        prerequisite = zone.prerequisite
+        prerequisite_started = False
+        try:
+            if prerequisite is not None:
+                # Track supply outputs before the start call. A service can fail
+                # after partially opening hardware, and cleanup must still close it.
+                self._prerequisite_entities.update(prerequisite.output_entity_ids)
+                self._touched_entities.update(prerequisite.output_entity_ids)
+                prerequisite_started = True
+                await self._async_start_prerequisite(zone, duration_min)
+                if self._zone_interrupted(zone.zone_id):
+                    await self._async_turn_off_entities_safely(
+                        prerequisite.output_entity_ids
+                    )
+                    return
+
+            # For staged zones, "started" describes the dependent watering
+            # stage, after the supply has opened and its warm-up has elapsed.
+            self.hass.bus.async_fire(
+                EVENT_ZONE_STARTED,
+                {
+                    "zone_id": zone.zone_id,
+                    "entity_id": first,
+                    "entity_ids": outputs,
+                },
+            )
+            started = dt_util.utcnow()
+            meter_start = meter_litres(self.hass, zone.water_meter_entity_id)
+            await self._async_arm_countdown(zone, duration_min)
+            handled_by_service = await self._async_zone_run_with_duration_service(
+                zone,
+                duration_min,
+            )
+            if not handled_by_service:
+                await asyncio.gather(*(self._async_switch_turn_on(eid) for eid in outputs))
+                await self._async_wait_zone_duration(duration_min * 60, zone.zone_id)
+                await asyncio.gather(*(self._async_switch_turn_off(eid) for eid in outputs))
+        except (Exception, asyncio.CancelledError):
+            # Only staged zones need the extra ordered cleanup here. Keeping
+            # legacy one-stage zones on their original exception path avoids an
+            # observable duplicate off call for existing installations.
+            if prerequisite_started and prerequisite is not None:
+                await self._async_turn_off_entities_safely(outputs)
+                await self._async_turn_off_entities_safely(prerequisite.output_entity_ids)
+            raise
+        else:
+            if prerequisite_started and prerequisite is not None:
+                if not self._zone_interrupted(zone.zone_id):
+                    await self._async_sleep_interruptible(float(prerequisite.stop_delay_sec))
+                await asyncio.gather(
+                    *(
+                        self._async_switch_turn_off(entity_id)
+                        for entity_id in prerequisite.output_entity_ids
+                    )
+                )
+        finally:
+            await self._async_disarm_countdown(zone.countdown_entity_id)
+
+        # Warm-up and supply tail time are deliberately outside zone water usage.
         self._book_zone_water(zone, started, meter_start)
         stopped = zone.zone_id in self._zone_stop_requests
         self._zone_stop_requests.discard(zone.zone_id)
@@ -750,6 +793,123 @@ class IrrigationRuntime:
                 "stopped": stopped,
             },
         )
+
+    def _zone_interrupted(self, zone_id: str) -> bool:
+        """Whether this zone must not proceed to another startup stage."""
+        return (
+            self._stop_event.is_set()
+            or self._skip_phase_event.is_set()
+            or zone_id in self._zone_stop_requests
+        )
+
+    async def _async_start_prerequisite(self, zone: Zone, duration_min: int) -> None:
+        """Start and verify a zone's optional upstream supply stage."""
+        prerequisite = zone.prerequisite
+        if prerequisite is None:
+            return
+        outputs = list(prerequisite.output_entity_ids)
+        total_seconds = (
+            duration_min * 60
+            + prerequisite.start_delay_sec
+            + prerequisite.stop_delay_sec
+        )
+        service_complete = (
+            prerequisite.start_service
+            and prerequisite.duration_field
+            and prerequisite.duration_unit in {"minutes", "seconds"}
+        )
+        if service_complete:
+            targets = (
+                [prerequisite.start_entity_id]
+                if prerequisite.start_entity_id
+                else outputs
+            )
+            await self._async_call_duration_service(
+                zone.zone_id,
+                prerequisite.start_service,
+                prerequisite.duration_field,
+                prerequisite.duration_unit,
+                targets,
+                total_seconds,
+            )
+        else:
+            if (
+                prerequisite.start_service
+                or prerequisite.duration_field
+                or prerequisite.duration_unit
+                or prerequisite.start_entity_id
+            ):
+                _LOGGER.warning(
+                    "Zone %s has invalid prerequisite start service configuration; "
+                    "using default output start",
+                    zone.zone_id,
+                )
+            await asyncio.gather(*(self._async_switch_turn_on(eid) for eid in outputs))
+
+        await self._async_sleep_interruptible(float(prerequisite.start_delay_sec))
+        if self._zone_interrupted(zone.zone_id):
+            return
+        if prerequisite.require_open_state:
+            await self._async_require_prerequisite_open(zone.zone_id, prerequisite)
+
+    async def _async_require_prerequisite_open(
+        self,
+        zone_id: str,
+        prerequisite: ZonePrerequisite,
+    ) -> None:
+        """Fail closed unless every supply output reports an open/on state."""
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + START_SERVICE_TIMEOUT_SEC
+        while not self._zone_interrupted(zone_id):
+            states = [self.hass.states.get(eid) for eid in prerequisite.output_entity_ids]
+            if all(state is not None and state.state in {"on", "open"} for state in states):
+                return
+            if loop.time() >= deadline:
+                raise RuntimeError(
+                    f"Zone {zone_id} prerequisite did not report open within "
+                    f"{START_SERVICE_TIMEOUT_SEC} seconds"
+                )
+            await self._async_sleep_interruptible(1.0)
+
+    async def _async_call_duration_service(
+        self,
+        zone_id: str,
+        service_ref: str,
+        duration_field: str,
+        duration_unit: str,
+        targets: list[str],
+        duration_seconds: int,
+    ) -> None:
+        """Call a validated duration service for one or more target entities."""
+        domain, _, service = service_ref.partition(".")
+        duration_value = (
+            math.ceil(duration_seconds / 60)
+            if duration_unit == "minutes"
+            else duration_seconds
+        )
+
+        async def _start_target(target_entity_id: str) -> None:
+            try:
+                async with asyncio.timeout(START_SERVICE_TIMEOUT_SEC):
+                    await self.hass.services.async_call(
+                        domain,
+                        service,
+                        {
+                            "entity_id": target_entity_id,
+                            duration_field: duration_value,
+                        },
+                        blocking=True,
+                    )
+            except TimeoutError:
+                _LOGGER.warning(
+                    "Zone %s: start service %s did not return within %s s; "
+                    "continuing with the configured duration",
+                    zone_id,
+                    service_ref,
+                    START_SERVICE_TIMEOUT_SEC,
+                )
+
+        await asyncio.gather(*(_start_target(entity_id) for entity_id in targets))
 
     async def _async_zone_run_with_duration_service(
         self,
@@ -1171,9 +1331,13 @@ class IrrigationRuntime:
         Failures are collected into last_error instead.
         """
         inst = self.coordinator.installation
-        pending = list(self._touched_entities) + [
-            eid for eid in inst.pre_start_switches if eid not in self._touched_entities
+        dependants = [
+            eid for eid in self._touched_entities if eid not in self._prerequisite_entities
         ]
+        supplies = list(self._prerequisite_entities)
+        pending = dependants + [
+            eid for eid in inst.pre_start_switches if eid not in self._touched_entities
+        ] + supplies
         failed: list[str] = []
         for entity_id in pending:
             try:
@@ -1182,9 +1346,18 @@ class IrrigationRuntime:
                 _LOGGER.exception("Could not turn off %s during cleanup", entity_id)
                 failed.append(entity_id)
         self._touched_entities.clear()
+        self._prerequisite_entities.clear()
         for entity_id in list(self._armed_countdowns):
             await self._async_disarm_countdown(entity_id)
         if failed:
             self.coordinator.run_state.last_error = (
                 f"Could not turn off: {', '.join(failed)}"
             )
+
+    async def _async_turn_off_entities_safely(self, entity_ids: list[str]) -> None:
+        """Best-effort ordered shutdown used by staged zone cleanup."""
+        for entity_id in entity_ids:
+            try:
+                await self._async_switch_turn_off(entity_id)
+            except Exception:  # noqa: BLE001 - keep closing the remaining valves
+                _LOGGER.exception("Could not turn off %s during staged cleanup", entity_id)

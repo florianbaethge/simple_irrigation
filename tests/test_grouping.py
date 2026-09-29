@@ -6,7 +6,7 @@ from custom_components.simple_irrigation.grouping import (
     can_join_active_phase,
     compute_phases,
 )
-from custom_components.simple_irrigation.models import Zone
+from custom_components.simple_irrigation.models import Zone, ZonePrerequisite
 
 
 def _z(zid: str, exclusive: bool = False) -> Zone:
@@ -64,3 +64,15 @@ def test_can_join_active_phase_capacity_and_exclusive() -> None:
     assert can_join_active_phase(["a"], "x", zones, 2) is False
     assert can_join_active_phase(["x"], "a", zones, 2) is False
     assert can_join_active_phase([], "b", zones, 2) is False
+
+
+def test_shared_prerequisite_outputs_never_run_in_parallel() -> None:
+    """A shared physical supply is a resource conflict even with spare capacity."""
+    zones = {"a": _z("a"), "b": _z("b"), "c": _z("c")}
+    zones["a"].prerequisite = ZonePrerequisite(["valve.supply"])
+    zones["b"].prerequisite = ZonePrerequisite(["valve.supply"])
+    zones["c"].prerequisite = ZonePrerequisite(["valve.other"])
+
+    assert compute_phases(["a", "b", "c"], zones, 3) == [["a"], ["b", "c"]]
+    assert can_join_active_phase(["a"], "b", zones, 3) is False
+    assert can_join_active_phase(["a"], "c", zones, 3) is True

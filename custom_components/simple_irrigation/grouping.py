@@ -5,6 +5,13 @@ from __future__ import annotations
 from .models import Zone
 
 
+def _shares_prerequisite(a: Zone, b: Zone) -> bool:
+    """Whether two zones compete for at least one supply output."""
+    a_outputs = set(a.prerequisite.output_entity_ids) if a.prerequisite else set()
+    b_outputs = set(b.prerequisite.output_entity_ids) if b.prerequisite else set()
+    return bool(a_outputs & b_outputs)
+
+
 def compute_phases(
     ordered_zone_ids: list[str],
     zones_by_id: dict[str, Zone],
@@ -46,7 +53,11 @@ def compute_phases(
 
         # Cannot mix with exclusive (current should never have exclusive if we
         # closed phases correctly — exclusive always flushes alone)
-        if len(current) >= max_parallel_zones:
+        if len(current) >= max_parallel_zones or any(
+            _shares_prerequisite(zone, zones_by_id[current_id])
+            for current_id in current
+            if current_id in zones_by_id
+        ):
             phases.append(current)
             current = [zid]
             continue
@@ -84,6 +95,8 @@ def can_join_active_phase(
     for zid in active_zone_ids:
         z = zones_by_id.get(zid)
         if z is not None and z.exclusive:
+            return False
+        if z is not None and _shares_prerequisite(z, new_zone):
             return False
 
     return len(active_zone_ids) < max_parallel_zones

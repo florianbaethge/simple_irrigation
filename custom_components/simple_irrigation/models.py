@@ -91,6 +91,66 @@ def parse_guards(raw: Any) -> list[Guard]:
 
 
 @dataclass
+class ZonePrerequisite:
+    """Supply stage that must be active before a zone may water.
+
+    The nested value object keeps the feature additive: legacy zone records do
+    not contain ``prerequisite`` and therefore retain their exact one-stage
+    execution path.
+    """
+
+    output_entity_ids: list[str] = field(default_factory=list)
+    start_service: str = ""
+    duration_field: str = ""
+    duration_unit: str = ""
+    start_entity_id: str = ""
+    start_delay_sec: int = 0
+    stop_delay_sec: int = 0
+    require_open_state: bool = False
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize to JSON-compatible dict."""
+        return {
+            "output_entity_ids": list(self.output_entity_ids),
+            "start_service": self.start_service,
+            "duration_field": self.duration_field,
+            "duration_unit": self.duration_unit,
+            "start_entity_id": self.start_entity_id,
+            "start_delay_sec": self.start_delay_sec,
+            "stop_delay_sec": self.stop_delay_sec,
+            "require_open_state": self.require_open_state,
+        }
+
+    @staticmethod
+    def from_dict(data: Any) -> ZonePrerequisite | None:
+        """Deserialize an optional prerequisite, dropping unusable empty data."""
+        if not isinstance(data, dict):
+            return None
+        seen: set[str] = set()
+        outputs: list[str] = []
+        raw_outputs = data.get("output_entity_ids")
+        if not isinstance(raw_outputs, list):
+            return None
+        for raw in raw_outputs:
+            entity_id = str(raw).strip()
+            if entity_id and entity_id not in seen:
+                seen.add(entity_id)
+                outputs.append(entity_id)
+        if not outputs:
+            return None
+        return ZonePrerequisite(
+            output_entity_ids=outputs,
+            start_service=str(data.get("start_service") or "").strip(),
+            duration_field=str(data.get("duration_field") or "").strip(),
+            duration_unit=str(data.get("duration_unit") or "").strip(),
+            start_entity_id=str(data.get("start_entity_id") or "").strip(),
+            start_delay_sec=_clamp_int(data.get("start_delay_sec"), 0, 0, 3600),
+            stop_delay_sec=_clamp_int(data.get("stop_delay_sec"), 0, 0, 3600),
+            require_open_state=bool(data.get("require_open_state", False)),
+        )
+
+
+@dataclass
 class Zone:
     """One irrigation zone (circuit)."""
 
@@ -121,6 +181,7 @@ class Zone:
     # empty to take it from the entity's unit_of_measurement.
     countdown_entity_id: str = ""
     countdown_unit: str = ""
+    prerequisite: ZonePrerequisite | None = None
 
     @property
     def tracks_water(self) -> bool:
@@ -156,6 +217,7 @@ class Zone:
             "flow_rate_lpm": self.flow_rate_lpm,
             "countdown_entity_id": self.countdown_entity_id,
             "countdown_unit": self.countdown_unit,
+            "prerequisite": self.prerequisite.to_dict() if self.prerequisite else None,
         }
 
     @staticmethod
@@ -189,6 +251,7 @@ class Zone:
             flow_rate_lpm=_non_negative_float(data.get("flow_rate_lpm")),
             countdown_entity_id=str(data.get("countdown_entity_id") or "").strip(),
             countdown_unit=str(data.get("countdown_unit") or "").strip(),
+            prerequisite=ZonePrerequisite.from_dict(data.get("prerequisite")),
         )
 
 

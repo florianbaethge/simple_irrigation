@@ -15,7 +15,7 @@ from .const import (
     OUTPUT_ENTITY_DOMAINS,
     SCRIPT_DOMAIN,
 )
-from .models import Guard
+from .models import Guard, ZonePrerequisite
 
 DURATION_UNITS = {"minutes", "seconds"}
 SERVICE_REF_PATTERN = re.compile(r"^[a-z0-9_]+\.[a-z0-9_]+$")
@@ -29,6 +29,7 @@ __all__ = [
     "is_allowed_output_domain",
     "parse_guard_list",
     "parse_zone_switch_entities",
+    "parse_zone_prerequisite",
     "validate_output_entity_id",
     "validate_zone_payload",
     "validate_countdown_entity",
@@ -36,6 +37,8 @@ __all__ = [
     "validate_script_entity",
     "validate_script_timeout",
 ]
+
+MAX_PREREQUISITE_DELAY_SEC = 3600
 
 
 def domain_of(entity_id: str) -> str:
@@ -133,6 +136,45 @@ def parse_zone_switch_entities(user_input: dict[str, Any]) -> list[str]:
     return []
 
 
+def parse_zone_prerequisite(raw: Any) -> ZonePrerequisite | None:
+    """Normalize the optional prerequisite block after validation."""
+    return ZonePrerequisite.from_dict(raw)
+
+
+def _validate_duration_service(
+    hass: Any,
+    *,
+    start_service: str,
+    duration_field: str,
+    duration_unit: str,
+    start_entity_id: str,
+    fallback_target: str,
+) -> str | None:
+    """Validate a duration-aware start service shared by both zone stages."""
+    if not (start_service or duration_field or duration_unit or start_entity_id):
+        return None
+    if not (start_service and duration_field and duration_unit):
+        return "invalid_duration_service"
+    if SERVICE_REF_PATTERN.fullmatch(start_service) is None:
+        return "invalid_duration_service"
+    service_domain, _, service_name = start_service.partition(".")
+    if not hass.services.has_service(service_domain, service_name):
+        return "unknown_service"
+    if (
+        SERVICE_FIELD_PATTERN.fullmatch(duration_field) is None
+        or duration_field in RESERVED_SERVICE_FIELDS
+    ):
+        return "invalid_duration_service"
+    if duration_unit not in DURATION_UNITS:
+        return "invalid_duration_service"
+    target_entity_id = start_entity_id or fallback_target
+    if "." not in target_entity_id:
+        return "invalid_target_entity"
+    if hass.states.get(target_entity_id) is None:
+        return "unknown_entity"
+    return None
+
+
 def validate_zone_payload(hass: Any, user_input: dict[str, Any]) -> str | None:
     """Validate zone add/update fields. Return error key or None."""
     name = (user_input.get("name") or "").strip()
@@ -159,27 +201,50 @@ def validate_zone_payload(hass: Any, user_input: dict[str, Any]) -> str | None:
     duration_unit = str(user_input.get("duration_unit") or "").strip()
     start_entity_id = str(user_input.get("start_entity_id") or "").strip()
 
-    if start_service or duration_field or duration_unit or start_entity_id:
-        if not (start_service and duration_field and duration_unit):
-            return "invalid_duration_service"
-        if SERVICE_REF_PATTERN.fullmatch(start_service) is None:
-            return "invalid_duration_service"
-        service_domain, _, service_name = start_service.partition(".")
-        if not hass.services.has_service(service_domain, service_name):
-            return "unknown_service"
-        if (
-            SERVICE_FIELD_PATTERN.fullmatch(duration_field) is None
-            or duration_field in RESERVED_SERVICE_FIELDS
-        ):
-            return "invalid_duration_service"
-        if duration_unit not in DURATION_UNITS:
-            return "invalid_duration_service"
+    err = _validate_duration_service(
+        hass,
+        start_service=start_service,
+        duration_field=duration_field,
+        duration_unit=duration_unit,
+        start_entity_id=start_entity_id,
+        fallback_target=ids[0],
+    )
+    if err:
+        return err
 
-        target_entity_id = start_entity_id or ids[0]
-        if "." not in target_entity_id:
-            return "invalid_target_entity"
-        if hass.states.get(target_entity_id) is None:
-            return "unknown_entity"
+    raw_prerequisite = user_input.get("prerequisite")
+    if raw_prerequisite not in (None, {}):
+        if not isinstance(raw_prerequisite, dict):
+            return "invalid_prerequisite"
+        prerequisite = parse_zone_prerequisite(raw_prerequisite)
+        if prerequisite is None:
+            return "invalid_prerequisite"
+        if set(prerequisite.output_entity_ids) & set(ids):
+            return "duplicate_prerequisite_output"
+        for entity_id in prerequisite.output_entity_ids:
+            err = validate_output_entity_id(hass, entity_id)
+            if err:
+                return err
+        for field_name in ("start_delay_sec", "stop_delay_sec"):
+            raw_delay = raw_prerequisite.get(field_name, 0)
+            if isinstance(raw_delay, bool):
+                return "invalid_prerequisite_delay"
+            try:
+                delay = int(raw_delay)
+            except (TypeError, ValueError):
+                return "invalid_prerequisite_delay"
+            if delay < 0 or delay > MAX_PREREQUISITE_DELAY_SEC:
+                return "invalid_prerequisite_delay"
+        err = _validate_duration_service(
+            hass,
+            start_service=prerequisite.start_service,
+            duration_field=prerequisite.duration_field,
+            duration_unit=prerequisite.duration_unit,
+            start_entity_id=prerequisite.start_entity_id,
+            fallback_target=prerequisite.output_entity_ids[0],
+        )
+        if err:
+            return err
 
     if "flow_rate_lpm" in user_input:
         err = validate_flow_rate(user_input.get("flow_rate_lpm"))

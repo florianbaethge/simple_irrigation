@@ -58,6 +58,20 @@ export function durationForMode(
   return Math.max(0, Number(zone.duration_normal_min ?? 0));
 }
 
+/** Full phase occupancy: supply warm-up + downstream watering + supply tail. */
+export function executionMinutesForMode(
+  zone: Record<string, unknown> | undefined,
+  mode: string
+): number {
+  if (!zone) return 0;
+  const prerequisite = zone.prerequisite as Record<string, unknown> | null | undefined;
+  const margins = prerequisite
+    ? Math.max(0, Number(prerequisite.start_delay_sec ?? 0)) +
+      Math.max(0, Number(prerequisite.stop_delay_sec ?? 0))
+    : 0;
+  return durationForMode(zone, mode) + margins / 60;
+}
+
 /** Bucket by wall-clock hour of segment start ([0,8), [8,16), [16,24)). */
 /**
  * Litres a run of these zones is expected to use in `mode`, from the zones'
@@ -127,6 +141,7 @@ function zonesPhaseInputFromInstallation(
     out[id] = {
       enabled: Boolean(z.enabled ?? true),
       exclusive: Boolean(z.exclusive),
+      prerequisite: (z.prerequisite as ZonePhaseInput["prerequisite"]) ?? null,
     };
   }
   return out;
@@ -191,7 +206,7 @@ export function buildTimetableEntries(installation: Record<string, unknown>): Ti
           const z = zones[zid];
           if (!z) continue;
           if (Boolean(z.enabled ?? true)) {
-            const d = durationForMode(z, mode);
+            const d = executionMinutesForMode(z, mode);
             phaseLenMin = Math.max(phaseLenMin, d);
           }
         }
@@ -201,7 +216,12 @@ export function buildTimetableEntries(installation: Record<string, unknown>): Ti
           if (!z) continue;
           const zoneEnabled = Boolean(z.enabled ?? true);
           const dur = durationForMode(z, mode);
-          const startMin = phaseStart;
+          const prerequisite = z.prerequisite as Record<string, unknown> | null | undefined;
+          const startMin =
+            phaseStart +
+            (prerequisite
+              ? Math.max(0, Number(prerequisite.start_delay_sec ?? 0)) / 60
+              : 0);
           const endMin = phaseStart + dur;
           entries.push({
             zoneId: zid,

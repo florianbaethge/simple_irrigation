@@ -75,6 +75,17 @@ const zoneStartPresets: Record<
 
 type ZoneFilter = "all" | "enabled" | "issues";
 
+interface ZonePrerequisiteRow {
+  output_entity_ids: string[];
+  start_service: string;
+  duration_field: string;
+  duration_unit: string;
+  start_entity_id: string;
+  start_delay_sec: number;
+  stop_delay_sec: number;
+  require_open_state: boolean;
+}
+
 interface ZoneRow {
   zone_id: string;
   name: string;
@@ -92,6 +103,7 @@ interface ZoneRow {
   flow_rate_lpm: number;
   countdown_entity_id: string;
   countdown_unit: string;
+  prerequisite: ZonePrerequisiteRow | null;
 }
 
 export class ViewZones extends LitElement {
@@ -198,11 +210,31 @@ export class ViewZones extends LitElement {
       flow_rate_lpm: 0,
       countdown_entity_id: "",
       countdown_unit: "",
+      prerequisite: null,
+    };
+  }
+
+  private _blankPrerequisite(): ZonePrerequisiteRow {
+    return {
+      output_entity_ids: [""],
+      start_service: "",
+      duration_field: "",
+      duration_unit: "",
+      start_entity_id: "",
+      start_delay_sec: 0,
+      stop_delay_sec: 0,
+      require_open_state: false,
     };
   }
 
   private _cloneZone(z: ZoneRow): ZoneRow {
-    return { ...z, switch_entity_ids: [...z.switch_entity_ids] };
+    return {
+      ...z,
+      switch_entity_ids: [...z.switch_entity_ids],
+      prerequisite: z.prerequisite
+        ? { ...z.prerequisite, output_entity_ids: [...z.prerequisite.output_entity_ids] }
+        : null,
+    };
   }
 
   private _zonesFromInstallation(): ZoneRow[] {
@@ -231,6 +263,39 @@ export class ViewZones extends LitElement {
         flow_rate_lpm: Math.max(0, Number(o.flow_rate_lpm ?? 0) || 0),
         countdown_entity_id: String(o.countdown_entity_id ?? ""),
         countdown_unit: String(o.countdown_unit ?? ""),
+        prerequisite:
+          o.prerequisite && typeof o.prerequisite === "object"
+            ? {
+                output_entity_ids: Array.isArray(
+                  (o.prerequisite as Record<string, unknown>).output_entity_ids
+                )
+                  ? ((o.prerequisite as Record<string, unknown>).output_entity_ids as unknown[])
+                      .map(String)
+                      .filter(Boolean)
+                  : [""],
+                start_service: String(
+                  (o.prerequisite as Record<string, unknown>).start_service ?? ""
+                ),
+                duration_field: String(
+                  (o.prerequisite as Record<string, unknown>).duration_field ?? ""
+                ),
+                duration_unit: String(
+                  (o.prerequisite as Record<string, unknown>).duration_unit ?? ""
+                ),
+                start_entity_id: String(
+                  (o.prerequisite as Record<string, unknown>).start_entity_id ?? ""
+                ),
+                start_delay_sec: Number(
+                  (o.prerequisite as Record<string, unknown>).start_delay_sec ?? 0
+                ),
+                stop_delay_sec: Number(
+                  (o.prerequisite as Record<string, unknown>).stop_delay_sec ?? 0
+                ),
+                require_open_state: Boolean(
+                  (o.prerequisite as Record<string, unknown>).require_open_state ?? false
+                ),
+              }
+            : null,
       };
     });
   }
@@ -265,6 +330,10 @@ export class ViewZones extends LitElement {
     const outs = z.switch_entity_ids.filter(Boolean);
     if (outs.length === 0) return true;
     for (const eid of outs) {
+      const st = this.hass.states[eid];
+      if (!st || st.state === "unavailable" || st.state === "unknown") return true;
+    }
+    for (const eid of z.prerequisite?.output_entity_ids.filter(Boolean) ?? []) {
       const st = this.hass.states[eid];
       if (!st || st.state === "unavailable" || st.state === "unknown") return true;
     }
@@ -338,7 +407,11 @@ export class ViewZones extends LitElement {
   }
 
   private _canSaveZone(z: ZoneRow): boolean {
-    return Boolean(z.name.trim() && z.switch_entity_ids.some((id) => id.trim()));
+    return Boolean(
+      z.name.trim() &&
+        z.switch_entity_ids.some((id) => id.trim()) &&
+        (!z.prerequisite || z.prerequisite.output_entity_ids.some((id) => id.trim()))
+    );
   }
 
   /** Which entity goes into "outputs" and which into "start target" — that pairing
@@ -361,6 +434,22 @@ export class ViewZones extends LitElement {
         z.start_service.trim() === cfg.start_service &&
         z.duration_field.trim() === cfg.duration_field &&
         z.duration_unit.trim() === cfg.duration_unit
+      ) {
+        return preset;
+      }
+    }
+    return "custom";
+  }
+
+  private _presetForPrerequisite(p: ZonePrerequisiteRow): string {
+    if (!p.start_service && !p.duration_field && !p.duration_unit && !p.start_entity_id) {
+      return "none";
+    }
+    for (const [preset, cfg] of Object.entries(zoneStartPresets)) {
+      if (
+        p.start_service.trim() === cfg.start_service &&
+        p.duration_field.trim() === cfg.duration_field &&
+        p.duration_unit.trim() === cfg.duration_unit
       ) {
         return preset;
       }
@@ -471,6 +560,16 @@ export class ViewZones extends LitElement {
           flow_rate_lpm: zone.flow_rate_lpm,
           countdown_entity_id: zone.countdown_entity_id.trim(),
           countdown_unit: zone.countdown_entity_id.trim() ? zone.countdown_unit : "",
+          prerequisite: zone.prerequisite
+            ? {
+                ...zone.prerequisite,
+                output_entity_ids: zone.prerequisite.output_entity_ids.filter(Boolean),
+                start_service: zone.prerequisite.start_service.trim(),
+                duration_field: zone.prerequisite.duration_field.trim(),
+                duration_unit: zone.prerequisite.duration_unit.trim(),
+                start_entity_id: zone.prerequisite.start_entity_id.trim(),
+              }
+            : null,
         };
       }
       const res = await saveZone(this.hass, this.entryId, body);
@@ -661,6 +760,234 @@ export class ViewZones extends LitElement {
 
       <div class="section-title">${t(this.hass, "config_panel.zones_advanced_title")}</div>
       <div class="field-block">
+        <details class="inline-help" ?open=${Boolean(z.prerequisite)}>
+          <summary>
+            <ha-icon class="inline-help-icon" icon="mdi:pipe-valve"></ha-icon>
+            ${t(this.hass, "config_panel.zones_prerequisite_summary")}
+          </summary>
+          <p>${t(this.hass, "config_panel.zones_prerequisite_desc")}</p>
+          <div class="switch-row">
+            <ha-switch
+              .checked=${Boolean(z.prerequisite)}
+              @change=${(e: Event) => {
+                z.prerequisite = (e.target as HTMLInputElement & { checked: boolean }).checked
+                  ? this._blankPrerequisite()
+                  : null;
+                this.requestUpdate();
+              }}
+            ></ha-switch>
+            <span class="switch-row-label">${t(
+              this.hass,
+              "config_panel.zones_prerequisite_enable"
+            )}</span>
+          </div>
+          ${z.prerequisite
+            ? html`
+                <div class="entity-picker-rows">
+                  ${z.prerequisite.output_entity_ids.map(
+                    (entityId, index) => html`
+                      <div class="entity-picker-row">
+                        ${renderNativeEntityField(
+                          this.hass,
+                          this.outputEntityDomains ?? defaultDomains,
+                          index === 0
+                            ? t(this.hass, "config_panel.zones_prerequisite_output")
+                            : t(this.hass, "config_panel.zones_output_n", { n: index + 1 }),
+                          entityId,
+                          (value) => {
+                            if (!z.prerequisite) return;
+                            const next = [...z.prerequisite.output_entity_ids];
+                            next[index] = value;
+                            z.prerequisite.output_entity_ids = next;
+                            this.requestUpdate();
+                          }
+                        )}
+                        ${(z.prerequisite?.output_entity_ids.length ?? 0) > 1
+                          ? html`<button
+                              type="button"
+                              class="row-remove"
+                              @click=${() => {
+                                if (!z.prerequisite) return;
+                                z.prerequisite.output_entity_ids.splice(index, 1);
+                                this.requestUpdate();
+                              }}
+                            >
+                              ${t(this.hass, "config_panel.general_remove")}
+                            </button>`
+                          : nothing}
+                      </div>
+                    `
+                  )}
+                  <button
+                    type="button"
+                    class="btn-outline"
+                    @click=${() => {
+                      if (!z.prerequisite) return;
+                      z.prerequisite.output_entity_ids = [
+                        ...z.prerequisite.output_entity_ids,
+                        "",
+                      ];
+                      this.requestUpdate();
+                    }}
+                  >
+                    ${t(this.hass, "config_panel.zones_prerequisite_add_output")}
+                  </button>
+                </div>
+                <div class="field-row">
+                  <label
+                    class="stacked-field-label"
+                    for="si-prerequisite-preset-${z.zone_id || "new"}"
+                  >
+                    ${t(this.hass, "config_panel.zones_start_preset")}
+                  </label>
+                  <select
+                    id="si-prerequisite-preset-${z.zone_id || "new"}"
+                    class="field-select"
+                    .value=${this._presetForPrerequisite(z.prerequisite)}
+                    @change=${(e: Event) => {
+                      if (!z.prerequisite) return;
+                      const preset = (e.target as HTMLSelectElement).value;
+                      if (preset === "none") {
+                        z.prerequisite.start_service = "";
+                        z.prerequisite.duration_field = "";
+                        z.prerequisite.duration_unit = "";
+                        z.prerequisite.start_entity_id = "";
+                      } else if (preset !== "custom") {
+                        const cfg = zoneStartPresets[preset];
+                        if (cfg) {
+                          z.prerequisite.start_service = cfg.start_service;
+                          z.prerequisite.duration_field = cfg.duration_field;
+                          z.prerequisite.duration_unit = cfg.duration_unit;
+                        }
+                      }
+                      this.requestUpdate();
+                    }}
+                  >
+                    <option value="none">
+                      ${t(this.hass, "config_panel.zones_start_preset_none")}
+                    </option>
+                    <option value="custom">
+                      ${t(this.hass, "config_panel.zones_start_preset_custom")}
+                    </option>
+                    <option value="rainbird">Rain Bird</option>
+                    <option value="rachio">Rachio</option>
+                    <option value="hydrawise">Hydrawise</option>
+                    <option value="bhyve">B-hyve / Orbit</option>
+                    <option value="opensprinkler">OpenSprinkler</option>
+                  </select>
+                </div>
+                <div class="field-row">
+                  <ha-input
+                    .label=${t(this.hass, "config_panel.zones_start_service")}
+                    .value=${z.prerequisite.start_service}
+                    @input=${(e: Event) => {
+                      if (!z.prerequisite) return;
+                      z.prerequisite.start_service = (e.target as HTMLInputElement).value;
+                    }}
+                  ></ha-input>
+                </div>
+                <div class="duration-row">
+                  <ha-input
+                    .label=${t(this.hass, "config_panel.zones_duration_field")}
+                    .value=${z.prerequisite.duration_field}
+                    @input=${(e: Event) => {
+                      if (!z.prerequisite) return;
+                      z.prerequisite.duration_field = (e.target as HTMLInputElement).value;
+                    }}
+                  ></ha-input>
+                  <select
+                    class="field-select"
+                    .value=${z.prerequisite.duration_unit}
+                    @change=${(e: Event) => {
+                      if (!z.prerequisite) return;
+                      z.prerequisite.duration_unit = (e.target as HTMLSelectElement).value;
+                    }}
+                  >
+                    <option value="">
+                      ${t(this.hass, "config_panel.zones_duration_unit_empty")}
+                    </option>
+                    <option value="minutes">
+                      ${t(this.hass, "config_panel.zones_duration_unit_minutes")}
+                    </option>
+                    <option value="seconds">
+                      ${t(this.hass, "config_panel.zones_duration_unit_seconds")}
+                    </option>
+                  </select>
+                </div>
+                <div class="field-row">
+                  ${renderNativeEntityField(
+                    this.hass,
+                    startTargetDomains,
+                    t(this.hass, "config_panel.zones_start_target_entity"),
+                    z.prerequisite.start_entity_id,
+                    (value) => {
+                      if (!z.prerequisite) return;
+                      z.prerequisite.start_entity_id = value;
+                      this.requestUpdate();
+                    },
+                    { allowCustom: true }
+                  )}
+                </div>
+                <div class="duration-row">
+                  <ha-input
+                    type="number"
+                    min="0"
+                    max="3600"
+                    .label=${t(this.hass, "config_panel.zones_prerequisite_start_delay")}
+                    .value=${String(z.prerequisite.start_delay_sec)}
+                    @input=${(e: Event) => {
+                      if (!z.prerequisite) return;
+                      z.prerequisite.start_delay_sec = Math.max(
+                        0,
+                        Math.min(
+                          3600,
+                          parseInt((e.target as HTMLInputElement).value, 10) || 0
+                        )
+                      );
+                    }}
+                  ></ha-input>
+                  <ha-input
+                    type="number"
+                    min="0"
+                    max="3600"
+                    .label=${t(this.hass, "config_panel.zones_prerequisite_stop_delay")}
+                    .value=${String(z.prerequisite.stop_delay_sec)}
+                    @input=${(e: Event) => {
+                      if (!z.prerequisite) return;
+                      z.prerequisite.stop_delay_sec = Math.max(
+                        0,
+                        Math.min(
+                          3600,
+                          parseInt((e.target as HTMLInputElement).value, 10) || 0
+                        )
+                      );
+                    }}
+                  ></ha-input>
+                </div>
+                <div class="switch-row">
+                  <ha-switch
+                    .checked=${z.prerequisite.require_open_state}
+                    @change=${(e: Event) => {
+                      if (!z.prerequisite) return;
+                      z.prerequisite.require_open_state = Boolean(
+                        (e.target as HTMLInputElement & { checked: boolean }).checked
+                      );
+                    }}
+                  ></ha-switch>
+                  <span class="switch-row-label">
+                    ${t(this.hass, "config_panel.zones_prerequisite_require_open")}
+                  </span>
+                </div>
+                <p class="hint">
+                  <ha-icon class="inline-help-icon" icon="mdi:information-outline"></ha-icon>
+                  ${t(this.hass, "config_panel.zones_prerequisite_sequence", {
+                    start: z.prerequisite.start_delay_sec,
+                    stop: z.prerequisite.stop_delay_sec,
+                  })}
+                </p>
+              `
+            : nothing}
+        </details>
         <details class="inline-help" ?open=${Boolean(
           z.start_service || z.duration_field || z.duration_unit || z.start_entity_id
         )}>

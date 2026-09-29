@@ -41,6 +41,7 @@ from .scheduler import compute_next_runs, phases_for_slot
 from .time_util import next_slot_fire_local_any, parse_hh_mm
 from .validation import (
     parse_guard_list,
+    parse_zone_prerequisite,
     parse_zone_switch_entities,
     validate_max_parallel,
     validate_mode,
@@ -478,6 +479,25 @@ class SimpleIrrigationPanelZoneView(HomeAssistantView):
                         vol.Optional("flow_rate_lpm"): vol.Any(float, int, None),
                         vol.Optional("countdown_entity_id"): vol.Any(cv.string, None),
                         vol.Optional("countdown_unit"): vol.Any(cv.string, None),
+                        vol.Optional("prerequisite"): vol.Any(
+                            None,
+                            vol.Schema(
+                                {
+                                    vol.Required("output_entity_ids"): [cv.string],
+                                    vol.Optional("start_service"): vol.Any(cv.string, None),
+                                    vol.Optional("duration_field"): vol.Any(cv.string, None),
+                                    vol.Optional("duration_unit"): vol.Any(cv.string, None),
+                                    vol.Optional("start_entity_id"): vol.Any(cv.string, None),
+                                    vol.Optional("start_delay_sec"): vol.All(
+                                        int, vol.Range(min=0, max=3600)
+                                    ),
+                                    vol.Optional("stop_delay_sec"): vol.All(
+                                        int, vol.Range(min=0, max=3600)
+                                    ),
+                                    vol.Optional("require_open_state"): cv.boolean,
+                                }
+                            ),
+                        ),
                     }
                 ),
             }
@@ -513,6 +533,7 @@ class SimpleIrrigationPanelZoneView(HomeAssistantView):
                 "flow_rate_lpm": zone_data.get("flow_rate_lpm", 0),
                 "countdown_entity_id": zone_data.get("countdown_entity_id", ""),
                 "countdown_unit": zone_data.get("countdown_unit", ""),
+                "prerequisite": zone_data.get("prerequisite"),
             }
             err = validate_zone_payload(hass, payload)
             if err:
@@ -536,6 +557,7 @@ class SimpleIrrigationPanelZoneView(HomeAssistantView):
                 flow_rate_lpm=float(payload["flow_rate_lpm"] or 0),
                 countdown_entity_id=str(payload["countdown_entity_id"] or "").strip(),
                 countdown_unit=str(payload["countdown_unit"] or "").strip(),
+                prerequisite=parse_zone_prerequisite(payload["prerequisite"]),
             )
             await coord.async_update_installation(inst)
             return self.json({"success": True, "zone_id": zid})
@@ -586,6 +608,10 @@ class SimpleIrrigationPanelZoneView(HomeAssistantView):
                 "countdown_entity_id", zone.countdown_entity_id
             ),
             "countdown_unit": zone_data.get("countdown_unit", zone.countdown_unit),
+            "prerequisite": zone_data.get(
+                "prerequisite",
+                zone.prerequisite.to_dict() if zone.prerequisite else None,
+            ),
         }
         err = validate_zone_payload(hass, merged)
         if err:
@@ -605,6 +631,7 @@ class SimpleIrrigationPanelZoneView(HomeAssistantView):
         zone.flow_rate_lpm = float(merged["flow_rate_lpm"] or 0)
         zone.countdown_entity_id = str(merged["countdown_entity_id"] or "").strip()
         zone.countdown_unit = str(merged["countdown_unit"] or "").strip()
+        zone.prerequisite = parse_zone_prerequisite(merged["prerequisite"])
         await coord.async_update_installation(inst)
         return self.json({"success": True})
 

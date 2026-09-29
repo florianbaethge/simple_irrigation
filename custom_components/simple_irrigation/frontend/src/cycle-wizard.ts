@@ -45,7 +45,12 @@ import {
   type ZonePhaseInput,
 } from "./schedule-phases";
 import { renderCycleSoakEditor } from "./cycle-soak-editor";
-import { durationForMode, parseTimeLocalToMinutes, minutesToTimeLocal } from "./timetable-model";
+import {
+  durationForMode,
+  executionMinutesForMode,
+  parseTimeLocalToMinutes,
+  minutesToTimeLocal,
+} from "./timetable-model";
 import { formatDateTimeForDisplay } from "./date-format";
 import type { HomeAssistant } from "./types";
 
@@ -330,7 +335,11 @@ export class CycleWizard extends LitElement {
     const out: Record<string, ZonePhaseInput> = {};
     if (!zones) return out;
     for (const [id, z] of Object.entries(zones)) {
-      out[id] = { enabled: Boolean(z?.enabled ?? true), exclusive: Boolean(z?.exclusive ?? false) };
+      out[id] = {
+        enabled: Boolean(z?.enabled ?? true),
+        exclusive: Boolean(z?.exclusive ?? false),
+        prerequisite: (z?.prerequisite as ZonePhaseInput["prerequisite"]) ?? null,
+      };
     }
     return out;
   }
@@ -368,7 +377,7 @@ export class CycleWizard extends LitElement {
     const mode = this._mode();
     const minutes = programMinutes(phases, this._cycleSoak, (zid) => {
       const z = zones[zid];
-      return z && Boolean(z.enabled ?? true) ? durationForMode(z, mode) : 0;
+      return z && Boolean(z.enabled ?? true) ? executionMinutesForMode(z, mode) : 0;
     });
     return Math.round(preStart + minutes);
   }

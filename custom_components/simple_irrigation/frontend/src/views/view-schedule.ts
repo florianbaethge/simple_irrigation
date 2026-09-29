@@ -39,7 +39,7 @@ import {
   type CycleSoak,
   type ZonePhaseInput,
 } from "../schedule-phases";
-import { durationForMode, plannedLitres } from "../timetable-model";
+import { durationForMode, executionMinutesForMode, plannedLitres } from "../timetable-model";
 import { renderCycleSoakEditor } from "../cycle-soak-editor";
 import { formatVolumeNumber, litresToUnit, volumeUnit } from "../units";
 import {
@@ -403,7 +403,11 @@ export class ViewSchedule extends LitElement {
     const out: Record<string, ZonePhaseInput> = {};
     if (!zones) return out;
     for (const [id, z] of Object.entries(zones)) {
-      out[id] = { enabled: Boolean(z?.enabled ?? true), exclusive: Boolean(z?.exclusive ?? false) };
+      out[id] = {
+        enabled: Boolean(z?.enabled ?? true),
+        exclusive: Boolean(z?.exclusive ?? false),
+        prerequisite: (z?.prerequisite as ZonePhaseInput["prerequisite"]) ?? null,
+      };
     }
     return out;
   }
@@ -416,7 +420,7 @@ export class ViewSchedule extends LitElement {
     const mode = this._mode();
     const minutes = programMinutes(phases, cs, (zid) => {
       const z = zones[zid];
-      return z && Boolean(z.enabled ?? true) ? durationForMode(z, mode) : 0;
+      return z && Boolean(z.enabled ?? true) ? executionMinutesForMode(z, mode) : 0;
     });
     return Math.round(preStart + minutes);
   }

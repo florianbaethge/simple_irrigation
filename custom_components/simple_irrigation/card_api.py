@@ -15,6 +15,7 @@ labels follow each user's own locale instead of the server's.
 from __future__ import annotations
 
 import logging
+import math
 from datetime import date, datetime, timedelta
 from typing import Any
 
@@ -130,6 +131,13 @@ def _zone_issue(hass: HomeAssistant, zone: Zone) -> dict[str, Any] | None:
             return {"reason": "missing", "entity_id": entity_id}
         if state.state in (STATE_UNAVAILABLE, STATE_UNKNOWN):
             return {"reason": "unavailable", "entity_id": entity_id}
+    if zone.prerequisite is not None:
+        for entity_id in zone.prerequisite.output_entity_ids:
+            state = hass.states.get(entity_id)
+            if state is None:
+                return {"reason": "missing", "entity_id": entity_id}
+            if state.state in (STATE_UNAVAILABLE, STATE_UNKNOWN):
+                return {"reason": "unavailable", "entity_id": entity_id}
     return None
 
 
@@ -181,16 +189,25 @@ def _slot_duration_min(inst: Installation, slot: ScheduleSlot) -> int:
     )
     per_pass = 0
     for phase in phases:
-        durations = [
-            inst.zones[zid].duration_for_mode(inst.mode)
-            for zid in phase
-            if zid in inst.zones
-        ]
+        durations = []
+        for zid in phase:
+            if zid not in inst.zones:
+                continue
+            zone = inst.zones[zid]
+            margins = 0
+            if zone.prerequisite is not None:
+                margins = (
+                    zone.prerequisite.start_delay_sec
+                    + zone.prerequisite.stop_delay_sec
+                )
+            durations.append(zone.duration_for_mode(inst.mode) + margins / 60)
         if durations:
             per_pass += max(durations)
     if per_pass == 0:
         return 0
-    return per_pass * max(1, slot.repetitions) + soak_minutes(len(phases), slot)
+    return math.ceil(
+        per_pass * max(1, slot.repetitions) + soak_minutes(len(phases), slot)
+    )
 
 
 def _slot_water_l(inst: Installation, slot: ScheduleSlot) -> float | None:

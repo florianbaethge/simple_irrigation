@@ -33,6 +33,7 @@ from custom_components.simple_irrigation.models import (
     RunState,
     ScheduleSlot,
     Zone,
+    ZonePrerequisite,
 )
 
 TZ = ZoneInfo("Europe/Berlin")
@@ -192,6 +193,19 @@ def test_zone_without_any_output_is_an_issue() -> None:
     assert _zone_issue(_hass(), zone)["reason"] == "no_output"
 
 
+def test_zone_issue_includes_prerequisite_outputs() -> None:
+    zone = _zone(
+        "z1",
+        "Trees",
+        10,
+        prerequisite=ZonePrerequisite(output_entity_ids=["valve.missing_supply"]),
+    )
+    assert _zone_issue(_hass({"switch.z1": _state("off")}), zone) == {
+        "reason": "missing",
+        "entity_id": "valve.missing_supply",
+    }
+
+
 # --- durations --------------------------------------------------------------
 
 
@@ -218,6 +232,16 @@ def test_slot_duration_skips_disabled_zones() -> None:
     inst = _installation()
     inst.zones["z1"].enabled = False
     assert _slot_duration_min(inst, inst.schedule_slots[0]) == 20
+
+
+def test_slot_duration_includes_prerequisite_margins() -> None:
+    inst = _installation()
+    inst.zones["z1"].prerequisite = ZonePrerequisite(
+        output_entity_ids=["valve.supply"],
+        start_delay_sec=5,
+        stop_delay_sec=10,
+    )
+    assert _slot_duration_min(inst, inst.schedule_slots[0]) == 21
 
 
 # --- cadence ----------------------------------------------------------------

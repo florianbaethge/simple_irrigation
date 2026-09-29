@@ -7,7 +7,7 @@ import { t } from "../i18n";
 import { sharedStyles } from "../shared-styles";
 import { formatTimeLocalForDisplay, weekdayLong, weekdaysSummary } from "../date-format";
 import { computePhases, cycleSoakOf, programMinutes, type ZonePhaseInput } from "../schedule-phases";
-import { durationForMode, plannedLitres } from "../timetable-model";
+import { durationForMode, executionMinutesForMode, plannedLitres } from "../timetable-model";
 import { formatVolumeNumber, litresToUnit, volumeUnit } from "../units";
 import { mondayBasedWeekday, weekParityMatches, type CycleMeta } from "../cycle";
 import type { HomeAssistant, ScheduleNext } from "../types";
@@ -306,7 +306,11 @@ export class ViewOverview extends LitElement {
     const out: Record<string, ZonePhaseInput> = {};
     if (!zones) return out;
     for (const [id, z] of Object.entries(zones)) {
-      out[id] = { enabled: Boolean(z?.enabled ?? true), exclusive: Boolean(z?.exclusive ?? false) };
+      out[id] = {
+        enabled: Boolean(z?.enabled ?? true),
+        exclusive: Boolean(z?.exclusive ?? false),
+        prerequisite: (z?.prerequisite as ZonePhaseInput["prerequisite"]) ?? null,
+      };
     }
     return out;
   }
@@ -325,7 +329,7 @@ export class ViewOverview extends LitElement {
     const preStart = Math.max(0, Number(this._inst.pre_start_delay_sec ?? 10)) / 60;
     const minutes = programMinutes(phases, cycleSoakOf(slot), (zid) => {
       const z = zones[zid];
-      return z && Boolean(z.enabled ?? true) ? durationForMode(z, mode) : 0;
+      return z && Boolean(z.enabled ?? true) ? executionMinutesForMode(z, mode) : 0;
     });
     return Math.round(preStart + minutes);
   }

@@ -3,6 +3,18 @@
 export interface ZonePhaseInput {
   enabled?: boolean;
   exclusive?: boolean;
+  prerequisite?: { output_entity_ids?: unknown[] } | null;
+}
+
+function sharesPrerequisite(a: ZonePhaseInput, b: ZonePhaseInput): boolean {
+  const aOutputs = new Set(
+    Array.isArray(a.prerequisite?.output_entity_ids)
+      ? a.prerequisite.output_entity_ids.map(String)
+      : []
+  );
+  return Array.isArray(b.prerequisite?.output_entity_ids)
+    ? b.prerequisite.output_entity_ids.some((entityId) => aOutputs.has(String(entityId)))
+    : false;
 }
 
 export function computePhases(
@@ -34,7 +46,13 @@ export function computePhases(
       continue;
     }
 
-    if (current.length >= mp) {
+    if (
+      current.length >= mp ||
+      current.some((currentId) => {
+        const currentZone = zonesById[currentId];
+        return currentZone ? sharesPrerequisite(zone, currentZone) : false;
+      })
+    ) {
       phases.push(current);
       current = [zid];
       continue;

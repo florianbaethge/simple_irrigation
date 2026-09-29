@@ -31,7 +31,7 @@ Outputs can be any mix of `switch`, `input_boolean`, `group` and `valve` entitie
 | Tab | What it does |
 |-----|----------------|
 | **Overview** | Live run state with a countdown to the next run, the next few upcoming runs (duration and expected litres), the active watering mode, water used so far while running, and quick actions: *Run next slot now*, *Skip today*, *Pause 48 h* (plus *Stop* / *Skip phase* while running). Shows **Soaking** with a countdown while a run rests. |
-| **Zones** | Named zones with one or more output entities, Eco / Normal / Extra runtimes, an **enabled** toggle and **exclusive** flag. Optional **water** tracking per zone: a meter entity or a flow rate, shown as litres per run and last run. Advanced settings support integration-specific start services that receive the runtime. Filter by **All / Enabled / Issues**, run a zone now, see how many cycles use it. |
+| **Zones** | Named zones with one or more output entities, Eco / Normal / Extra runtimes, an **enabled** toggle and **exclusive** flag. An optional **prerequisite / supply valve** opens before downstream outputs and closes after them. Optional **water** tracking per zone: a meter entity or a flow rate, shown as litres per run and last run. Advanced settings support integration-specific start services that receive the runtime. Filter by **All / Enabled / Issues**, run a zone now, see how many cycles use it. |
 | **Schedule** | Your watering **cycles** and single slots. A guided **New irrigation cycle** wizard (daily, every 2/3 days, x-per-week, weekly, every 2 weeks, custom). Every row expands to a **14-day run strip**; multi-slot cycles show their members and can be detached. Per-slot **conditions** gate a run on soil moisture, rain, tank level or any other entity, per-slot **scripts** override the installation's pre-start / post-run script, and **Cycle & Soak** repeats the slot's phases with rests in between. |
 | **Timetable** | Week-at-a-glance grid (zones × weekdays, morning / daytime / evening) with per-day totals, using the same phase and mode timing as a real run — every Cycle & Soak pass is drawn. On phones it becomes a per-day list. Click a run to jump straight to its editor. |
 | **Settings** | Installation name (shown in the panel header), optional **pre-start** and **post-run scripts**, pre-start outputs & delay, watering mode, max parallel zones, an optional **water meter** on the supply line, global **conditions**, default installation, service reference and raw diagnostics. |
@@ -106,6 +106,19 @@ You can add **multiple** config entries for separate gardens or seasonal plans (
 - **Runtimes:** three values per zone — Eco / Normal / Extra. The installation’s active **mode** picks which one is used.
 - **Exclusive:** the zone never runs in parallel with others (high-flow lines, shared supply, drip circuits).
 - **Issues filter:** zones whose output entity is missing or `unavailable` are flagged so you can spot broken wiring at a glance.
+
+#### Prerequisite / supply valves
+
+Some irrigation branches only receive water while an upstream controller or master valve is open. Under **Zone → Advanced → Prerequisite / supply valve**, enable a first-class supply stage instead of coordinating the two valves with an external script.
+
+- Put the downstream valve(s) that water the actual area in **Irrigation outputs** and the upstream primary valve(s) in **Supply output**.
+- Configure an optional delay before downstream watering and an optional tail after it. The zone's Eco / Normal / Extra duration is always the complete downstream watering time; supply margins are additional.
+- The supply stage supports the same duration-aware service presets as an ordinary zone. Its service receives the downstream duration plus both margins, rounded up when the controller accepts whole minutes.
+- **Require every supply output to report open** waits up to 30 seconds for `open` / `on` before allowing downstream water. If it never opens, the zone fails closed.
+- Normal shutdown closes downstream outputs first, keeps the supply open for the configured tail, then closes the supply. Stop, cancellation, and errors skip both delays and close downstream before upstream.
+- Zones that reference the same supply output are placed in separate phases automatically, even when parallel watering is otherwise allowed. Cycle & Soak repeats the full supply sequence for every pass.
+
+Existing zones have no prerequisite block and retain their previous one-stage behavior. If you downgrade after configuring this feature, make a backup first: older versions ignore the new block and may discard it when they save the zone.
 
 #### Duration-aware start services
 

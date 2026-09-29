@@ -1300,9 +1300,9 @@ function formatDateNumericPart(date, locale, serverTz) {
         return `${year}${literal}${month}${literal}${day}${lastLiteral}`;
     return formatter.format(date);
 }
-function formatTimePart(date, locale, serverTz) {
+function formatTimePart(date, locale, serverTz, force24Hour = false) {
     const tz = resolveTimeZonePref(locale.time_zone, serverTz);
-    const ampm = useAmPmFromLocale(locale);
+    const ampm = !force24Hour && useAmPmFromLocale(locale);
     return new Intl.DateTimeFormat(locale.language, {
         hour: ampm ? "numeric" : "2-digit",
         minute: "2-digit",
@@ -1313,9 +1313,20 @@ function formatTimePart(date, locale, serverTz) {
 /**
  * Absolute instant (e.g. next run, pause until): weekday + profile date + profile time + TZ preference.
  */
-function formatDateTimeForProfile(hass, date) {
-    if (!hass)
-        return date.toLocaleString();
+function formatDateTimeForProfile(hass, date, force24Hour = false) {
+    if (!hass) {
+        return force24Hour
+            ? new Intl.DateTimeFormat(undefined, {
+                weekday: "long",
+                year: "numeric",
+                month: "numeric",
+                day: "numeric",
+                hour: "2-digit",
+                minute: "2-digit",
+                hourCycle: "h23",
+            }).format(date)
+            : date.toLocaleString();
+    }
     const loc = hass.locale;
     const serverTz = hass.config?.time_zone ?? LOCAL_TZ;
     const lang = (loc?.language ?? hass.language)?.replace(/_/g, "-");
@@ -1331,6 +1342,7 @@ function formatDateTimeForProfile(hass, date) {
             year: "numeric",
             hour: "2-digit",
             minute: "2-digit",
+            hourCycle: force24Hour ? "h23" : undefined,
         }).format(date);
     }
     const tz = resolveTimeZonePref(loc.time_zone, serverTz);
@@ -1339,33 +1351,47 @@ function formatDateTimeForProfile(hass, date) {
         timeZone: tz,
     }).format(date);
     const datePart = formatDateNumericPart(date, loc, serverTz);
-    const timePart = formatTimePart(date, loc, serverTz);
+    const timePart = formatTimePart(date, loc, serverTz, force24Hour);
     return `${weekday}, ${datePart}, ${timePart}`;
 }
-/**
- * Schedule slot wall time (stored as HH:MM): same clock face, 12h/24h and spacing from profile.
- */
-function formatSlotTimeForProfile(hass, timeLocal) {
-    const m = /^(\d{1,2}):(\d{2})$/.exec(String(timeLocal).trim());
-    if (!m)
+
+/** Schedule times are wall-clock values, always presented as 24-hour HH:MM. */
+function formatTime24(timeLocal) {
+    const match = /^(\d{1,2}):(\d{2})$/.exec(timeLocal.trim());
+    if (!match)
         return timeLocal;
-    const h = Math.min(23, Math.max(0, parseInt(m[1], 10)));
-    const min = Math.min(59, Math.max(0, parseInt(m[2], 10)));
-    const d = new Date(2000, 0, 1, h, min, 0, 0);
-    const loc = hass?.locale;
-    const lang = (loc?.language ?? hass?.language)?.replace(/_/g, "-") ?? undefined;
-    if (!loc?.language || !loc.time_format) {
-        return new Intl.DateTimeFormat(lang, {
-            hour: "2-digit",
-            minute: "2-digit",
-        }).format(d);
-    }
-    const ampm = useAmPmFromLocale(loc);
-    return new Intl.DateTimeFormat(loc.language, {
-        hour: ampm ? "numeric" : "2-digit",
-        minute: "2-digit",
-        hourCycle: ampm ? "h12" : "h23",
-    }).format(d);
+    const hour = Number(match[1]);
+    const minute = Number(match[2]);
+    if (hour > 23 || minute > 59)
+        return timeLocal;
+    return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+}
+const HOURS = Array.from({ length: 24 }, (_, hour) => String(hour).padStart(2, "0"));
+const MINUTES = Array.from({ length: 60 }, (_, minute) => String(minute).padStart(2, "0"));
+/** Native time inputs follow the browser's clock preference; two selects do not. */
+function renderTime24Picker(label, timeLocal, onChange) {
+    const [hour = "00", minute = "00"] = formatTime24(timeLocal).split(":");
+    return b `<span class="time24-picker" role="group" aria-label=${label}>
+    <select
+      aria-label=${`${label} HH`}
+      .value=${hour}
+      @change=${(event) => {
+        onChange(`${event.target.value}:${minute}`);
+    }}
+    >
+      ${HOURS.map((value) => b `<option value=${value}>${value}</option>`)}
+    </select>
+    <span aria-hidden="true">:</span>
+    <select
+      aria-label=${`${label} MM`}
+      .value=${minute}
+      @change=${(event) => {
+        onChange(`${hour}:${event.target.value}`);
+    }}
+    >
+      ${MINUTES.map((value) => b `<option value=${value}>${value}</option>`)}
+    </select>
+  </span>`;
 }
 
 function locale(hass) {
@@ -1423,15 +1449,13 @@ function weekdaysSummary(hass, weekdays) {
         return t(hass, "config_panel.weekdays_summary_weekend");
     return wds.map((i) => weekdayShort(hass, i)).join(", ");
 }
-/**
- * Absolute instant: weekday + date + time using the user’s profile (12h/24h, DMY/MDY/YMD, server vs local TZ).
- */
-function formatDateTimeForDisplay(hass, date) {
-    return formatDateTimeForProfile(hass, date);
+/** Scheduled run previews keep the user's date format but use a 24-hour clock. */
+function formatDateTime24ForDisplay(hass, date) {
+    return formatDateTimeForProfile(hass, date, true);
 }
-/** Slot wall time HH:MM with profile 12h/24h (same numbers as stored; presentation only). */
-function formatTimeLocalForDisplay(hass, timeLocal) {
-    return formatSlotTimeForProfile(hass, timeLocal);
+/** Schedule wall times always use 24-hour HH:MM, independent of locale. */
+function formatTimeLocalForDisplay(_hass, timeLocal) {
+    return formatTime24(timeLocal);
 }
 
 /** Mirrors `grouping.compute_phases` for schedule slot preview in the panel. */
@@ -3198,6 +3222,20 @@ const formLayoutStyles = i$5 `
     width: 100%;
     display: block;
   }
+  .time24-picker {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .time24-picker select {
+    min-width: 4.5em;
+    padding: 8px;
+    border: 1px solid var(--divider-color);
+    border-radius: 4px;
+    background: var(--card-background-color);
+    color: var(--primary-text-color);
+    font: inherit;
+  }
   .entity-picker-rows {
     display: flex;
     flex-direction: column;
@@ -3582,10 +3620,6 @@ class CycleWizard extends i$2 {
         display: flex;
         align-items: center;
         gap: 8px;
-      }
-      .time-fields input[type="time"] {
-        width: auto;
-        min-width: 120px;
       }
       .zone-pick {
         display: flex;
@@ -3983,15 +4017,11 @@ class CycleWizard extends i$2 {
       </div>
       <div class="time-fields">
         ${this._times.map((timeLocal, index) => b `<div class="time-row">
-            <input
-              type="time"
-              .value=${timeLocal}
-              @input=${(e) => {
+            ${renderTime24Picker(`${t(this.hass, "config_panel.cycle_time_title")} ${index + 1}`, timeLocal, (value) => {
             const next = [...this._times];
-            next[index] = e.target.value || "06:00";
+            next[index] = value;
             this._times = next;
-        }}
-            />
+        })}
             ${index > 0
             ? b `<button
                   type="button"
@@ -4045,7 +4075,7 @@ class CycleWizard extends i$2 {
       ${first
             ? b `<p class="preview-line">
             ${t(this.hass, "config_panel.cycle_preview_first_run", {
-                when: formatDateTimeForDisplay(this.hass, new Date(first.getFullYear(), first.getMonth(), first.getDate(), ...this._times[0].split(":").map(Number))),
+                when: formatDateTime24ForDisplay(this.hass, new Date(first.getFullYear(), first.getMonth(), first.getDate(), ...this._times[0].split(":").map(Number))),
             })}
           </p>`
             : A}
@@ -4217,7 +4247,7 @@ class CycleWizard extends i$2 {
         ${first
             ? b `<p class="preview-line" style="margin-bottom:0">
               ${t(this.hass, "config_panel.cycle_preview_first_run", {
-                when: formatDateTimeForDisplay(this.hass, new Date(first.getFullYear(), first.getMonth(), first.getDate(), ...this._times[0].split(":").map(Number))),
+                when: formatDateTime24ForDisplay(this.hass, new Date(first.getFullYear(), first.getMonth(), first.getDate(), ...this._times[0].split(":").map(Number))),
             })}
             </p>`
             : A}
@@ -5417,13 +5447,10 @@ class ViewSchedule extends i$2 {
       <div class="field-block">
         <span class="field-title">${t(this.hass, "config_panel.schedule_start_time_title")}</span>
         <div class="field-row">
-          <input
-            type="time"
-            .value=${draft.time_local}
-            @input=${(e) => {
-            draft.time_local = e.target.value;
-        }}
-          />
+          ${renderTime24Picker(t(this.hass, "config_panel.schedule_start_time_title"), draft.time_local, (value) => {
+            draft.time_local = value;
+            this.requestUpdate();
+        })}
         </div>
       </div>
       ${this._renderGuardSection(draft)}
@@ -6680,8 +6707,8 @@ class ViewTimetable extends i$2 {
         return t(this.hass, "config_panel.timetable_legend_bucket_evening");
     }
     _entryTooltip(e) {
-        const start = formatSlotTimeForProfile(this.hass, minutesToTimeLocal(e.startMin));
-        const end = formatSlotTimeForProfile(this.hass, minutesToTimeLocal(e.endMin));
+        const start = formatTimeLocalForDisplay(this.hass, minutesToTimeLocal(e.startMin));
+        const end = formatTimeLocalForDisplay(this.hass, minutesToTimeLocal(e.endMin));
         const modeKey = e.mode === "eco"
             ? "config_panel.timetable_mode_eco"
             : e.mode === "extra"
@@ -6841,8 +6868,8 @@ class ViewTimetable extends i$2 {
             ${dayEntries.length
             ? b `
                   ${dayEntries.map((e) => {
-                const start = formatSlotTimeForProfile(this.hass, minutesToTimeLocal(e.startMin));
-                const end = formatSlotTimeForProfile(this.hass, minutesToTimeLocal(e.endMin));
+                const start = formatTimeLocalForDisplay(this.hass, minutesToTimeLocal(e.startMin));
+                const end = formatTimeLocalForDisplay(this.hass, minutesToTimeLocal(e.endMin));
                 return b `
                       <div
                         class="day-run ${e.enabled ? "" : "disabled"}"
@@ -6905,8 +6932,8 @@ class ViewTimetable extends i$2 {
                         ? b `
                                     <div class="tt-blocks ${multiLane ? "tt-blocks--lanes" : ""}">
                                       ${cellEntries.map((e) => {
-                            const start = formatSlotTimeForProfile(this.hass, minutesToTimeLocal(e.startMin));
-                            const end = formatSlotTimeForProfile(this.hass, minutesToTimeLocal(e.endMin));
+                            const start = formatTimeLocalForDisplay(this.hass, minutesToTimeLocal(e.startMin));
+                            const end = formatTimeLocalForDisplay(this.hass, minutesToTimeLocal(e.endMin));
                             const dur = entryDurationMinutesRounded(e);
                             const durLabel = t(this.hass, "config_panel.timetable_duration_min", {
                                 n: dur,

@@ -3,8 +3,7 @@ import { state } from "lit/decorators.js";
 import { defineCustomElementOnce, navigate } from "../helpers";
 import { exportPath } from "../navigation";
 import { t } from "../i18n";
-import { weekdayLong } from "../date-format";
-import { formatSlotTimeForProfile } from "../profile-datetime";
+import { formatTimeLocalForDisplay, weekdayLong } from "../date-format";
 import {
   assignEntryLanes,
   buildTimetableEntries,
@@ -490,8 +489,8 @@ export class ViewTimetable extends LitElement {
   }
 
   private _entryTooltip(e: TimetableEntry): string {
-    const start = formatSlotTimeForProfile(this.hass, minutesToTimeLocal(e.startMin));
-    const end = formatSlotTimeForProfile(this.hass, minutesToTimeLocal(e.endMin));
+    const start = formatTimeLocalForDisplay(this.hass, minutesToTimeLocal(e.startMin));
+    const end = formatTimeLocalForDisplay(this.hass, minutesToTimeLocal(e.endMin));
     const modeKey =
       e.mode === "eco"
         ? "config_panel.timetable_mode_eco"
@@ -670,8 +669,8 @@ export class ViewTimetable extends LitElement {
             ${dayEntries.length
               ? html`
                   ${dayEntries.map((e) => {
-                    const start = formatSlotTimeForProfile(this.hass, minutesToTimeLocal(e.startMin));
-                    const end = formatSlotTimeForProfile(this.hass, minutesToTimeLocal(e.endMin));
+                    const start = formatTimeLocalForDisplay(this.hass, minutesToTimeLocal(e.startMin));
+                    const end = formatTimeLocalForDisplay(this.hass, minutesToTimeLocal(e.endMin));
                     return html`
                       <div
                         class="day-run ${e.enabled ? "" : "disabled"}"
@@ -739,11 +738,11 @@ export class ViewTimetable extends LitElement {
                                 ? html`
                                     <div class="tt-blocks ${multiLane ? "tt-blocks--lanes" : ""}">
                                       ${cellEntries.map((e) => {
-                                        const start = formatSlotTimeForProfile(
+                                        const start = formatTimeLocalForDisplay(
                                           this.hass,
                                           minutesToTimeLocal(e.startMin)
                                         );
-                                        const end = formatSlotTimeForProfile(
+                                        const end = formatTimeLocalForDisplay(
                                           this.hass,
                                           minutesToTimeLocal(e.endMin)
                                         );

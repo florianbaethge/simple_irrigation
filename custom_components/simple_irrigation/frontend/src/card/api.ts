@@ -59,6 +59,10 @@ export const runZones = (
 export const stopAll = (hass: HomeAssistant, entryId?: string) =>
   action(hass, entryId, { action: "stop" });
 
+/** End the running phase (or the rest the run is in) and go on to the next. */
+export const skipPhase = (hass: HomeAssistant, entryId?: string) =>
+  action(hass, entryId, { action: "skip_phase" });
+
 export const skipToday = (hass: HomeAssistant, entryId?: string) =>
   action(hass, entryId, { action: "skip_today" });
 

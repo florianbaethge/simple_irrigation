@@ -124,6 +124,7 @@ class IrrigationRuntime:
         # Unconditional: a leftover end time is meaningless in a fresh process, and
         # a run that was already in ERROR skips the branch below.
         rs.zone_ends_at = {}
+        rs.zone_started_at = {}
         rs.soak_until = None
         if rs.run_state not in (RUN_STATE_IDLE, RUN_STATE_ERROR):
             rs.run_state = RUN_STATE_ERROR
@@ -384,6 +385,7 @@ class IrrigationRuntime:
         rs.active_script_started_at = None
         rs.active_script_timeout_sec = None
         rs.zone_ends_at = {}
+        rs.zone_started_at = {}
         rs.soak_until = None
         if error:
             rs.last_error = error
@@ -783,11 +785,14 @@ class IrrigationRuntime:
             # _sync_active() in the phase loop, or by async_stop_all().
             if zone_id:
                 self.coordinator.run_state.zone_ends_at.pop(zone_id, None)
+                self.coordinator.run_state.zone_started_at.pop(zone_id, None)
 
     async def _async_publish_zone_end(self, zone_id: str, timeout_sec: float) -> None:
         """Record when this zone is planned to finish and notify listeners."""
         rs = self.coordinator.run_state
-        rs.zone_ends_at[zone_id] = dt_util.utcnow() + timedelta(seconds=timeout_sec)
+        now = dt_util.utcnow()
+        rs.zone_started_at[zone_id] = now
+        rs.zone_ends_at[zone_id] = now + timedelta(seconds=timeout_sec)
         await self.coordinator.async_update_run_state(rs)
 
     async def _async_zone_run(self, zone: Zone, duration_min: int) -> None:
@@ -1144,6 +1149,7 @@ class IrrigationRuntime:
         rs.active_script_started_at = None
         rs.active_script_timeout_sec = None
         rs.zone_ends_at = {}
+        rs.zone_started_at = {}
         rs.soak_until = None
         await self.coordinator.async_update_run_state(rs)
 

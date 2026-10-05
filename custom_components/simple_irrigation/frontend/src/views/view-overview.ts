@@ -433,9 +433,12 @@ export class ViewOverview extends LitElement {
 
   /** Planned end of a watering zone, as pushed by the runtime. */
   private _zoneEndsAt(zoneId: string): number | null {
+    return this._zoneMoment("zone_ends_at", zoneId);
+  }
+
+  private _zoneMoment(key: "zone_started_at" | "zone_ends_at", zoneId: string): number | null {
     const rs = (this.runState ?? {}) as Record<string, unknown>;
-    const ends = rs.zone_ends_at as Record<string, string> | undefined;
-    const raw = ends?.[zoneId];
+    const raw = (rs[key] as Record<string, string> | undefined)?.[zoneId];
     if (!raw) return null;
     const ms = new Date(raw).getTime();
     return Number.isFinite(ms) ? ms : null;
@@ -468,16 +471,15 @@ export class ViewOverview extends LitElement {
     const rs = (this.runState ?? {}) as Record<string, unknown>;
     const booked = typeof rs.run_water_l === "number" ? (rs.run_water_l as number) : null;
     const zones = this._inst.zones as Record<string, Record<string, unknown>> | undefined;
-    const mode = this._mode();
     let litres = booked ?? 0;
     let known = booked !== null;
     for (const id of activeIds) {
-      const z = zones?.[id];
-      const rate = Number(z?.flow_rate_lpm ?? 0);
-      const endsAt = this._zoneEndsAt(id);
-      if (!z || !(rate > 0) || endsAt === null) continue;
-      const remainingMin = Math.max(0, (endsAt - Date.now()) / 60000);
-      litres += rate * Math.max(0, durationForMode(z, mode) - remainingMin);
+      const rate = Number(zones?.[id]?.flow_rate_lpm ?? 0);
+      // Since it opened, not "mode time minus what is left": a manual run
+      // brings its own duration.
+      const startedAt = this._zoneMoment("zone_started_at", id);
+      if (!(rate > 0) || startedAt === null) continue;
+      litres += rate * Math.max(0, (Date.now() - startedAt) / 60000);
       known = true;
     }
     return known ? litres : null;

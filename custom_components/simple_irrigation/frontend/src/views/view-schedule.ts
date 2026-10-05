@@ -39,7 +39,12 @@ import {
   type CycleSoak,
   type ZonePhaseInput,
 } from "../schedule-phases";
-import { durationForMode, plannedLitres } from "../timetable-model";
+import {
+  durationForMode,
+  minutesToTimeLocal,
+  parseTimeLocalToMinutes,
+  plannedLitres,
+} from "../timetable-model";
 import { renderCycleSoakEditor } from "../cycle-soak-editor";
 import { formatVolumeNumber, litresToUnit, volumeUnit } from "../units";
 import { orderedZoneIds } from "../zone-order";
@@ -839,6 +844,14 @@ export class ViewSchedule extends LitElement {
     this._expanded = next;
   }
 
+  /** "06:00–06:40": when a run starts and, by the active mode's durations, ends. */
+  private _timeRange(timeLocal: string, estMin: number): string {
+    const start = formatTimeLocalForDisplay(this.hass, timeLocal);
+    if (!(estMin > 0)) return start;
+    const end = (parseTimeLocalToMinutes(timeLocal) + estMin) % (24 * 60);
+    return `${start}–${formatTimeLocalForDisplay(this.hass, minutesToTimeLocal(end))}`;
+  }
+
   private _renderMemberLine(m: SlotRow): TemplateResult {
     return html`
       <div class="member-line">
@@ -941,9 +954,9 @@ export class ViewSchedule extends LitElement {
             </div>
             <div class="meta-line">
               <span class="meta"
-                ><ha-icon icon="mdi:clock-outline"></ha-icon>${times
-                  .map((tl) => formatTimeLocalForDisplay(this.hass, tl))
-                  .join(", ")}</span
+                ><ha-icon icon="mdi:clock-outline"></ha-icon>${times.length === 1
+                  ? this._timeRange(times[0], est)
+                  : times.map((tl) => formatTimeLocalForDisplay(this.hass, tl)).join(", ")}</span
               >
               <span class="meta"
                 ><ha-icon icon="mdi:vector-square"></ha-icon>${t(
@@ -1065,7 +1078,7 @@ export class ViewSchedule extends LitElement {
             <div class="compact-row-title">
               <span class="ellipsis"
                 >${s.name ? s.name + " · " : ""}${weekdaysSummary(this.hass, s.weekdays)}
-                ${formatTimeLocalForDisplay(this.hass, s.time_local)}</span
+                ${this._timeRange(s.time_local, est)}</span
               >
               ${s.week_parity !== "every"
                 ? html`<span class="badge badge-primary badge-dot">${this._parityLabel(s.week_parity)}</span>`

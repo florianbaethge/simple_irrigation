@@ -23,6 +23,7 @@ import {
   runSlot,
   runZones,
   setMode,
+  skipPhase,
   skipToday,
   stopAll,
   subscribeSnapshot,
@@ -40,6 +41,7 @@ import {
   water,
   weekdayNames,
 } from "./format";
+import { computePhases } from "../schedule-phases";
 import { localize, localizeCount } from "./i18n";
 import { cardStyles } from "./styles";
 import {
@@ -493,6 +495,19 @@ export class SimpleIrrigationCard extends LitElement {
     return localize(this.hass, `state_${this._snapshot?.state ?? "idle"}`);
   }
 
+  /**
+   * Seconds a watering zone has been open, and seconds it is open for in all.
+   * From its real start and end: a manual run brings its own duration, and the
+   * mode's time would put the bar and the litres in the wrong place.
+   */
+  private _zoneClock(zone: ZoneRow): { elapsed: number; total: number } {
+    const total =
+      zone.started_at && zone.ends_at
+        ? (Date.parse(zone.ends_at) - Date.parse(zone.started_at)) / 1000
+        : zone.duration_min * 60;
+    return { elapsed: Math.max(0, total - secondsUntil(zone.ends_at)), total };
+  }
+
   /** "~42 L so far": booked zones plus what the open ones have used by now. */
   private _waterSoFar(): string {
     const snap = this._snapshot;
@@ -502,8 +517,7 @@ export class SimpleIrrigationCard extends LitElement {
     let estimated = snap.run_water_source !== "measured";
     for (const zone of snap.zones) {
       if (!zone.active || zone.flow_lpm <= 0 || !zone.ends_at) continue;
-      const elapsedMin = Math.max(0, zone.duration_min - secondsUntil(zone.ends_at) / 60);
-      litres += zone.flow_lpm * elapsedMin;
+      litres += (zone.flow_lpm * this._zoneClock(zone).elapsed) / 60;
       known = true;
       estimated = true;
     }
@@ -709,6 +723,29 @@ export class SimpleIrrigationCard extends LitElement {
     </div>`;
   }
 
+  private _onSkipPhase = (): void => {
+    void this._run(() => skipPhase(this.hass!, this._config?.entry_id));
+  };
+
+  /**
+   * Beside Stop while a run waters or rests: end this phase, or the rest, and
+   * go on. Not while it prepares or stops -- there is no phase to skip then.
+   */
+  private _renderSkipPhase(iconOnly = false): TemplateResult | typeof nothing {
+    if (this._snapshot?.state !== "running") return nothing;
+    const label = localize(this.hass, "action_skip_phase");
+    return html`<button
+      class=${classMap({ btn: true, inline: true, icon: iconOnly })}
+      ?disabled=${this._busy}
+      title=${label}
+      aria-label=${label}
+      @click=${this._onSkipPhase}
+    >
+      <ha-icon icon="mdi:skip-next"></ha-icon>
+      ${iconOnly ? nothing : label}
+    </button>`;
+  }
+
   private _onAction(action: CardAction): void {
     const entry = this._config?.entry_id;
     switch (action) {
@@ -772,8 +809,8 @@ export class SimpleIrrigationCard extends LitElement {
     const active = this._activeZones();
     const lead = active[0];
     const remaining = lead ? secondsUntil(lead.ends_at) : 0;
-    const total = (lead?.duration_min ?? 0) * 60;
-    const progress = total > 0 ? Math.min(100, (1 - remaining / total) * 100) : 0;
+    const span = lead ? this._zoneClock(lead) : { elapsed: 0, total: 0 };
+    const progress = span.total > 0 ? Math.min(100, (span.elapsed / span.total) * 100) : 0;
 
     const queued = snap.zones.filter((z) => z.queued && !z.active);
     const footParts = [
@@ -831,13 +868,16 @@ export class SimpleIrrigationCard extends LitElement {
         </div>
         <div class="runfoot">
           <span class="cap">${footParts.join(" · ")}</span>
-          <button
-            class="btn danger inline"
-            ?disabled=${this._busy}
-            @click=${() => this._onAction("stop")}
-          >
-            ${localize(this.hass, "action_stop")}
-          </button>
+          <div class="runbtns">
+            ${this._renderSkipPhase()}
+            <button
+              class="btn danger inline"
+              ?disabled=${this._busy}
+              @click=${() => this._onAction("stop")}
+            >
+              ${localize(this.hass, "action_stop")}
+            </button>
+          </div>
         </div>
       </div>
     `;
@@ -1290,13 +1330,16 @@ export class SimpleIrrigationCard extends LitElement {
               : this._stateLabel()}
           </div>
         </div>
-        <button
-          class="btn danger inline"
-          ?disabled=${this._busy}
-          @click=${() => this._onAction("stop")}
-        >
-          ${localize(this.hass, "action_stop")}
-        </button>
+        <div class="runbtns">
+          ${this._renderSkipPhase(true)}
+          <button
+            class="btn danger inline"
+            ?disabled=${this._busy}
+            @click=${() => this._onAction("stop")}
+          >
+            ${localize(this.hass, "action_stop")}
+          </button>
+        </div>
       </div>`;
     }
 
@@ -1374,8 +1417,18 @@ export class SimpleIrrigationCard extends LitElement {
   private _renderRunZones(): TemplateResult {
     const snap = this._snapshot!;
     const zones = snap.zones;
-    const picked = zones.filter((z) => this._picked.includes(z.zone_id));
-    const totalMin = picked.reduce((sum, z) => sum + this._durationFor(z), 0);
+    // In the order they were picked: that is the order they are started in.
+    const byId = new Map(zones.map((z) => [z.zone_id, z]));
+    const picked = this._picked.flatMap((id) => byId.get(id) ?? []);
+    // What the run will really do with them: zones that may water together
+    // share a phase, and a phase takes as long as its longest zone.
+    const phases = computePhases(
+      picked.map((z) => z.zone_id),
+      Object.fromEntries(zones.map((z) => [z.zone_id, z])),
+      snap.max_parallel_zones
+    ).map((phase) => phase.map((id) => this._durationFor(byId.get(id)!)));
+    const totalMin = phases.reduce((sum, phase) => sum + Math.max(...phase), 0);
+    const parallel = phases.some((phase) => phase.length > 1);
 
     return html`<div class="rbody">
       <div class="label">
@@ -1400,7 +1453,7 @@ export class SimpleIrrigationCard extends LitElement {
             @click=${() => this._toggleZone(zone.zone_id)}
           >
             ${on
-              ? html`<ha-icon icon="mdi:check"></ha-icon>`
+              ? html`<span class="order">${this._picked.indexOf(zone.zone_id) + 1}</span>`
               : zone.issue
                 ? html`<ha-icon icon="mdi:alert-circle-outline"></ha-icon>`
                 : nothing}
@@ -1446,9 +1499,9 @@ export class SimpleIrrigationCard extends LitElement {
       <div class="rlaunch">
         <span class="cap">
           ${picked.length
-            ? localize(this.hass, "runs_in_sequence", {
-                parts: picked
-                  .map((z) => `${this._durationFor(z)}`)
+            ? localize(this.hass, parallel ? "runs_in_phases" : "runs_in_sequence", {
+                parts: phases
+                  .map((phase) => (phase.length > 1 ? `(${phase.join(" ‖ ")})` : `${phase[0]}`))
                   .join(" + ")
                   .concat(` ${localize(this.hass, "unit_minute_short")}`),
               })
@@ -1678,14 +1731,26 @@ export class SimpleIrrigationCard extends LitElement {
     paused: boolean
   ): TemplateResult {
     if (running) {
-      return html`<button
-        class="cbtn danger"
-        ?disabled=${this._busy}
-        aria-label=${localize(this.hass, "action_stop")}
-        @click=${() => this._onAction("stop")}
-      >
-        <ha-icon icon="mdi:stop"></ha-icon>
-      </button>`;
+      const skip = localize(this.hass, "action_skip_phase");
+      return html`${this._snapshot?.state === "running"
+          ? html`<button
+              class="cbtn"
+              ?disabled=${this._busy}
+              title=${skip}
+              aria-label=${skip}
+              @click=${this._onSkipPhase}
+            >
+              <ha-icon icon="mdi:skip-next"></ha-icon>
+            </button>`
+          : nothing}
+        <button
+          class="cbtn danger"
+          ?disabled=${this._busy}
+          aria-label=${localize(this.hass, "action_stop")}
+          @click=${() => this._onAction("stop")}
+        >
+          <ha-icon icon="mdi:stop"></ha-icon>
+        </button>`;
     }
     if (paused) {
       return html`<button

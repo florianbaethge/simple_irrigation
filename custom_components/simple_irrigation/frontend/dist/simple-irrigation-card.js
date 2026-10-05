@@ -353,6 +353,8 @@ const runZones = (hass, zoneIds, durationMin, entryId) => action(hass, entryId, 
     ...(durationMin ? { duration_min: durationMin } : {}),
 });
 const stopAll = (hass, entryId) => action(hass, entryId, { action: "stop" });
+/** End the running phase (or the rest the run is in) and go on to the next. */
+const skipPhase = (hass, entryId) => action(hass, entryId, { action: "skip_phase" });
 const skipToday = (hass, entryId) => action(hass, entryId, { action: "skip_today" });
 const pauseHours = (hass, hours, entryId) => action(hass, entryId, { action: "pause", hours });
 const pauseUntil = (hass, until, entryId) => action(hass, entryId, { action: "pause", until });
@@ -396,6 +398,7 @@ const TRANSLATIONS = {
         // actions
         action_run_next: "Run next slot",
         action_stop: "Stop",
+        action_skip_phase: "Skip phase",
         action_skip_today: "Skip today",
         action_pause_48h: "Pause 48 h",
         action_pause_until: "Pause until…",
@@ -451,6 +454,7 @@ const TRANSLATIONS = {
         duration_custom: "Custom…",
         duration_custom_prompt: "Run each zone for how many minutes?",
         runs_in_sequence: "Runs in sequence · {parts}",
+        runs_in_phases: "Runs in phases · {parts}",
         start_zones: "Start {count} zones · ~{time}",
         start_zones_one: "Start 1 zone · ~{time}",
         start_zones_none: "Start",
@@ -581,6 +585,7 @@ const TRANSLATIONS = {
         // actions
         action_run_next: "Lancer le prochain créneau",
         action_stop: "Arrêter",
+        action_skip_phase: "Passer la phase",
         action_skip_today: "Sauter aujourd’hui",
         action_pause_48h: "Pause 48 h",
         action_pause_until: "Pause jusqu’à…",
@@ -636,6 +641,7 @@ const TRANSLATIONS = {
         duration_custom: "Personnalisé…",
         duration_custom_prompt: "Arroser chaque zone pendant combien de minutes ?",
         runs_in_sequence: "Exécutions en séquence · {parts}",
+        runs_in_phases: "Exécution par phases · {parts}",
         start_zones: "Démarrer {count} zones · ~{time}",
         start_zones_one: "Démarrer 1 zone · ~{time}",
         start_zones_none: "Démarrer",
@@ -763,6 +769,7 @@ const TRANSLATIONS = {
         mode_extra: "Extra",
         action_run_next: "Nächsten Slot starten",
         action_stop: "Stopp",
+        action_skip_phase: "Phase überspringen",
         action_skip_today: "Heute überspringen",
         action_pause_48h: "48 Std. pausieren",
         action_pause_until: "Pausieren bis…",
@@ -813,6 +820,7 @@ const TRANSLATIONS = {
         duration_custom: "Eigene…",
         duration_custom_prompt: "Wie viele Minuten pro Zone?",
         runs_in_sequence: "Läuft nacheinander · {parts}",
+        runs_in_phases: "Läuft in Phasen · {parts}",
         start_zones: "{count} Zonen starten · ~{time}",
         start_zones_one: "1 Zone starten · ~{time}",
         start_zones_none: "Starten",
@@ -934,6 +942,7 @@ const TRANSLATIONS = {
         mode_extra: "Extra",
         action_run_next: "Volgend tijdvak starten",
         action_stop: "Stoppen",
+        action_skip_phase: "Fase overslaan",
         action_skip_today: "Vandaag overslaan",
         action_pause_48h: "48 uur pauzeren",
         action_pause_until: "Pauzeren tot…",
@@ -984,6 +993,7 @@ const TRANSLATIONS = {
         duration_custom: "Aangepast…",
         duration_custom_prompt: "Hoeveel minuten per zone?",
         runs_in_sequence: "Draait achter elkaar · {parts}",
+        runs_in_phases: "Draait in fasen · {parts}",
         start_zones: "{count} zones starten · ~{time}",
         start_zones_one: "1 zone starten · ~{time}",
         start_zones_none: "Starten",
@@ -1105,6 +1115,7 @@ const TRANSLATIONS = {
         mode_extra: "Extra",
         action_run_next: "Avvia prossima fascia",
         action_stop: "Arresta",
+        action_skip_phase: "Salta fase",
         action_skip_today: "Salta oggi",
         action_pause_48h: "Pausa 48 h",
         action_pause_until: "Pausa fino a…",
@@ -1155,6 +1166,7 @@ const TRANSLATIONS = {
         duration_custom: "Personalizzata…",
         duration_custom_prompt: "Quanti minuti per zona?",
         runs_in_sequence: "In sequenza · {parts}",
+        runs_in_phases: "In fasi · {parts}",
         start_zones: "Avvia {count} zone · ~{time}",
         start_zones_one: "Avvia 1 zona · ~{time}",
         start_zones_none: "Avvia",
@@ -1478,6 +1490,41 @@ function water(hass, litres, estimated) {
     const v = formatVolumeNumber(litresToUnit(litres, unit));
     const u = localize(hass, unit === "gal" ? "unit_gallon_short" : "unit_litre_short");
     return localize(hass, estimated ? "water_approx" : "water_exact", { v, u });
+}
+
+/** Mirrors `grouping.compute_phases` for schedule slot preview in the panel. */
+function computePhases(orderedZoneIds, zonesById, maxParallelZones, skipDisabled = true) {
+    const mp = Math.max(1, maxParallelZones);
+    const phases = [];
+    let current = [];
+    for (const zid of orderedZoneIds) {
+        const zone = zonesById[zid];
+        if (!zone)
+            continue;
+        if (skipDisabled && !zone.enabled)
+            continue;
+        if (zone.exclusive) {
+            if (current.length) {
+                phases.push(current);
+                current = [];
+            }
+            phases.push([zid]);
+            continue;
+        }
+        if (!current.length) {
+            current = [zid];
+            continue;
+        }
+        if (current.length >= mp) {
+            phases.push(current);
+            current = [zid];
+            continue;
+        }
+        current.push(zid);
+    }
+    if (current.length)
+        phases.push(current);
+    return phases;
 }
 
 /**
@@ -1912,6 +1959,15 @@ const cardStyles = i$5 `
     margin-top: 16px;
     flex-wrap: wrap;
   }
+  .runbtns {
+    display: flex;
+    flex: none;
+    gap: 8px;
+    margin-left: auto;
+  }
+  .btn.inline.icon {
+    padding: 9px 10px;
+  }
 
   /* ---- status: edge states --------------------------------------------- */
 
@@ -2291,6 +2347,19 @@ const cardStyles = i$5 `
   .chip ha-icon {
     --mdc-icon-size: 16px;
     flex: none;
+  }
+  /* The place a picked zone has in the run. */
+  .chip .order {
+    flex: none;
+    min-width: 16px;
+    height: 16px;
+    border-radius: 8px;
+    background: var(--si-prifg);
+    color: var(--si-pri);
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 16px;
+    text-align: center;
   }
 
   .rrow {
@@ -2699,9 +2768,12 @@ const cardStyles = i$5 `
     display: none;
   }
   :host([data-narrow]) .rlaunch .btn,
-  :host([data-narrow]) .runfoot .btn {
-    margin-left: 0;
+  :host([data-narrow]) .runbtns {
     width: 100%;
+    margin-left: 0;
+  }
+  :host([data-narrow]) .runbtns .btn {
+    flex: 1;
   }
   :host([data-narrow]) .rlaunch,
   :host([data-narrow]) .runfoot {
@@ -3730,6 +3802,9 @@ let SimpleIrrigationCard = class SimpleIrrigationCard extends i$2 {
         this._picked = [];
         this._durationChoice = "configured";
         this._applyConditions = false;
+        this._onSkipPhase = () => {
+            void this._run(() => skipPhase(this.hass, this._config?.entry_id));
+        };
         this._onCustomDuration = () => {
             const answer = window.prompt(localize(this.hass, "duration_custom_prompt"), String(this._durationChoice === "configured" ? 15 : this._durationChoice));
             if (!answer)
@@ -4053,6 +4128,17 @@ let SimpleIrrigationCard = class SimpleIrrigationCard extends i$2 {
             return localize(this.hass, "state_soaking");
         return localize(this.hass, `state_${this._snapshot?.state ?? "idle"}`);
     }
+    /**
+     * Seconds a watering zone has been open, and seconds it is open for in all.
+     * From its real start and end: a manual run brings its own duration, and the
+     * mode's time would put the bar and the litres in the wrong place.
+     */
+    _zoneClock(zone) {
+        const total = zone.started_at && zone.ends_at
+            ? (Date.parse(zone.ends_at) - Date.parse(zone.started_at)) / 1000
+            : zone.duration_min * 60;
+        return { elapsed: Math.max(0, total - secondsUntil(zone.ends_at)), total };
+    }
     /** "~42 L so far": booked zones plus what the open ones have used by now. */
     _waterSoFar() {
         const snap = this._snapshot;
@@ -4064,8 +4150,7 @@ let SimpleIrrigationCard = class SimpleIrrigationCard extends i$2 {
         for (const zone of snap.zones) {
             if (!zone.active || zone.flow_lpm <= 0 || !zone.ends_at)
                 continue;
-            const elapsedMin = Math.max(0, zone.duration_min - secondsUntil(zone.ends_at) / 60);
-            litres += zone.flow_lpm * elapsedMin;
+            litres += (zone.flow_lpm * this._zoneClock(zone).elapsed) / 60;
             known = true;
             estimated = true;
         }
@@ -4248,6 +4333,25 @@ let SimpleIrrigationCard = class SimpleIrrigationCard extends i$2 {
         })}
     </div>`;
     }
+    /**
+     * Beside Stop while a run waters or rests: end this phase, or the rest, and
+     * go on. Not while it prepares or stops -- there is no phase to skip then.
+     */
+    _renderSkipPhase(iconOnly = false) {
+        if (this._snapshot?.state !== "running")
+            return A;
+        const label = localize(this.hass, "action_skip_phase");
+        return b `<button
+      class=${e({ btn: true, inline: true, icon: iconOnly })}
+      ?disabled=${this._busy}
+      title=${label}
+      aria-label=${label}
+      @click=${this._onSkipPhase}
+    >
+      <ha-icon icon="mdi:skip-next"></ha-icon>
+      ${iconOnly ? A : label}
+    </button>`;
+    }
     _onAction(action) {
         const entry = this._config?.entry_id;
         switch (action) {
@@ -4304,8 +4408,8 @@ let SimpleIrrigationCard = class SimpleIrrigationCard extends i$2 {
         const active = this._activeZones();
         const lead = active[0];
         const remaining = lead ? secondsUntil(lead.ends_at) : 0;
-        const total = (lead?.duration_min ?? 0) * 60;
-        const progress = total > 0 ? Math.min(100, (1 - remaining / total) * 100) : 0;
+        const span = lead ? this._zoneClock(lead) : { elapsed: 0, total: 0 };
+        const progress = span.total > 0 ? Math.min(100, (span.elapsed / span.total) * 100) : 0;
         const queued = snap.zones.filter((z) => z.queued && !z.active);
         const footParts = [
             snap.phase_index && snap.phase_total
@@ -4359,13 +4463,16 @@ let SimpleIrrigationCard = class SimpleIrrigationCard extends i$2 {
         </div>
         <div class="runfoot">
           <span class="cap">${footParts.join(" · ")}</span>
-          <button
-            class="btn danger inline"
-            ?disabled=${this._busy}
-            @click=${() => this._onAction("stop")}
-          >
-            ${localize(this.hass, "action_stop")}
-          </button>
+          <div class="runbtns">
+            ${this._renderSkipPhase()}
+            <button
+              class="btn danger inline"
+              ?disabled=${this._busy}
+              @click=${() => this._onAction("stop")}
+            >
+              ${localize(this.hass, "action_stop")}
+            </button>
+          </div>
         </div>
       </div>
     `;
@@ -4789,13 +4896,16 @@ let SimpleIrrigationCard = class SimpleIrrigationCard extends i$2 {
                 : this._stateLabel()}
           </div>
         </div>
-        <button
-          class="btn danger inline"
-          ?disabled=${this._busy}
-          @click=${() => this._onAction("stop")}
-        >
-          ${localize(this.hass, "action_stop")}
-        </button>
+        <div class="runbtns">
+          ${this._renderSkipPhase(true)}
+          <button
+            class="btn danger inline"
+            ?disabled=${this._busy}
+            @click=${() => this._onAction("stop")}
+          >
+            ${localize(this.hass, "action_stop")}
+          </button>
+        </div>
       </div>`;
         }
         if (collapsible && !this._runOpen) {
@@ -4868,8 +4978,14 @@ let SimpleIrrigationCard = class SimpleIrrigationCard extends i$2 {
     _renderRunZones() {
         const snap = this._snapshot;
         const zones = snap.zones;
-        const picked = zones.filter((z) => this._picked.includes(z.zone_id));
-        const totalMin = picked.reduce((sum, z) => sum + this._durationFor(z), 0);
+        // In the order they were picked: that is the order they are started in.
+        const byId = new Map(zones.map((z) => [z.zone_id, z]));
+        const picked = this._picked.flatMap((id) => byId.get(id) ?? []);
+        // What the run will really do with them: zones that may water together
+        // share a phase, and a phase takes as long as its longest zone.
+        const phases = computePhases(picked.map((z) => z.zone_id), Object.fromEntries(zones.map((z) => [z.zone_id, z])), snap.max_parallel_zones).map((phase) => phase.map((id) => this._durationFor(byId.get(id))));
+        const totalMin = phases.reduce((sum, phase) => sum + Math.max(...phase), 0);
+        const parallel = phases.some((phase) => phase.length > 1);
         return b `<div class="rbody">
       <div class="label">
         ${picked.length
@@ -4893,7 +5009,7 @@ let SimpleIrrigationCard = class SimpleIrrigationCard extends i$2 {
             @click=${() => this._toggleZone(zone.zone_id)}
           >
             ${on
-                ? b `<ha-icon icon="mdi:check"></ha-icon>`
+                ? b `<span class="order">${this._picked.indexOf(zone.zone_id) + 1}</span>`
                 : zone.issue
                     ? b `<ha-icon icon="mdi:alert-circle-outline"></ha-icon>`
                     : A}
@@ -4936,9 +5052,9 @@ let SimpleIrrigationCard = class SimpleIrrigationCard extends i$2 {
       <div class="rlaunch">
         <span class="cap">
           ${picked.length
-            ? localize(this.hass, "runs_in_sequence", {
-                parts: picked
-                    .map((z) => `${this._durationFor(z)}`)
+            ? localize(this.hass, parallel ? "runs_in_phases" : "runs_in_sequence", {
+                parts: phases
+                    .map((phase) => (phase.length > 1 ? `(${phase.join(" ‖ ")})` : `${phase[0]}`))
                     .join(" + ")
                     .concat(` ${localize(this.hass, "unit_minute_short")}`),
             })
@@ -5125,14 +5241,26 @@ let SimpleIrrigationCard = class SimpleIrrigationCard extends i$2 {
     }
     _renderCompactAction(running, paused) {
         if (running) {
-            return b `<button
-        class="cbtn danger"
-        ?disabled=${this._busy}
-        aria-label=${localize(this.hass, "action_stop")}
-        @click=${() => this._onAction("stop")}
-      >
-        <ha-icon icon="mdi:stop"></ha-icon>
-      </button>`;
+            const skip = localize(this.hass, "action_skip_phase");
+            return b `${this._snapshot?.state === "running"
+                ? b `<button
+              class="cbtn"
+              ?disabled=${this._busy}
+              title=${skip}
+              aria-label=${skip}
+              @click=${this._onSkipPhase}
+            >
+              <ha-icon icon="mdi:skip-next"></ha-icon>
+            </button>`
+                : A}
+        <button
+          class="cbtn danger"
+          ?disabled=${this._busy}
+          aria-label=${localize(this.hass, "action_stop")}
+          @click=${() => this._onAction("stop")}
+        >
+          <ha-icon icon="mdi:stop"></ha-icon>
+        </button>`;
         }
         if (paused) {
             return b `<button

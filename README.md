@@ -174,7 +174,7 @@ Sloped lawns and clay soil cannot take twenty minutes of water at once — it ru
 Example — one lawn zone, 3 repetitions of its 10-minute mode duration, 15 minutes rest between repetitions: it waters 10 min, rests 15, waters 10, rests 15, waters 10. The slot's estimated duration on Schedule, Overview, Timetable and the card counts the rests, and the Timetable draws every pass.
 
 - A rest is a real pause: **every output is closed, pre-start outputs included** — a pump must not run against closed valves for a quarter of an hour. Before the next pass they come back up with the usual pre-start delay.
-- **Stop** ends the run, rests included. **Skip phase** cuts a rest short, and skipping a phase skips the rest after it too — whoever skips wants to see the next zone, not a pause.
+- **Stop** ends the run, rests included. **Skip phase** — on Overview, on the dashboard card and as `simple_irrigation.skip_phase` — cuts a rest short, and skipping a phase skips the rest after it too — whoever skips wants to see the next zone, not a pause.
 - Overview and the card show **Soaking** with a countdown while the run rests; `binary_sensor.<installation>_running` carries the end of the rest as its `soak_until` attribute.
 - Rests are per slot. Several slots due in the same minute run back to back, each with its own rests; a rest with nothing left to water behind it is skipped.
 
@@ -304,7 +304,7 @@ type: custom:simple-irrigation-card
 
 | `view` | Shows |
 |--------|-------|
-| `status` *(default)* | What happens next, how long it takes, and the two or three actions worth reaching for. While a run is active it leads with the remaining time of the open zone and lists the queue; during a Cycle & Soak rest it shows **Soaking** with the countdown. With water tracking it adds the expected litres of the next run, the last run, and a live figure while watering. |
+| `status` *(default)* | What happens next, how long it takes, and the two or three actions worth reaching for. While a run is active it leads with the remaining time of the open zone and lists the queue, with **Skip phase** beside **Stop**; during a Cycle & Soak rest it shows **Soaking** with the countdown. With water tracking it adds the expected litres of the next run, the last run, and a live figure while watering. |
 | `zones` | Every zone with its runtime for the active mode: what is open, what is next, what is broken. |
 | `schedule` | The next runs resolved into real dates — no cron rules to decode. |
 | `week` | The current week as a timetable; bar height is the run's duration, position its time of day. |
@@ -391,7 +391,7 @@ Selecting is separated from launching: nothing is watered until the start button
 
 ![Manual run picker — zone chips, duration override and the start button](https://raw.githubusercontent.com/florianbaethge/simple_irrigation/main/screenshots/card_run.png)
 
-- **Zones** — pick any number; they are queued in sequence, never in parallel, via `simple_irrigation.run_zone` (or `run_zone_with_duration` when the duration is overridden). A disabled zone stays visible but is not selectable; a zone with a missing output is selectable and fails loudly.
+- **Zones** — pick any number. They run in the order you picked them — each chip carries its place — and are grouped into phases by the installation's *max parallel* limit and *exclusive* flags, like the zones of a schedule slot. The line above the start button spells the plan out before you press it: `20 + 20 + 12 min` one after another, `(20 ‖ 20) + 12 min` where two may water together. Started via `simple_irrigation.run_zone` (or `run_zone_with_duration` when the duration is overridden). A disabled zone stays visible but is not selectable; a zone with a missing output is selectable and fails loudly.
 - **Slot** — runs a whole schedule slot through `simple_irrigation.run_schedule_slot`, reusing the slot's own zone list and runtimes. A manual slot run normally ignores the slot's conditions; the **Apply the slot conditions** toggle opts back in, and the run then refuses when a condition is not met.
 
 ### Badges
@@ -428,6 +428,7 @@ All services accept an optional `config_entry_id` when you run more than one Sim
 | `simple_irrigation.run_due_zones` | Trigger “what’s due now” |
 | `simple_irrigation.stop_all` | Stop the active cycle |
 | `simple_irrigation.stop_zone` | End one zone of the running cycle; the rest carries on (`zone_id`) |
+| `simple_irrigation.skip_phase` | End the running phase, or the Cycle & Soak rest the run is in, and go on to the next. Does nothing while idle |
 | `simple_irrigation.set_mode` | Set `eco` / `normal` / `extra` |
 | `simple_irrigation.set_zone_enabled` | Enable/disable a zone |
 | `simple_irrigation.pause_until` | Pause automatic runs until a datetime (`until` field) |

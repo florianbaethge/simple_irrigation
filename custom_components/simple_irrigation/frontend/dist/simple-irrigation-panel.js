@@ -2429,9 +2429,11 @@ class ViewOverview extends i$4 {
     }
     /** Planned end of a watering zone, as pushed by the runtime. */
     _zoneEndsAt(zoneId) {
+        return this._zoneMoment("zone_ends_at", zoneId);
+    }
+    _zoneMoment(key, zoneId) {
         const rs = (this.runState ?? {});
-        const ends = rs.zone_ends_at;
-        const raw = ends?.[zoneId];
+        const raw = rs[key]?.[zoneId];
         if (!raw)
             return null;
         const ms = new Date(raw).getTime();
@@ -2460,17 +2462,16 @@ class ViewOverview extends i$4 {
         const rs = (this.runState ?? {});
         const booked = typeof rs.run_water_l === "number" ? rs.run_water_l : null;
         const zones = this._inst.zones;
-        const mode = this._mode();
         let litres = booked ?? 0;
         let known = booked !== null;
         for (const id of activeIds) {
-            const z = zones?.[id];
-            const rate = Number(z?.flow_rate_lpm ?? 0);
-            const endsAt = this._zoneEndsAt(id);
-            if (!z || !(rate > 0) || endsAt === null)
+            const rate = Number(zones?.[id]?.flow_rate_lpm ?? 0);
+            // Since it opened, not "mode time minus what is left": a manual run
+            // brings its own duration.
+            const startedAt = this._zoneMoment("zone_started_at", id);
+            if (!(rate > 0) || startedAt === null)
                 continue;
-            const remainingMin = Math.max(0, (endsAt - Date.now()) / 60000);
-            litres += rate * Math.max(0, durationForMode(z, mode) - remainingMin);
+            litres += rate * Math.max(0, (Date.now() - startedAt) / 60000);
             known = true;
         }
         return known ? litres : null;
@@ -5108,6 +5109,14 @@ class ViewSchedule extends i$4 {
             next.add(id);
         this._expanded = next;
     }
+    /** "06:00–06:40": when a run starts and, by the active mode's durations, ends. */
+    _timeRange(timeLocal, estMin) {
+        const start = formatTimeLocalForDisplay(this.hass, timeLocal);
+        if (!(estMin > 0))
+            return start;
+        const end = (parseTimeLocalToMinutes(timeLocal) + estMin) % (24 * 60);
+        return `${start}–${formatTimeLocalForDisplay(this.hass, minutesToTimeLocal(end))}`;
+    }
     _renderMemberLine(m) {
         return b `
       <div class="member-line">
@@ -5194,9 +5203,9 @@ class ViewSchedule extends i$4 {
             </div>
             <div class="meta-line">
               <span class="meta"
-                ><ha-icon icon="mdi:clock-outline"></ha-icon>${times
-            .map((tl) => formatTimeLocalForDisplay(this.hass, tl))
-            .join(", ")}</span
+                ><ha-icon icon="mdi:clock-outline"></ha-icon>${times.length === 1
+            ? this._timeRange(times[0], est)
+            : times.map((tl) => formatTimeLocalForDisplay(this.hass, tl)).join(", ")}</span
               >
               <span class="meta"
                 ><ha-icon icon="mdi:vector-square"></ha-icon>${t$2(this.hass, "config_panel.cycle_meta_zones", { z: zoneIds.length, p: phases, m: est })}</span
@@ -5290,7 +5299,7 @@ class ViewSchedule extends i$4 {
             <div class="compact-row-title">
               <span class="ellipsis"
                 >${s.name ? s.name + " · " : ""}${weekdaysSummary(this.hass, s.weekdays)}
-                ${formatTimeLocalForDisplay(this.hass, s.time_local)}</span
+                ${this._timeRange(s.time_local, est)}</span
               >
               ${s.week_parity !== "every"
             ? b `<span class="badge badge-primary badge-dot">${this._parityLabel(s.week_parity)}</span>`

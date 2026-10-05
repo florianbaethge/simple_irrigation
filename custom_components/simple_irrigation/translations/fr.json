@@ -182,6 +182,16 @@
         }
       }
     },
+    "skip_phase": {
+      "name": "Passer la phase",
+      "description": "Termine la phase en cours et démarre la suivante ; les zones arrosées en parallèle s’arrêtent ensemble. Pendant une pause Cycle & Soak, la pause est écourtée. Sans effet si aucun cycle n’est en cours.",
+      "fields": {
+        "config_entry_id": {
+          "name": "ID d’entrée de configuration",
+          "description": "Facultatif. Installation cible lorsque plusieurs entrées existent."
+        }
+      }
+    },
     "set_mode": {
       "name": "Définir le mode",
       "description": "Définit le mode d’arrosage global (Eco, Normal ou Extra).",
@@ -603,7 +613,7 @@
     "settings_max_parallel_hint": "Les zones exclusives s’exécutent toujours seules, quelle que soit cette limite.",
     "settings_default_hint": "Ouvrir l’entrée de la barre latérale mène directement à cette installation.",
     "settings_automations_summary": "Appels de service et ID",
-    "settings_automations_body": "Utilisez ces services depuis vos automatisations : set_mode, set_zone_enabled, pause_until, clear_pause, run_zone, run_schedule_slot, stop_all, stop_zone. L’ID d’entrée de configuration ci-dessous identifie cette installation.",
+    "settings_automations_body": "Utilisez ces services depuis vos automatisations : set_mode, set_zone_enabled, pause_until, clear_pause, run_zone, run_schedule_slot, stop_all, stop_zone, skip_phase. L’ID d’entrée de configuration ci-dessous identifie cette installation.",
     "settings_diagnostics_summary": "Diagnostics (état d’exécution brut)",
     "settings_danger_title": "Zone de danger",
     "settings_danger_desc": "Supprimer une installation efface ses zones et sa programmation. Cela se fait depuis Paramètres → Appareils et services.",

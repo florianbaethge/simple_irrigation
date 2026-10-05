@@ -65,6 +65,13 @@ stop_zone:
       selector:
         text: {}
 
+skip_phase:
+  fields:
+    config_entry_id:
+      required: false
+      selector:
+        text: {}
+
 set_mode:
   fields:
     mode:

@@ -182,6 +182,16 @@
         }
       }
     },
+    "skip_phase": {
+      "name": "Phase überspringen",
+      "description": "Beendet die laufende Phase und startet die nächste; parallel laufende Zonen enden gemeinsam. Während einer Cycle-&-Soak-Pause wird die Pause abgekürzt. Ohne aktiven Lauf passiert nichts.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Konfigurationseintrags-ID",
+          "description": "Optional. Ziel-Installation bei mehreren Einträgen."
+        }
+      }
+    },
     "set_mode": {
       "name": "Modus setzen",
       "description": "Setzt den globalen Bewässerungsmodus (Eco, Normal oder Extra).",
@@ -603,7 +613,7 @@
     "settings_max_parallel_hint": "Exklusive Zonen laufen immer allein, unabhängig von diesem Limit.",
     "settings_default_hint": "Der Seitenleisten-Eintrag öffnet direkt diese Anlage.",
     "settings_automations_summary": "Dienste & IDs",
-    "settings_automations_body": "Diese Dienste für Automationen nutzen: set_mode, set_zone_enabled, pause_until, clear_pause, run_zone, run_schedule_slot, stop_all, stop_zone. Die Config-Entry-ID unten identifiziert diese Anlage.",
+    "settings_automations_body": "Diese Dienste für Automationen nutzen: set_mode, set_zone_enabled, pause_until, clear_pause, run_zone, run_schedule_slot, stop_all, stop_zone, skip_phase. Die Config-Entry-ID unten identifiziert diese Anlage.",
     "settings_diagnostics_summary": "Diagnose (Rohzustand)",
     "settings_danger_title": "Gefahrenzone",
     "settings_danger_desc": "Das Entfernen einer Anlage löscht ihre Zonen und den Zeitplan. Das geschieht unter Einstellungen → Geräte & Dienste.",

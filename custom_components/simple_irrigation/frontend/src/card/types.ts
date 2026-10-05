@@ -56,6 +56,10 @@ export interface ZoneRow {
   active: boolean;
   queued: boolean;
   duration_min: number;
+  /** Whether the zone always waters on its own, whatever the parallel limit. */
+  exclusive: boolean;
+  /** When the zone opened and when it is due to close; null unless it waters. */
+  started_at: string | null;
   ends_at: string | null;
   next_run: string | null;
   last_run: string | null;

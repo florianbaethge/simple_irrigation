@@ -520,6 +520,10 @@ class RunState:
     # countdown without polling. Written by to_dict() for the panel payload but
     # deliberately never read back in from_dict() — see there.
     zone_ends_at: dict[str, datetime] = field(default_factory=dict)
+    # When those zones opened. A zone does not always run for its mode's time --
+    # a manual run brings its own -- so progress is start to end, not a guess.
+    # Volatile exactly like ``zone_ends_at``.
+    zone_started_at: dict[str, datetime] = field(default_factory=dict)
     # End of the Cycle & Soak pause the run is resting in, so the UI can count
     # it down; None while watering. Volatile exactly like ``zone_ends_at``.
     soak_until: datetime | None = None
@@ -573,6 +577,9 @@ class RunState:
             "active_script_timeout_sec": self.active_script_timeout_sec,
             "zone_ends_at": {
                 k: v.isoformat() for k, v in self.zone_ends_at.items()
+            },
+            "zone_started_at": {
+                k: v.isoformat() for k, v in self.zone_started_at.items()
             },
             "soak_until": self.soak_until.isoformat() if self.soak_until else None,
             "water_total_l": {k: round(v, 3) for k, v in self.water_total_l.items()},
@@ -653,7 +660,7 @@ class RunState:
             last_run_water_l=_opt_float(data.get("last_run_water_l")),
             last_run_water_source=str(data.get("last_run_water_source") or ""),
             water_total_installation_l=_opt_float(data.get("water_total_installation_l")) or 0.0,
-            # zone_ends_at and soak_until are intentionally NOT restored. They only
+            # zone_ends_at, zone_started_at and soak_until are intentionally NOT restored. They only
             # mean something while this process is watering; after a restart no
             # zone is running any more and a recovered end time would render a
             # phantom countdown.

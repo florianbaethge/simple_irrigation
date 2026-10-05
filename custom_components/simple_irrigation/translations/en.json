@@ -182,6 +182,16 @@
         }
       }
     },
+    "skip_phase": {
+      "name": "Skip phase",
+      "description": "Ends the phase that is running and starts the next one; zones watering in parallel end together. During a Cycle & Soak rest it cuts the rest short. Does nothing when no run is active.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Config entry ID",
+          "description": "Optional. Target installation when multiple entries exist."
+        }
+      }
+    },
     "set_mode": {
       "name": "Set mode",
       "description": "Sets global watering mode (Eco, Normal, or Extra).",
@@ -603,7 +613,7 @@
     "settings_max_parallel_hint": "Exclusive zones always run alone, regardless of this limit.",
     "settings_default_hint": "Opening the sidebar entry jumps straight to this installation.",
     "settings_automations_summary": "Service calls & IDs",
-    "settings_automations_body": "Use these services from automations: set_mode, set_zone_enabled, pause_until, clear_pause, run_zone, run_schedule_slot, stop_all, stop_zone. The config entry id below identifies this installation.",
+    "settings_automations_body": "Use these services from automations: set_mode, set_zone_enabled, pause_until, clear_pause, run_zone, run_schedule_slot, stop_all, stop_zone, skip_phase. The config entry id below identifies this installation.",
     "settings_diagnostics_summary": "Diagnostics (raw run state)",
     "settings_danger_title": "Danger zone",
     "settings_danger_desc": "Removing an installation deletes its zones and schedule. This is done from Settings → Devices & Services.",

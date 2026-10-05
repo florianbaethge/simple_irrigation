@@ -56,6 +56,7 @@ CARD_ACTIONS = (
     "run_slot",
     "run_zones",
     "stop",
+    "skip_phase",
     "skip_today",
     "pause",
     "clear_pause",
@@ -383,6 +384,7 @@ def _zones_payload(
     out: list[dict[str, Any]] = []
     for zone_id, zone in inst.zones.items():
         ends_at = run_state.zone_ends_at.get(zone_id)
+        started_at = run_state.zone_started_at.get(zone_id)
         next_run = run_state.next_run_per_zone.get(zone_id)
         last_run = run_state.last_run_per_zone.get(zone_id)
         out.append(
@@ -393,6 +395,8 @@ def _zones_payload(
                 "active": zone_id in active,
                 "queued": zone_id in queued,
                 "duration_min": zone.duration_for_mode(inst.mode),
+                "exclusive": zone.exclusive,
+                "started_at": started_at.isoformat() if started_at else None,
                 "ends_at": ends_at.isoformat() if ends_at else None,
                 "next_run": next_run.isoformat() if next_run else None,
                 "last_run": last_run.isoformat() if last_run else None,
@@ -590,6 +594,9 @@ async def ws_action(
         if action == "stop":
             await runtime.async_stop_all()
 
+        elif action == "skip_phase":
+            await runtime.async_skip_to_next_phase()
+
         elif action == "run_next":
             slot_id = _next_slot_id(hass, inst)
             if slot_id is None:
@@ -628,9 +635,9 @@ async def ws_action(
                 )
                 return
             duration = msg.get("duration_min")
-            # Sequential on purpose: async_run_zone appends to the running
-            # manual run, which is what produces the "runs in sequence" the
-            # card promises before the user presses start.
+            # One call per zone, in the order picked: async_run_zone appends to
+            # the running manual run, which groups them into phases by the
+            # parallel limit -- the plan the card shows before start is pressed.
             for zone_id in zone_ids:
                 await runtime.async_run_zone(zone_id, duration_min=duration)
 

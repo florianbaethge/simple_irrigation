@@ -182,6 +182,16 @@
         }
       }
     },
+    "skip_phase": {
+      "name": "Salta fase",
+      "description": "Termina la fase in corso e avvia la successiva; le zone irrigate in parallelo terminano insieme. Durante una pausa Cycle & Soak la pausa viene abbreviata. Non fa nulla se nessun ciclo è attivo.",
+      "fields": {
+        "config_entry_id": {
+          "name": "ID voce di configurazione",
+          "description": "Facoltativo. Usa questa installazione quando esistono più voci."
+        }
+      }
+    },
     "set_mode": {
       "name": "Imposta modalità",
       "description": "Imposta la modalità globale di irrigazione (Eco, Normale o Extra).",
@@ -592,7 +602,7 @@
     "settings_max_parallel_hint": "Le zone esclusive vengono sempre eseguite da sole, indipendentemente da questo limite.",
     "settings_default_hint": "La voce nella barra laterale apre direttamente questo impianto.",
     "settings_automations_summary": "Servizi e ID",
-    "settings_automations_body": "Usa questi servizi dalle automazioni: set_mode, set_zone_enabled, pause_until, clear_pause, run_zone, run_schedule_slot, stop_all, stop_zone. L'ID della config entry qui sotto identifica questo impianto.",
+    "settings_automations_body": "Usa questi servizi dalle automazioni: set_mode, set_zone_enabled, pause_until, clear_pause, run_zone, run_schedule_slot, stop_all, stop_zone, skip_phase. L'ID della config entry qui sotto identifica questo impianto.",
     "settings_diagnostics_summary": "Diagnostica (stato grezzo)",
     "settings_danger_title": "Zona pericolosa",
     "settings_danger_desc": "La rimozione di un impianto elimina le sue zone e la pianificazione. Si esegue da Impostazioni → Dispositivi e servizi.",

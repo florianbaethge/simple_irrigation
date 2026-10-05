@@ -30,6 +30,7 @@ from .const import (
     SERVICE_RUN_ZONE_WITH_DURATION,
     SERVICE_SET_MODE,
     SERVICE_SET_ZONE_ENABLED,
+    SERVICE_SKIP_PHASE,
     SERVICE_STOP_ALL,
     SERVICE_STOP_ZONE,
 )
@@ -87,6 +88,12 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         data = _get_domain_data(hass, call)
         runtime = data["runtime"]
         await runtime.async_stop_zone(call.data[ATTR_ZONE_ID])
+
+    async def handle_skip_phase(call: ServiceCall) -> None:
+        data = _get_domain_data(hass, call)
+        runtime = data["runtime"]
+        # Nothing to skip is not an error: an automation may fire while idle.
+        await runtime.async_skip_to_next_phase()
 
     async def handle_set_mode(call: ServiceCall) -> None:
         data = _get_domain_data(hass, call)
@@ -185,6 +192,12 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                 vol.Optional(ATTR_CONFIG_ENTRY_ID): cv.string,
             }
         ),
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_SKIP_PHASE,
+        handle_skip_phase,
+        schema=vol.Schema({vol.Optional(ATTR_CONFIG_ENTRY_ID): cv.string}),
     )
     hass.services.async_register(
         DOMAIN,

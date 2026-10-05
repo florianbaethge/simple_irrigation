@@ -381,8 +381,7 @@ def _zones_payload(
     queued -= active
 
     out: list[dict[str, Any]] = []
-    for zone_id in inst.ordered_zone_ids():
-        zone = inst.zones[zone_id]
+    for zone_id, zone in inst.zones.items():
         ends_at = run_state.zone_ends_at.get(zone_id)
         next_run = run_state.next_run_per_zone.get(zone_id)
         last_run = run_state.last_run_per_zone.get(zone_id)

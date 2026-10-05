@@ -404,7 +404,8 @@ def test_snapshot_has_no_phase_counter_while_idle() -> None:
 
 def test_snapshot_uses_the_saved_zone_order() -> None:
     """The Lovelace card should match the order chosen in the panel."""
-    inst = _installation(zone_order=["z3", "z1", "z2"])
+    inst = _installation()
+    assert inst.set_zone_order(["z3", "z1", "z2"])
     hass = _hass()
     with _freeze(), patch(
         "custom_components.simple_irrigation.card_api._entity_id", return_value=""

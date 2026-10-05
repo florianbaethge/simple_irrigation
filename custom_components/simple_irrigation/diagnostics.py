@@ -65,9 +65,8 @@ async def async_get_config_entry_diagnostics(
             "pre_start_script_timeout_sec": inst.pre_start_script_timeout_sec,
             "post_run_script": inst.post_run_script,
             "post_run_script_timeout_sec": inst.post_run_script_timeout_sec,
-            "zone_order": inst.ordered_zone_ids(),
         },
-        "zones": {zid: inst.zones[zid].to_dict() for zid in inst.ordered_zone_ids()},
+        "zones": {zid: z.to_dict() for zid, z in inst.zones.items()},
         "schedule_slots": slots_diag,
         "run_state": rs.to_dict(),
     }

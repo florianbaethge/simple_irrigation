@@ -367,21 +367,18 @@ def _clamp_int(raw: Any, default: int, lo: int, hi: int) -> int:
     return max(lo, min(hi, value))
 
 
-def normalize_zone_order(raw: Any, zones: dict[str, Zone]) -> list[str]:
-    """The saved order, completed: unknown ids dropped, unlisted zones appended.
+def _zones_in_saved_order(zones: dict[str, Zone], saved: Any) -> dict[str, Zone]:
+    """``zones`` in the order the store's ``zone_order`` list names them.
 
-    Stores from before the order existed have none, and a new zone is not in it
-    until the next reorder -- both fall back to the order zones were created in.
+    The order is saved as a list of its own because the key order of a JSON
+    object is a courtesy, not a promise -- a store that went through a tool that
+    sorts keys still loads the way the user arranged it. Entries that match no
+    zone are ignored; zones the list does not name follow in the order they have.
     """
-    saved = raw if isinstance(raw, list) else []
-    ordered: list[str] = []
-    seen: set[str] = set()
-    for item in saved:
-        zone_id = str(item)
-        if zone_id in zones and zone_id not in seen:
-            ordered.append(zone_id)
-            seen.add(zone_id)
-    ordered.extend(zone_id for zone_id in zones if zone_id not in seen)
+    if not isinstance(saved, list):
+        return zones
+    ordered = {zone_id: zones[zone_id] for zone_id in map(str, saved) if zone_id in zones}
+    ordered.update(zones)
     return ordered
 
 
@@ -408,25 +405,22 @@ class Installation:
     water_meter_entity_id: str = ""
     # Conditions applied to every scheduled run unless a slot opts out.
     guards: list[Guard] = field(default_factory=list)
+    # In the order they are listed in, which is also the run order a new cycle
+    # starts with. A slot's own ``zone_ids_ordered`` decides how that slot waters.
     zones: dict[str, Zone] = field(default_factory=dict)
-    # The order zones are listed in, and the run order a new cycle starts with.
-    # A slot's own ``zone_ids_ordered`` decides how that slot waters.
-    zone_order: list[str] = field(default_factory=list)
     schedule_slots: list[ScheduleSlot] = field(default_factory=list)
 
-    def ordered_zone_ids(self) -> list[str]:
-        """Return all current zone ids in the persisted display order."""
-        return normalize_zone_order(self.zone_order, self.zones)
-
     def set_zone_order(self, order: list[str]) -> bool:
-        """Adopt ``order`` if it names every current zone exactly once.
+        """Put the zones in ``order`` if it names every one of them exactly once.
 
         Anything else was built from a zone list that has changed since -- a zone
         added or deleted in another tab -- and is refused rather than repaired.
         """
         if len(order) != len(self.zones) or set(order) != set(self.zones):
             return False
-        self.zone_order = list(order)
+        ordered = {zone_id: self.zones[zone_id] for zone_id in order}
+        self.zones.clear()
+        self.zones.update(ordered)
         return True
 
     def to_dict(self) -> dict[str, Any]:
@@ -448,7 +442,7 @@ class Installation:
             "water_meter_entity_id": self.water_meter_entity_id,
             "guards": [g.to_dict() for g in self.guards],
             "zones": {k: v.to_dict() for k, v in self.zones.items()},
-            "zone_order": self.ordered_zone_ids(),
+            "zone_order": list(self.zones),
             "schedule_slots": [s.to_dict() for s in self.schedule_slots],
         }
 
@@ -465,10 +459,10 @@ class Installation:
         if isinstance(zones_data, dict):
             for zid, zd in zones_data.items():
                 zones[zid] = Zone.from_dict(zd)
+        zones = _zones_in_saved_order(zones, data.get("zone_order"))
 
         slots_raw = data.get("schedule_slots") or []
         schedule_slots = [ScheduleSlot.from_dict(s) for s in slots_raw]
-        zone_order = normalize_zone_order(data.get("zone_order"), zones)
 
         return Installation(
             installation_id=data["installation_id"],
@@ -491,7 +485,6 @@ class Installation:
             water_meter_entity_id=str(data.get("water_meter_entity_id") or "").strip(),
             guards=parse_guards(data.get("guards")),
             zones=zones,
-            zone_order=zone_order,
             schedule_slots=schedule_slots,
         )
 

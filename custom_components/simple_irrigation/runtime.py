@@ -9,7 +9,8 @@ from contextlib import suppress
 from typing import TYPE_CHECKING
 
 from homeassistant.exceptions import HomeAssistantError
-from homeassistant.core import HomeAssistant
+from homeassistant.core import CALLBACK_TYPE, HomeAssistant
+from homeassistant.helpers.start import async_at_started
 from homeassistant.util import dt as dt_util
 
 from .const import (
@@ -50,6 +51,9 @@ _LOGGER = logging.getLogger(__name__)
 # the zone stops waiting on it. Generous — the call only has to reach the
 # controller, not carry out the watering.
 START_SERVICE_TIMEOUT_SEC = 30
+
+# How long closing the outputs may hold up Home Assistant's own shutdown.
+SHUTDOWN_CLOSE_TIMEOUT_SEC = 20
 
 
 def _copy_steps(steps: list[RunStep]) -> list[RunStep]:
@@ -110,9 +114,12 @@ class IrrigationRuntime:
         self._run_slots: list[ScheduleSlot] = []
         # The supply-line meter's reading when the run began, if there is one.
         self._run_meter_start: float | None = None
+        # Zones a run was watering when Home Assistant went down under it.
+        self._interrupted_zone_ids: list[str] = []
+        self._unsub_started: CALLBACK_TYPE | None = None
 
     async def async_setup(self) -> None:
-        """Reset state on startup."""
+        """Reset state on startup and shut what an interrupted run left open."""
         rs = self.coordinator.run_state
         # Unconditional: a leftover end time is meaningless in a fresh process, and
         # a run that was already in ERROR skips the branch below.
@@ -121,6 +128,7 @@ class IrrigationRuntime:
         if rs.run_state not in (RUN_STATE_IDLE, RUN_STATE_ERROR):
             rs.run_state = RUN_STATE_ERROR
             rs.last_error = "Interrupted by Home Assistant restart"
+            self._interrupted_zone_ids = list(rs.active_zone_ids)
             rs.active_zone_ids = []
             rs.queued_zone_ids = []
             rs.current_slot_id = None
@@ -130,10 +138,82 @@ class IrrigationRuntime:
             rs.active_script_started_at = None
             rs.active_script_timeout_sec = None
             await self.coordinator.async_update_run_state(rs)
-        await self._async_turn_off_all_tracked()
+        started = bool(self.hass.is_running)
+        await self._async_close_after_interruption(final=started)
+        if not started:
+            # While Home Assistant starts, the integration behind a valve may not
+            # be loaded yet, and a call to it goes nowhere. Once more when all are.
+            self._unsub_started = async_at_started(self.hass, self._async_close_once_started)
+
+    async def _async_close_once_started(self, _hass: HomeAssistant) -> None:
+        self._unsub_started = None
+        await self._async_close_after_interruption(final=True)
+
+    async def _async_close_after_interruption(self, *, final: bool) -> None:
+        """Shut the pre-start outputs and the zones a run was cut off in. Never raises.
+
+        A fresh process has opened nothing, so anything open is left over. Only
+        outputs of zones on record as watering are touched -- a valve somebody
+        opened by hand is none of our business.
+        """
+        inst = self.coordinator.installation
+        zones = [inst.zones[zid] for zid in self._interrupted_zone_ids if zid in inst.zones]
+        # Pump before valves. A run that began in the meantime keeps what it holds.
+        outputs = [] if self.is_busy() else list(inst.pre_start_switches)
+        for zone in zones:
+            outputs.extend(zone.switch_entity_ids)
+        failed: list[str] = []
+        for entity_id in dict.fromkeys(outputs):
+            if entity_id in self._touched_entities:
+                continue
+            try:
+                await self._async_switch_turn_off(entity_id)
+            except Exception:  # noqa: BLE001 - one bad output must not strand the rest
+                failed.append(entity_id)
+        if not final:
+            return
+        self._interrupted_zone_ids = []
+        for zone in zones:
+            countdown = zone.countdown_entity_id.strip()
+            if countdown and countdown not in self._armed_countdowns:
+                self._armed_countdowns.add(countdown)
+                await self._async_disarm_countdown(countdown)
+        if failed:
+            _LOGGER.error("Could not turn off after a restart: %s", ", ".join(failed))
+            rs = self.coordinator.run_state
+            rs.last_error = f"Could not turn off: {', '.join(failed)}"
+            await self.coordinator.async_update_run_state(rs)
+
+    async def async_close_for_shutdown(self) -> None:
+        """Home Assistant is stopping: end the run and shut its outputs.
+
+        Integrations stop side by side, so the one behind a valve may be gone
+        before the call reaches it. The run therefore stays on record as cut
+        off, and the next start closes the same outputs once more.
+        """
+        if not self.is_busy():
+            return
+        rs = self.coordinator.run_state
+        state, watering = rs.run_state, list(rs.active_zone_ids)
+        try:
+            await asyncio.wait_for(self.async_stop_all(), SHUTDOWN_CLOSE_TIMEOUT_SEC)
+        except TimeoutError:
+            # The run is stuck somewhere, a script most likely. Close without it.
+            _LOGGER.warning("Run did not stop in time for shutdown; closing its outputs")
+            with suppress(TimeoutError):
+                await asyncio.wait_for(
+                    self._async_turn_off_all_tracked(), SHUTDOWN_CLOSE_TIMEOUT_SEC
+                )
+        rs.run_state = state
+        rs.active_zone_ids = watering
+        # Straight to the store: entities need not hear of a run that is over.
+        await self.coordinator.store.async_save()
 
     async def async_shutdown(self) -> None:
         """Cancel running task."""
+        if self._unsub_started is not None:
+            self._unsub_started()
+            self._unsub_started = None
         await self.async_stop_all()
         if self._task:
             self._task.cancel()

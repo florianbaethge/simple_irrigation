@@ -134,7 +134,7 @@ Choose **Custom** for another integration and enter its `domain.service`, durati
 
 #### Hardware countdown as a safety net
 
-Simple Irrigation closes every output itself — but only while Home Assistant is running. Some valves carry a **timer of their own** that shuts them when it runs out, whatever happened to the controller in the meantime: Tuya and Sonoff water timers expose it as a `number` entity (`countdown`, `timer`, …) next to the valve's switch. Open a zone, scroll to **Advanced** and expand **Hardware countdown (safety timer)**.
+Simple Irrigation closes every output itself — but only while Home Assistant is running. A run that is under way when Home Assistant shuts down is ended and its outputs are closed on the way down; whatever was watering when Home Assistant stopped or crashed is closed once more as soon as it is back. In between — a crash, a power cut, a dead network — nobody is there to close anything. Some valves carry a **timer of their own** that shuts them when it runs out, whatever happened to the controller in the meantime: Tuya and Sonoff water timers expose it as a `number` entity (`countdown`, `timer`, …) next to the valve's switch. Open a zone, scroll to **Advanced** and expand **Hardware countdown (safety timer)**.
 
 - Pick the **countdown entity**. Right before the zone opens, it is set to the duration of the pass (every Cycle & Soak pass on its own), so the valve closes on time even if Home Assistant, the network or the integration dies mid-run. Once the outputs are closed again — at the end, after *Stop zone* or *Stop* — the countdown is cleared.
 - The **unit** is read off the entity (`min` or `s`). Choose minutes or seconds by hand only when the entity carries no unit.

@@ -27,20 +27,6 @@ export const formLayoutStyles = css`
     width: 100%;
     display: block;
   }
-  .time24-picker {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-  }
-  .time24-picker select {
-    min-width: 4.5em;
-    padding: 8px;
-    border: 1px solid var(--divider-color);
-    border-radius: 4px;
-    background: var(--card-background-color);
-    color: var(--primary-text-color);
-    font: inherit;
-  }
   .entity-picker-rows {
     display: flex;
     flex-direction: column;

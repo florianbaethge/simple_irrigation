@@ -17,7 +17,8 @@ from custom_components.simple_irrigation.cycle import (
     cycle_is_exact,
     round_half_up,
     simulate_fire_days,
-    validate_cycle_start_times,
+    MAX_CYCLE_START_TIMES,
+    normalize_start_times,
 )
 from custom_components.simple_irrigation.time_util import next_slot_fire_local_any
 
@@ -43,44 +44,47 @@ def test_daily() -> None:
     assert slots[0]["week_parity"] == "every"
 
 
-def test_daily_supports_multiple_start_times() -> None:
+def test_daily_runs_at_every_start_time() -> None:
     slots = generate_cycle_slots("daily", _meta(times=["06:00", "12:00", "19:00"]))
 
     assert [slot["time_local"] for slot in slots] == ["06:00", "12:00", "19:00"]
     assert all(slot["weekdays"] == [0, 1, 2, 3, 4, 5, 6] for slot in slots)
 
 
-def test_start_time_validation_rejects_duplicates_and_unbounded_lists() -> None:
-    assert validate_cycle_start_times([" 06:00 ", "19:00"]) == (
-        ["06:00", "19:00"],
-        None,
-    )
-    assert validate_cycle_start_times(["06:00", "06:00"])[1] == "duplicate_start_time"
-    assert validate_cycle_start_times(["25:00"])[1] == "invalid_time"
-    assert validate_cycle_start_times(["06:00"] * 9)[1] == "too_many_start_times"
+def test_start_times_come_out_once_each_and_in_the_order_of_the_clock() -> None:
+    assert normalize_start_times(["19:00", " 6:05 ", "12:00", "06:05"]) == [
+        "06:05",
+        "12:00",
+        "19:00",
+    ]
 
 
-def test_twice_daily() -> None:
-    slots = generate_cycle_slots("twice_daily", _meta(times=["06:00", "19:00"]))
-    assert len(slots) == 2
-    assert {s["time_local"] for s in slots} == {"06:00", "19:00"}
-    assert all(s["weekdays"] == [0, 1, 2, 3, 4, 5, 6] for s in slots)
-    assert all(s["week_parity"] == "every" for s in slots)
+def test_start_times_that_are_no_times_are_dropped() -> None:
+    assert normalize_start_times(["25:00", "noon", "", "07:60", "07:30"]) == ["07:30"]
+    assert normalize_start_times(None) == []
 
 
-def test_weekly() -> None:
-    slots = generate_cycle_slots("weekly", _meta(anchor_weekday=2))
-    assert slots == [{"weekdays": [2], "time_local": "19:00", "week_parity": "every"}]
+def test_start_times_stop_at_the_cap() -> None:
+    hourly = [f"{h:02d}:00" for h in range(24)]
+
+    assert normalize_start_times(hourly) == hourly[:MAX_CYCLE_START_TIMES]
 
 
-def test_biweekly_uses_anchor_parity() -> None:
-    slots = generate_cycle_slots("biweekly", _meta(anchor_weekday=0), anchor_parity="odd")
-    assert slots == [{"weekdays": [0], "time_local": "19:00", "week_parity": "odd"}]
+def test_a_cycle_without_start_times_runs_at_six() -> None:
+    assert [s["time_local"] for s in generate_cycle_slots("daily", {})] == ["06:00"]
 
 
-def test_n_per_week() -> None:
-    slots = generate_cycle_slots("n_per_week", _meta(week_days=[0, 2, 4]))
-    assert slots == [{"weekdays": [0, 2, 4], "time_local": "19:00", "week_parity": "every"}]
+def test_times_entered_out_of_order_still_run_earliest_first() -> None:
+    slots = generate_cycle_slots("daily", _meta(times=["18:00", "06:00"]))
+
+    assert [slot["time_local"] for slot in slots] == ["06:00", "18:00"]
+
+
+def test_twice_daily_from_older_releases_is_daily_at_its_two_times() -> None:
+    meta = _meta(times=["19:00", "06:00"])
+
+    assert generate_cycle_slots("twice_daily", meta) == generate_cycle_slots("daily", meta)
+    assert len(generate_cycle_slots("twice_daily", meta)) == 2
 
 
 def test_selected_weekdays_are_repeated_at_each_start_time() -> None:
@@ -91,15 +95,6 @@ def test_selected_weekdays_are_repeated_at_each_start_time() -> None:
 
     assert [slot["time_local"] for slot in slots] == ["05:30", "09:30", "13:30"]
     assert all(slot["weekdays"] == [1, 4] for slot in slots)
-
-
-def test_every_2_days_two_parity_slots() -> None:
-    """n=2 → odd: Mo We Fr Su · even: Tu Th Sa (spec §3.4)."""
-    slots = generate_cycle_slots("every_n_days", _meta(n=2), anchor_parity="odd")
-    assert len(slots) == 2
-    by_parity = {s["week_parity"]: s["weekdays"] for s in slots}
-    assert by_parity["odd"] == [0, 2, 4, 6]  # Mo We Fr Su
-    assert by_parity["even"] == [1, 3, 5]  # Tu Th Sa
 
 
 def test_every_2_days_multiplies_parity_slots_by_start_times() -> None:
@@ -193,3 +188,36 @@ def test_anchor_week_parity() -> None:
     assert anchor_week_parity(0, dt.date(2025, 3, 24)) == "odd"
     # 2025-03-31 is Monday ISO week 14 (even).
     assert anchor_week_parity(0, dt.date(2025, 3, 31)) == "even"
+
+
+def _member(slot_id: str, weekdays: list[int], time_local: str, parity: str = "every"):
+    from custom_components.simple_irrigation.models import ScheduleSlot
+
+    return ScheduleSlot(
+        slot_id=slot_id, weekdays=weekdays, time_local=time_local, week_parity=parity
+    )
+
+
+def test_editing_a_cycle_keeps_the_id_of_every_member_that_stays() -> None:
+    """A member's switch entity must go on meaning the same run."""
+    from custom_components.simple_irrigation.panel_api import _cycle_member_ids
+
+    days = [0, 1, 2, 3, 4, 5, 6]
+    existing = [_member("a", days, "06:00"), _member("b", days, "12:00"), _member("c", days, "18:00")]
+
+    # 12:00 goes: the evening run keeps its id rather than inheriting the noon one.
+    specs = generate_cycle_slots("daily", _meta(times=["06:00", "18:00"]))
+    assert _cycle_member_ids(existing, specs) == ["a", "c"]
+
+
+def test_a_moved_start_time_takes_over_the_id_that_fell_free() -> None:
+    from custom_components.simple_irrigation.panel_api import _cycle_member_ids
+
+    days = [0, 1, 2, 3, 4, 5, 6]
+    existing = [_member("a", days, "06:00"), _member("b", days, "12:00")]
+
+    specs = generate_cycle_slots("daily", _meta(times=["06:00", "13:00", "20:00"]))
+    ids = _cycle_member_ids(existing, specs)
+
+    assert ids[:2] == ["a", "b"]
+    assert ids[2] not in ("a", "b")

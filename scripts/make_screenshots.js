@@ -306,6 +306,8 @@ async function gotoTab(page, tab, view, w = 1180, h = 1100) {
     let wiz = null;
     for (const e of walk(document)) if (e.tagName === "SI-CYCLE-WIZARD") wiz = e;
     wiz.start({ optionId: "every_2_days", step: 2 });
+    // Two start times, so the picture shows what "Add start time" leads to.
+    wiz._times = ["06:00", "19:00"];
   }, walkSrc);
   await sleep(1200);
   console.log("cycle_wizard.png", JSON.stringify(await clipToDialog(page, "cycle_wizard.png")));

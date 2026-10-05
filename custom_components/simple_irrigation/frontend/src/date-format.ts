@@ -1,5 +1,4 @@
-import { formatDateTimeForProfile } from "./profile-datetime";
-import { formatTime24 } from "./time24";
+import { formatDateTimeForProfile, formatSlotTimeForProfile } from "./profile-datetime";
 import { t } from "./i18n";
 import type { HomeAssistant } from "./types";
 
@@ -64,12 +63,7 @@ export function formatDateTimeForDisplay(hass: HomeAssistant | undefined, date: 
   return formatDateTimeForProfile(hass, date);
 }
 
-/** Scheduled run previews keep the user's date format but use a 24-hour clock. */
-export function formatDateTime24ForDisplay(hass: HomeAssistant | undefined, date: Date): string {
-  return formatDateTimeForProfile(hass, date, true);
-}
-
-/** Schedule wall times always use 24-hour HH:MM, independent of locale. */
-export function formatTimeLocalForDisplay(_hass: HomeAssistant | undefined, timeLocal: string): string {
-  return formatTime24(timeLocal);
+/** Slot wall time HH:MM with profile 12h/24h (same numbers as stored; presentation only). */
+export function formatTimeLocalForDisplay(hass: HomeAssistant | undefined, timeLocal: string): string {
+  return formatSlotTimeForProfile(hass, timeLocal);
 }

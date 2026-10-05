@@ -37,9 +37,10 @@ from .grouping import compute_phases
 from .models import Guard, Installation, ScheduleSlot, Zone, normalize_weekdays
 from .cycle import (
     CYCLE_KINDS,
+    MAX_CYCLE_START_TIMES,
     anchor_week_parity,
     generate_cycle_slots,
-    validate_cycle_start_times,
+    normalize_start_times,
 )
 from .runtime import ScheduleSlotRunError, ZoneManualRunError, ZoneStopError
 from .scheduler import compute_next_runs, phases_for_slot
@@ -82,6 +83,24 @@ SLOT_SCRIPT_TIMEOUT_SCHEMA = vol.Any(
 # ("none"), so these are plain ranges rather than positive_int.
 SLOT_REPETITIONS_SCHEMA = vol.All(int, vol.Range(min=1, max=MAX_REPETITIONS))
 SLOT_SOAK_SCHEMA = vol.All(int, vol.Range(min=0, max=MAX_SOAK_MIN))
+
+
+def _cycle_member_ids(existing: list[ScheduleSlot], specs: list[dict[str, Any]]) -> list[str]:
+    """Slot ids for a cycle's members after an edit, one per spec.
+
+    A member keeps its id for as long as it keeps its days and its time, so its
+    switch entity goes on meaning the same run. Ids that fall free go to the
+    members that are new, and only then are fresh ones made.
+    """
+    kept = {(tuple(s.weekdays), s.week_parity, s.time_local): s.slot_id for s in existing}
+    wanted = [
+        (tuple(spec["weekdays"]), spec["week_parity"], spec["time_local"]) for spec in specs
+    ]
+    free = [slot_id for key, slot_id in kept.items() if key not in wanted]
+    return [
+        kept[key] if key in kept else (free.pop(0) if free else uuid.uuid4().hex)
+        for key in wanted
+    ]
 
 
 def _copy_slot_cycle_soak(src: ScheduleSlot, dst: ScheduleSlot) -> None:
@@ -673,7 +692,9 @@ class SimpleIrrigationPanelSlotView(HomeAssistantView):
                         vol.Optional("label"): cv.string,
                         vol.Optional("n"): vol.All(int, vol.Range(min=1, max=14)),
                         vol.Optional("anchor_weekday"): vol.All(int, vol.Range(min=0, max=6)),
-                        vol.Optional("times"): [cv.string],
+                        vol.Optional("times"): vol.All(
+                            [cv.string], vol.Length(max=MAX_CYCLE_START_TIMES)
+                        ),
                         vol.Optional("week_days"): [vol.All(int, vol.Range(min=0, max=6))],
                     }
                 ),
@@ -743,11 +764,11 @@ class SimpleIrrigationPanelSlotView(HomeAssistantView):
                 if zid in seen_z:
                     return self.json({"success": False, "error": "duplicate_zone"}, status_code=400)
                 seen_z.add(zid)
-            normalized_times, times_error = validate_cycle_start_times(meta.get("times"))
-            if times_error:
-                return self.json({"success": False, "error": times_error}, status_code=400)
-            if normalized_times:
-                meta["times"] = normalized_times
+            for tstr in meta.get("times") or []:
+                if parse_hh_mm(str(tstr).strip()) is None:
+                    return self.json({"success": False, "error": "invalid_time"}, status_code=400)
+            # Earliest first, each once: what the members and the wizard go by.
+            meta["times"] = normalize_start_times(meta.get("times"))
             enabled = bool(data.get("enabled", True))
             incoming_id = str(data.get("cycle_id") or "")  # set when editing an existing cycle
             anchor = int(meta.get("anchor_weekday", 0))
@@ -757,10 +778,11 @@ class SimpleIrrigationPanelSlotView(HomeAssistantView):
                 return self.json({"success": False, "error": "invalid_cycle"}, status_code=400)
             label = str(meta.get("label") or "").strip()
 
-            # A "cycle" only exists when the cadence genuinely needs >=2 slots
-            # (e.g. every 2/3 days via odd/even parity). Cadences expressible as a
-            # single slot (daily, weekly, biweekly, n-per-week, custom) are stored
-            # as a plain slot with no cycle_id — so the UI treats them uniformly.
+            # A slot is a set of weekdays at one time of day. Whatever fits into
+            # one is stored as a plain slot with no cycle_id, so the UI treats it
+            # like any other. A "cycle" exists where that takes two or more:
+            # every 2/3 days needs odd and even weeks, and every further start
+            # time needs the cadence's slots once again.
             is_cycle = len(specs) >= 2
             new_cid = (incoming_id or uuid.uuid4().hex) if is_cycle else None
 
@@ -769,7 +791,7 @@ class SimpleIrrigationPanelSlotView(HomeAssistantView):
                 if incoming_id
                 else []
             )
-            reused_ids = [s.slot_id for s in existing]
+            member_ids = _cycle_member_ids(existing, specs)
 
             # Guards: take them from the payload, else keep what the edited cycle
             # already had. All members of a cycle share the same conditions.
@@ -786,7 +808,7 @@ class SimpleIrrigationPanelSlotView(HomeAssistantView):
 
             new_members = [
                 ScheduleSlot(
-                    slot_id=(reused_ids[i] if i < len(reused_ids) else uuid.uuid4().hex),
+                    slot_id=member_ids[i],
                     weekdays=list(spec["weekdays"]),
                     time_local=spec["time_local"],
                     enabled=enabled,

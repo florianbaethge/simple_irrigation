@@ -32,6 +32,10 @@ export interface CycleSlotSpec {
   week_parity: WeekParity;
 }
 
+/** A cadence before it has a time of day. */
+type CadenceSlot = Omit<CycleSlotSpec, "time_local">;
+
+/** Start times a cycle may have on a watering day (`MAX_CYCLE_START_TIMES` in cycle.py). */
 export const MAX_CYCLE_START_TIMES = 8;
 
 /** Round half up (matches JS Math.round and Python `round_half_up`). */
@@ -62,15 +66,24 @@ export function anchorWeekParity(anchorWeekday: number, today: Date): Exclude<We
   return "odd";
 }
 
-function times(meta: CycleMeta | undefined): string[] {
-  const raw = meta?.times;
-  const out: string[] = [];
-  if (Array.isArray(raw)) {
-    for (const x of raw) {
-      const s = String(x).trim();
-      if (s) out.push(s);
-    }
+/** `raw` as `HH:MM` strings, each once and in the order of the clock. */
+export function normalizeStartTimes(raw: unknown): string[] {
+  const minutes = new Set<number>();
+  for (const value of Array.isArray(raw) ? raw : []) {
+    const m = /^(\d{1,2}):(\d{1,2})$/.exec(String(value).trim());
+    if (!m) continue;
+    const h = Number(m[1]);
+    const min = Number(m[2]);
+    if (h <= 23 && min <= 59) minutes.add(h * 60 + min);
   }
+  return [...minutes]
+    .sort((x, y) => x - y)
+    .slice(0, MAX_CYCLE_START_TIMES)
+    .map((t) => `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`);
+}
+
+function times(meta: CycleMeta | undefined): string[] {
+  const out = normalizeStartTimes(meta?.times);
   return out.length ? out : ["06:00"];
 }
 
@@ -104,9 +117,8 @@ function weekDays(meta: CycleMeta | undefined): number[] {
 function everyNDaysSlots(
   n: number,
   a: number,
-  timeLocal: string,
   p0: Exclude<WeekParity, "every">
-): CycleSlotSpec[] {
+): CadenceSlot[] {
   const runs = Math.max(1, roundHalfUp(14 / n));
   const offsets: number[] = [];
   for (let k = 0; k < runs; k++) offsets.push(roundHalfUp((k * 14) / runs));
@@ -133,65 +145,51 @@ function everyNDaysSlots(
   const sameSet =
     weekA.length === weekB.length && weekA.every((v, i) => v === weekB[i]);
   if (weekA.length && weekB.length && sameSet) {
-    return [{ weekdays: weekA, time_local: timeLocal, week_parity: "every" }];
+    return [{ weekdays: weekA, week_parity: "every" }];
   }
-  const out: CycleSlotSpec[] = [];
-  if (weekA.length) out.push({ weekdays: weekA, time_local: timeLocal, week_parity: p0 });
-  if (weekB.length)
-    out.push({ weekdays: weekB, time_local: timeLocal, week_parity: oppositeParity(p0) });
+  const out: CadenceSlot[] = [];
+  if (weekA.length) out.push({ weekdays: weekA, week_parity: p0 });
+  if (weekB.length) out.push({ weekdays: weekB, week_parity: oppositeParity(p0) });
   return out;
 }
 
-/** Expand cadence slots so each one runs at every requested start time. */
-function atEachTime(slots: CycleSlotSpec[], startTimes: string[]): CycleSlotSpec[] {
-  return slots.flatMap((slot) =>
-    startTimes.map((timeLocal) => ({ ...slot, time_local: timeLocal }))
-  );
-}
-
+/**
+ * Slot specs for a cycle: its cadence, once for every start time. A slot waters
+ * on its weekdays at one time of day, so "every 2 days at 06:00 and 18:00" is
+ * four of them.
+ */
 export function generateCycleSlots(
   kind: CycleKind,
   meta: CycleMeta | undefined,
   anchorParity: Exclude<WeekParity, "every"> = "odd"
 ): CycleSlotSpec[] {
   const ts = times(meta);
-  const a = anchor(meta);
-  const allDays = [0, 1, 2, 3, 4, 5, 6];
+  return cadenceSlots(kind, meta, anchorParity).flatMap((slot) =>
+    ts.map((time_local) => ({ ...slot, time_local }))
+  );
+}
 
+function cadenceSlots(
+  kind: CycleKind,
+  meta: CycleMeta | undefined,
+  anchorParity: Exclude<WeekParity, "every">
+): CadenceSlot[] {
+  const a = anchor(meta);
   switch (kind) {
     case "daily":
-      return atEachTime(
-        [{ weekdays: allDays, time_local: ts[0], week_parity: "every" }],
-        ts
-      );
-    case "twice_daily": {
-      // Backward compatibility for cycles created before generic multi-time
-      // schedules replaced this dedicated cadence in the wizard.
-      const t2 = ts.length > 1 ? ts[1] : ts[0];
-      return [
-        { weekdays: allDays, time_local: ts[0], week_parity: "every" },
-        { weekdays: allDays, time_local: t2, week_parity: "every" },
-      ];
-    }
+    // `twice_daily` is how releases before 1.13 spelled "daily, two times".
+    case "twice_daily":
+      return [{ weekdays: [0, 1, 2, 3, 4, 5, 6], week_parity: "every" }];
     case "weekly":
-      return atEachTime([{ weekdays: [a], time_local: ts[0], week_parity: "every" }], ts);
+      return [{ weekdays: [a], week_parity: "every" }];
     case "biweekly":
-      return atEachTime([{ weekdays: [a], time_local: ts[0], week_parity: anchorParity }], ts);
-    case "n_per_week": {
-      const days = weekDays(meta);
-      return atEachTime(
-        [{ weekdays: days.length ? days : [a], time_local: ts[0], week_parity: "every" }],
-        ts
-      );
-    }
+      return [{ weekdays: [a], week_parity: anchorParity }];
     case "every_n_days":
-      return atEachTime(everyNDaysSlots(nValue(meta), a, ts[0], anchorParity), ts);
+      return everyNDaysSlots(nValue(meta), a, anchorParity);
     default: {
+      // n_per_week, custom (or unknown): the chosen weekdays.
       const days = weekDays(meta);
-      return atEachTime(
-        [{ weekdays: days.length ? days : [a], time_local: ts[0], week_parity: "every" }],
-        ts
-      );
+      return [{ weekdays: days.length ? days : [a], week_parity: "every" }];
     }
   }
 }

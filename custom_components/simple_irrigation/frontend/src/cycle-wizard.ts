@@ -32,6 +32,7 @@ import {
   previewStrip,
   cycleIsExact,
   MAX_CYCLE_START_TIMES,
+  normalizeStartTimes,
   type CycleKind,
   type CycleMeta,
   type CycleSlotSpec,
@@ -47,8 +48,7 @@ import {
 } from "./schedule-phases";
 import { renderCycleSoakEditor } from "./cycle-soak-editor";
 import { durationForMode, parseTimeLocalToMinutes, minutesToTimeLocal } from "./timetable-model";
-import { formatDateTime24ForDisplay } from "./date-format";
-import { renderTime24Picker } from "./time24";
+import { formatDateTimeForDisplay } from "./date-format";
 import { orderedZoneIds } from "./zone-order";
 import type { HomeAssistant } from "./types";
 
@@ -176,6 +176,13 @@ export class CycleWizard extends LitElement {
         align-items: center;
         gap: 8px;
       }
+      .time-row input[type="time"] {
+        width: auto;
+        min-width: 120px;
+      }
+      .add-time {
+        margin-top: 8px;
+      }
       .zone-pick {
         display: flex;
         align-items: center;
@@ -277,12 +284,9 @@ export class CycleWizard extends LitElement {
           : "every_2_days"
         : kind;
     this._label = String(meta.label ?? first.name ?? "");
-    const savedTimes = Array.isArray(meta.times)
-      ? meta.times.map(String)
-      : slots.map((s) => String(s.time_local ?? "06:00"));
-    // Multi-week cadences have one slot per parity and time. De-duplicate the
-    // slot fallback while preserving the user's saved order from cycle_meta.
-    this._times = [...new Set(savedTimes)].slice(0, MAX_CYCLE_START_TIMES);
+    // From the members, not from the metadata: a member's time can be edited on
+    // its own, and what the cycle really does is what should be shown.
+    this._times = normalizeStartTimes(slots.map((s) => s.time_local));
     if (!this._times.length) this._times = ["19:00"];
     this._anchor = Number(meta.anchor_weekday ?? 0);
     this._weekDays =
@@ -318,7 +322,7 @@ export class CycleWizard extends LitElement {
 
   private _meta(): CycleMeta {
     const opt = this._option();
-    const meta: CycleMeta = { label: this._label.trim(), times: [...this._times] };
+    const meta: CycleMeta = { label: this._label.trim(), times: normalizeStartTimes(this._times) };
     if (opt.n) meta.n = opt.n;
     if (opt.multiAnchor) meta.week_days = [...this._weekDays].sort((a, b) => a - b);
     else meta.anchor_weekday = this._anchor;
@@ -394,7 +398,7 @@ export class CycleWizard extends LitElement {
     if (this._step === 2) {
       const opt = this._option();
       if (opt.multiAnchor && this._weekDays.length === 0) return false;
-      if (new Set(this._times).size !== this._times.length) return false;
+      if (this._hasDuplicateTime()) return false;
     }
     if (this._step === 3 && this._zoneIds.length === 0) return false;
     return true;
@@ -411,18 +415,6 @@ export class CycleWizard extends LitElement {
       parity: s.week_parity,
     }));
     const existing = (this.installation?.schedule_slots as Array<Record<string, unknown>> | undefined) ?? [];
-    // Warn when two start times in this cycle overlap each other as well as
-    // when they overlap a previously saved schedule.
-    for (let i = 0; i < mine.length; i++) {
-      for (let j = i + 1; j < mine.length; j++) {
-        const shareDay = [...mine[i].days].some((d) => mine[j].days.has(d));
-        const shareWeek =
-          mine[i].parity === "every" ||
-          mine[j].parity === "every" ||
-          mine[i].parity === mine[j].parity;
-        if (shareDay && shareWeek && Math.abs(mine[i].start - mine[j].start) < est) return true;
-      }
-    }
     for (const slot of existing) {
       if (this._cycleId && String(slot.cycle_id ?? "") === this._cycleId) continue;
       if (!(slot.enabled ?? true)) continue;
@@ -442,30 +434,55 @@ export class CycleWizard extends LitElement {
     return false;
   }
 
+  /** When the cycle would first run: the next start time still ahead on a watering day. */
+  private _firstRun(slots: CycleSlotSpec[]): Date | null {
+    const now = new Date();
+    const starts = normalizeStartTimes(this._times).map(parseTimeLocalToMinutes);
+    for (let i = 0; i <= 28; i++) {
+      const day = new Date(now.getFullYear(), now.getMonth(), now.getDate() + i);
+      if (!firstRunDate(slots, day, 1)) continue;
+      for (const start of starts) {
+        const at = new Date(day.getFullYear(), day.getMonth(), day.getDate(), 0, start);
+        if (at > now) return at;
+      }
+    }
+    return null;
+  }
+
+  /** Two of the cycle's own start times closer together than one run takes. */
+  private _ownTimesOverlap(): boolean {
+    const est = this._estimateMin();
+    const starts = normalizeStartTimes(this._times).map(parseTimeLocalToMinutes);
+    return starts.some((start, i) => i > 0 && start - starts[i - 1] < est);
+  }
+
+  private _hasDuplicateTime(): boolean {
+    return normalizeStartTimes(this._times).length !== this._times.length;
+  }
+
+  /** An hour later, or as far as midnight allows -- all times alike, so none collide. */
   private _shiftLater(): void {
-    this._times = this._times.map((tl) => {
-      const min = Math.min(23 * 60 + 59, parseTimeLocalToMinutes(tl) + 60);
-      return minutesToTimeLocal(min).padStart(5, "0");
-    });
+    const starts = this._times.map(parseTimeLocalToMinutes);
+    const by = Math.min(60, 23 * 60 + 59 - Math.max(...starts));
+    this._times = starts.map((start) => minutesToTimeLocal(start + by).padStart(5, "0"));
   }
 
   private _addStartTime(): void {
     if (this._times.length >= MAX_CYCLE_START_TIMES) return;
     const used = new Set(this._times);
-    const last = parseTimeLocalToMinutes(this._times.at(-1) ?? "06:00");
-    // Four-hour spacing is a useful grow-in default. If it collides after
-    // wrapping around midnight, walk forward by one hour until it is unique.
-    for (let offset = 4; offset < 28; offset++) {
-      const candidate = minutesToTimeLocal((last + offset * 60) % (24 * 60)).padStart(5, "0");
+    const latest = Math.max(...this._times.map(parseTimeLocalToMinutes));
+    // Four hours after the latest; past midnight, the next free hour from there.
+    for (let hours = 4; hours < 28; hours++) {
+      const candidate = minutesToTimeLocal((latest + hours * 60) % (24 * 60)).padStart(5, "0");
       if (!used.has(candidate)) {
-        this._times = [...this._times, candidate];
+        this._times = normalizeStartTimes([...this._times, candidate]);
         return;
       }
     }
   }
 
   private _removeStartTime(index: number): void {
-    if (index <= 0) return;
+    if (this._times.length < 2) return;
     this._times = this._times.filter((_time, i) => i !== index);
   }
 
@@ -578,41 +595,46 @@ export class CycleWizard extends LitElement {
     const strip = previewStrip(slots, start, today, 14);
     const gaps = previewGaps(slots, start);
     const uniqueGaps = [...new Set(gaps)];
-    const first = firstRunDate(slots, start);
+    const first = this._firstRun(slots);
     const exact = cycleIsExact(opt.kind, this._meta());
 
     return html`
       <div class="section-title">${t(this.hass, "config_panel.cycle_step_when")}</div>
       <span class="field-title">${t(this.hass, "config_panel.cycle_time_title")}</span>
-      <div class="chips" style="margin:6px 0">
-        ${TIME_PRESETS.map(
-          (p) => html`
-            <button
-              type="button"
-              class="chip ${this._times[0] === p.time ? "selected" : ""}"
-              @click=${() => {
-                this._times = [p.time, ...this._times.slice(1)];
-                this.requestUpdate();
-              }}
-            >
-              ${t(this.hass, p.key)} ${formatTimeLocalForDisplay(this.hass, p.time)}
-            </button>
-          `
-        )}
-      </div>
+      ${this._times.length === 1
+        ? html`<div class="chips" style="margin:6px 0">
+            ${TIME_PRESETS.map(
+              (p) => html`
+                <button
+                  type="button"
+                  class="chip ${this._times[0] === p.time ? "selected" : ""}"
+                  @click=${() => (this._times = [p.time])}
+                >
+                  ${t(this.hass, p.key)} ${formatTimeLocalForDisplay(this.hass, p.time)}
+                </button>
+              `
+            )}
+          </div>`
+        : nothing}
       <div class="time-fields">
         ${this._times.map(
           (timeLocal, index) => html`<div class="time-row">
-            ${renderTime24Picker(
-              `${t(this.hass, "config_panel.cycle_time_title")} ${index + 1}`,
-              timeLocal,
-              (value) => {
+            <input
+              type="time"
+              aria-label="${t(this.hass, "config_panel.cycle_time_title")} ${index + 1}"
+              .value=${timeLocal}
+              @input=${(e: Event) => {
                 const next = [...this._times];
-                next[index] = value;
+                next[index] = (e.target as HTMLInputElement).value || "06:00";
                 this._times = next;
-              }
-            )}
-            ${index > 0
+              }}
+              @blur=${() => {
+                // Back in the order of the clock, but not under the fingers:
+                // the field has been left by now.
+                if (!this._hasDuplicateTime()) this._times = normalizeStartTimes(this._times);
+              }}
+            />
+            ${this._times.length > 1
               ? html`<button
                   type="button"
                   class="iconbtn"
@@ -628,7 +650,7 @@ export class CycleWizard extends LitElement {
       </div>
       <button
         type="button"
-        class="btn-outline"
+        class="btn-outline add-time"
         ?disabled=${this._times.length >= MAX_CYCLE_START_TIMES}
         @click=${() => this._addStartTime()}
       >
@@ -638,7 +660,7 @@ export class CycleWizard extends LitElement {
       <p class="hint">
         ${t(this.hass, "config_panel.cycle_start_times_hint", { n: MAX_CYCLE_START_TIMES })}
       </p>
-      ${new Set(this._times).size !== this._times.length
+      ${this._hasDuplicateTime()
         ? html`<p class="error">${t(this.hass, "config_panel.errors_duplicate_start_time")}</p>`
         : nothing}
 
@@ -668,15 +690,7 @@ export class CycleWizard extends LitElement {
       ${first
         ? html`<p class="preview-line">
             ${t(this.hass, "config_panel.cycle_preview_first_run", {
-              when: formatDateTime24ForDisplay(
-                this.hass,
-                new Date(
-                  first.getFullYear(),
-                  first.getMonth(),
-                  first.getDate(),
-                  ...this._times[0].split(":").map(Number) as [number, number]
-                )
-              ),
+              when: formatDateTimeForDisplay(this.hass, first),
             })}
           </p>`
         : nothing}
@@ -689,7 +703,7 @@ export class CycleWizard extends LitElement {
     const pmap = phaseIndexByZoneId(this._zoneIds, this._zonesPhaseInput(), this._maxParallel());
     const est = this._estimateMin();
     const slots = this._slots();
-    const first = firstRunDate(slots, new Date());
+    const first = this._firstRun(slots);
     const conflict = this._conflicts();
 
     return html`
@@ -890,20 +904,17 @@ export class CycleWizard extends LitElement {
         ${first
           ? html`<p class="preview-line" style="margin-bottom:0">
               ${t(this.hass, "config_panel.cycle_preview_first_run", {
-                when: formatDateTime24ForDisplay(
-                  this.hass,
-                  new Date(
-                    first.getFullYear(),
-                    first.getMonth(),
-                    first.getDate(),
-                    ...(this._times[0].split(":").map(Number) as [number, number])
-                  )
-                ),
+                when: formatDateTimeForDisplay(this.hass, first),
               })}
             </p>`
           : nothing}
       </div>
 
+      ${this._ownTimesOverlap()
+        ? html`<div class="warning" style="margin-top:10px">
+            ${t(this.hass, "config_panel.cycle_conflict_own_times", { n: est })}
+          </div>`
+        : nothing}
       ${conflict
         ? html`<div class="warning" style="display:flex;align-items:center;gap:10px;margin-top:10px">
             <span>${t(this.hass, "config_panel.cycle_conflict_warning")}</span>

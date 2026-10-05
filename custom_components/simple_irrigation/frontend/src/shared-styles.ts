@@ -746,6 +746,11 @@ export const sharedStyles = css`
     outline-offset: 2px;
   }
   @container siview (max-width: 700px) {
+    /* A row's name is the one thing a phone must not cut off. */
+    .compact-row-title .ellipsis {
+      white-space: normal;
+      overflow-wrap: anywhere;
+    }
     .fab {
       display: inline-flex;
     }
@@ -757,6 +762,11 @@ export const sharedStyles = css`
     .only-narrow {
       display: none !important;
     }
+  }
+  /* Details of a row that sit in its meta line on a wide screen and behind
+     its chevron on a phone: the wrapper itself takes no part in the layout. */
+  .meta-extra {
+    display: contents;
   }
 
   @media (prefers-reduced-motion: reduce) {

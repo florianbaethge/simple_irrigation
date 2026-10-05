@@ -1,6 +1,7 @@
 import { html, nothing, type TemplateResult } from "lit";
 
 import { t } from "./i18n";
+import { renderInlineHelp } from "./inline-help";
 import {
   MAX_SEASON_PERIODS,
   daysInMonth,
@@ -111,9 +112,8 @@ export function seasonChoice(season: SlotSeason): SeasonChoice {
 }
 
 /**
- * The season block of the slot editor and the cycle wizard: follow the
- * installation, water all year, or bring own periods. Folded away while the
- * slot simply follows the installation.
+ * The season of a slot or a cycle: follow the installation, water all year,
+ * or bring own periods. The body of the editors' "Season" section.
  */
 export function renderSlotSeason(
   hass: HomeAssistant,
@@ -132,12 +132,6 @@ export function renderSlotSeason(
       );
   };
   return html`
-    <details class="inline-help" ?open=${choice !== "inherit"}>
-      <summary>
-        <ha-icon class="inline-help-icon" icon="mdi:calendar-range"></ha-icon>
-        ${t(hass, "config_panel.season_slot_summary")}
-      </summary>
-      <p>${t(hass, "config_panel.season_slot_desc")}</p>
       <div class="field-row">
         <select
           class="field-select"
@@ -157,6 +151,11 @@ export function renderSlotSeason(
             onChange({ override: true, periods }, "own")
           )
         : nothing}
-    </details>
+      ${renderInlineHelp(
+        hass,
+        "config_panel.season_help_summary",
+        ["config_panel.season_slot_desc"],
+        "mdi:information-outline"
+      )}
   `;
 }

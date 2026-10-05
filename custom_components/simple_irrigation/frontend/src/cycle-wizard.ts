@@ -48,6 +48,20 @@ import {
 } from "./schedule-phases";
 import { renderCycleSoakEditor } from "./cycle-soak-editor";
 import {
+  accordionStyles,
+  renderAccordion,
+  renderAccordionGroup,
+  type AccordionSection,
+} from "./accordion";
+import { renderInlineHelp } from "./inline-help";
+import {
+  cycleSoakSummary,
+  guardsSummary as slotGuardsSummary,
+  slotScriptsSummary,
+  slotSeasonSummary,
+  type Summary,
+} from "./summaries";
+import {
   normalizeSeason,
   seasonFor,
   seasonsOverlap,
@@ -119,6 +133,7 @@ export class CycleWizard extends LitElement {
   static styles = [
     sharedStyles,
     formLayoutStyles,
+    accordionStyles,
     css`
       .progress {
         display: flex;
@@ -264,6 +279,8 @@ export class CycleWizard extends LitElement {
   @state() private _seasonChoice: SeasonChoice = "inherit";
   // An entry of the cycle was edited on its own; saving here evens them out.
   @state() private _membersDiffer = false;
+  // The accordion under "More options": at most one section open.
+  @state() private _openSection: string | null = null;
   @state() private _cycleId: string | null = null;
   @state() private _busy = false;
   @state() private _msg?: string;
@@ -300,6 +317,7 @@ export class CycleWizard extends LitElement {
       this._syncDefaultsForOption();
     }
     this._step = opts?.step ?? 1;
+    this._openSection = null;
     this.open = true;
     this.requestUpdate();
   }
@@ -777,6 +795,135 @@ export class CycleWizard extends LitElement {
     `;
   }
 
+  /** What only some cycles need: closed, each says whether it is in use. */
+  private _optionSections(): AccordionSection[] {
+    const globals = normalizeGuards(this.installation?.guards);
+    const section = (
+      id: string,
+      icon: string,
+      labelKey: string,
+      summary: Summary,
+      body: () => unknown
+    ): AccordionSection => ({
+      id,
+      icon,
+      label: t(this.hass, labelKey),
+      summary: summary.text,
+      tone: summary.tone,
+      body,
+    });
+    return [
+      section(
+        "conditions",
+        "mdi:shield-check-outline",
+        "config_panel.guards_section_title",
+        slotGuardsSummary(this.hass, this._guards, this._ignoreGlobalGuards, globals),
+        () => html`
+          ${renderGuardList(this.hass, GUARD_ENTITY_DOMAINS, this._guards, (next) => {
+            this._guards = next;
+            this.requestUpdate();
+          })}
+          ${globals.length
+            ? html`<div class="switch-row" style="margin-top:12px">
+                <ha-switch
+                  .checked=${this._ignoreGlobalGuards}
+                  @change=${(e: Event) => {
+                    this._ignoreGlobalGuards = Boolean(
+                      (e.target as HTMLInputElement & { checked: boolean }).checked
+                    );
+                    this.requestUpdate();
+                  }}
+                ></ha-switch>
+                <span class="switch-row-label"
+                  >${t(this.hass, "config_panel.schedule_ignore_global_guards")}</span
+                >
+              </div>`
+            : nothing}
+          ${renderInlineHelp(
+            this.hass,
+            "config_panel.guards_help_summary",
+            [
+              "config_panel.guards_section_desc",
+              "config_panel.schedule_ignore_global_guards_hint",
+            ],
+            "mdi:information-outline"
+          )}
+        `
+      ),
+      section(
+        "cycle_soak",
+        "mdi:repeat",
+        "config_panel.cycle_soak_section_title",
+        cycleSoakSummary(this.hass, this._cycleSoak),
+        () =>
+          renderCycleSoakEditor(
+            this.hass,
+            this._cycleSoak,
+            this._busy,
+            (next) => {
+              this._cycleSoak = next;
+            },
+            true
+          )
+      ),
+      section(
+        "season",
+        "mdi:calendar-range",
+        "config_panel.season_slot_summary",
+        slotSeasonSummary(this.hass, this._season.override, this._season.periods),
+        () =>
+          renderSlotSeason(
+            this.hass,
+            this._season,
+            this._seasonChoice,
+            this._busy,
+            (next, choice) => {
+              this._season = next;
+              this._seasonChoice = choice;
+            }
+          )
+      ),
+      section(
+        "scripts",
+        "mdi:script-text-outline",
+        "config_panel.schedule_scripts_section_title",
+        slotScriptsSummary(this.hass, this._preStartScript, this._postRunScript),
+        () => html`
+          ${renderScriptOverride(
+            this.hass,
+            SCRIPT_ENTITY_DOMAINS,
+            "pre_start",
+            this._preStartScript,
+            this._globalScript("pre_start"),
+            this._globalScriptTimeout("pre_start"),
+            this._busy,
+            (next) => {
+              this._preStartScript = next;
+            }
+          )}
+          ${renderScriptOverride(
+            this.hass,
+            SCRIPT_ENTITY_DOMAINS,
+            "post_run",
+            this._postRunScript,
+            this._globalScript("post_run"),
+            this._globalScriptTimeout("post_run"),
+            this._busy,
+            (next) => {
+              this._postRunScript = next;
+            }
+          )}
+          ${renderInlineHelp(
+            this.hass,
+            "config_panel.scripts_help_summary",
+            ["config_panel.schedule_scripts_section_desc"],
+            "mdi:information-outline"
+          )}
+        `
+      ),
+    ];
+  }
+
   private _renderStep3(): TemplateResult {
     const zones = this.installation?.zones as Record<string, Record<string, unknown>> | undefined;
     const allIds = orderedZoneIds(this.installation);
@@ -906,9 +1053,9 @@ export class CycleWizard extends LitElement {
       })}
 
       <div class="field-block" style="margin-top:14px">
-        <span class="field-title">${t(this.hass, "config_panel.schedule_slot_name")}</span>
         <div class="field-row">
           <ha-input
+            .label=${t(this.hass, "config_panel.schedule_slot_name")}
             .value=${this._label}
             @input=${(e: Event) => {
               this._label = (e.target as HTMLInputElement).value;
@@ -917,66 +1064,10 @@ export class CycleWizard extends LitElement {
         </div>
       </div>
 
-      ${renderCycleSoakEditor(this.hass, this._cycleSoak, this._busy, (next) => {
-        this._cycleSoak = next;
+      ${renderAccordionGroup(t(this.hass, "config_panel.acc_more_options"))}
+      ${renderAccordion(this._optionSections(), this._openSection, (id) => {
+        this._openSection = id;
       })}
-      ${renderSlotSeason(this.hass, this._season, this._seasonChoice, this._busy, (next, choice) => {
-        this._season = next;
-        this._seasonChoice = choice;
-      })}
-
-      <div class="field-block">
-        <span class="field-title">${t(this.hass, "config_panel.guards_section_title")}</span>
-        <p class="field-desc">${t(this.hass, "config_panel.guards_section_desc")}</p>
-        ${renderGuardList(this.hass, GUARD_ENTITY_DOMAINS, this._guards, (next) => {
-          this._guards = next;
-          this.requestUpdate();
-        })}
-        <div class="switch-row">
-          <ha-switch
-            .checked=${this._ignoreGlobalGuards}
-            @change=${(e: Event) => {
-              this._ignoreGlobalGuards = Boolean(
-                (e.target as HTMLInputElement & { checked: boolean }).checked
-              );
-              this.requestUpdate();
-            }}
-          ></ha-switch>
-          <span class="switch-row-label"
-            >${t(this.hass, "config_panel.schedule_ignore_global_guards")}</span
-          >
-        </div>
-        <p class="hint">${t(this.hass, "config_panel.schedule_ignore_global_guards_hint")}</p>
-      </div>
-
-      <div class="field-block">
-        <span class="field-title">${t(this.hass, "config_panel.schedule_scripts_section_title")}</span>
-        <p class="field-desc">${t(this.hass, "config_panel.schedule_scripts_section_desc")}</p>
-      </div>
-      ${renderScriptOverride(
-        this.hass,
-        SCRIPT_ENTITY_DOMAINS,
-        "pre_start",
-        this._preStartScript,
-        this._globalScript("pre_start"),
-        this._globalScriptTimeout("pre_start"),
-        this._busy,
-        (next) => {
-          this._preStartScript = next;
-        }
-      )}
-      ${renderScriptOverride(
-        this.hass,
-        SCRIPT_ENTITY_DOMAINS,
-        "post_run",
-        this._postRunScript,
-        this._globalScript("post_run"),
-        this._globalScriptTimeout("post_run"),
-        this._busy,
-        (next) => {
-          this._postRunScript = next;
-        }
-      )}
 
       <div class="summary-card">
         <strong>${t(this.hass, "config_panel.cycle_creates_title")}</strong>

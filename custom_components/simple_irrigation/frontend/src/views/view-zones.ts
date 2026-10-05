@@ -6,6 +6,21 @@ import { styleMap } from "lit/directives/style-map.js";
 import { runZoneNow, saveZone, saveZoneOrder, stopZone } from "../data/api";
 import { renderNativeEntityField } from "../entity-input";
 import { renderInlineHelp } from "../inline-help";
+import {
+  accordionStyles,
+  renderAccordion,
+  renderAccordionGroup,
+  type AccordionSection,
+} from "../accordion";
+import {
+  entitiesSummary,
+  missingSummary,
+  noneSummary,
+  quietSummary,
+  saidSummary,
+  summaryEntityName,
+  type Summary,
+} from "../summaries";
 import { durationForMode } from "../timetable-model";
 import {
   formatRateNumber,
@@ -161,6 +176,7 @@ export class ViewZones extends LitElement {
   static styles = [
     sharedStyles,
     formLayoutStyles,
+    accordionStyles,
     css`
       .drawer-actions {
         display: flex;
@@ -231,6 +247,8 @@ export class ViewZones extends LitElement {
   @state() private _filter: ZoneFilter = "all";
   @state() private _expanded = new Set<string>();
   @state() private _drag?: ZoneDrag;
+  // The editor's accordion: at most one section open.
+  @state() private _openSection: string | null = "outputs";
   /** The order on screen while a reorder is being saved; the installation's otherwise. */
   @state() private _orderDraft?: string[];
   private _orderSaving = false;
@@ -711,11 +729,17 @@ export class ViewZones extends LitElement {
    * loaded with: an automation may have set a runtime in the meantime, and
    * saving the dialog would put the old one back.
    */
+  private _openAdd(): void {
+    this._openSection = "outputs";
+    this._addDialogOpen = true;
+  }
+
   private async _openEdit(zoneId: string): Promise<void> {
     this._msg = undefined;
     await this.onSaved?.();
     await new Promise((resolve) => setTimeout(resolve));
     const zone = this._zonesFromInstallation().find((z) => z.zone_id === zoneId);
+    this._openSection = "outputs";
     if (zone) this._editDraft = this._cloneZone(zone);
   }
 
@@ -773,7 +797,8 @@ export class ViewZones extends LitElement {
     }
   }
 
-  private _renderZoneFields(z: ZoneRow): TemplateResult {
+  /** The zone editor's sections, each with the line it shows when closed. */
+  private _zoneSections(z: ZoneRow): { basics: AccordionSection[]; options: AccordionSection[] } {
     const modeInput = (
       key: "duration_eco_min" | "duration_normal_min" | "duration_extra_min",
       labelKey: string
@@ -786,25 +811,51 @@ export class ViewZones extends LitElement {
         max="240"
         @input=${(e: Event) => {
           z[key] = parseInt((e.target as HTMLInputElement).value, 10) || 0;
+          // The section's header says the three runtimes: it follows.
+          this.requestUpdate();
         }}
       ></ha-input>
     `;
-    return html`
-      <div class="section-title">${t(this.hass, "config_panel.zones_field_name_title")}</div>
-      <div class="field-block">
-        <div class="field-row">
-          <ha-input
-            .label=${t(this.hass, "config_panel.zones_field_zone_name")}
-            .value=${z.name}
-            @input=${(e: Event) => {
-              z.name = (e.target as HTMLInputElement).value;
-              this.requestUpdate();
-            }}
-          ></ha-input>
-        </div>
-      </div>
-      <div class="field-block">
-        <span class="field-title">${t(this.hass, "config_panel.zones_outputs_title")}</span>
+    const section = (
+      id: string,
+      icon: string,
+      labelKey: string,
+      summary: Summary,
+      body: () => unknown
+    ): AccordionSection => ({
+      id,
+      icon,
+      label: t(this.hass, labelKey),
+      summary: summary.text,
+      tone: summary.tone,
+      body,
+    });
+    const unit = volumeUnit(this.hass);
+    const water: Summary = z.water_meter_entity_id
+      ? saidSummary(summaryEntityName(this.hass, z.water_meter_entity_id))
+      : z.flow_rate_lpm > 0
+        ? saidSummary(
+            t(this.hass, "config_panel.sum_flow_rate", {
+              n: formatRateNumber(litresToUnit(z.flow_rate_lpm, unit)),
+              unit,
+            })
+          )
+        : quietSummary(t(this.hass, "config_panel.sum_not_tracked"));
+    const customStart = Boolean(
+      z.start_service || z.duration_field || z.duration_unit || z.start_entity_id
+    );
+    return {
+      basics: [
+        section(
+          "outputs",
+          "mdi:valve",
+          "config_panel.zones_outputs_title",
+          entitiesSummary(
+            this.hass,
+            z.switch_entity_ids,
+            missingSummary(this.hass, "config_panel.sum_no_output")
+          ),
+          () => html`
         <div class="field-row">
           <div class="entity-picker-rows">
             ${z.switch_entity_ids.map(
@@ -852,39 +903,48 @@ export class ViewZones extends LitElement {
             </button>
           </div>
         </div>
-        <details class="inline-help">
-          <summary>
-            <ha-icon class="inline-help-icon" icon="mdi:information-outline"></ha-icon>
-            ${t(this.hass, "config_panel.zones_outputs_title")}
-          </summary>
-          <p>${t(this.hass, "config_panel.zones_outputs_desc")}</p>
-        </details>
-      </div>
-
-      <div class="section-title">${t(this.hass, "config_panel.zones_runtime_title")}</div>
-      <div class="field-block">
+        ${renderInlineHelp(
+              this.hass,
+              "config_panel.zones_outputs_help_summary",
+              ["config_panel.zones_outputs_desc"],
+              "mdi:information-outline"
+            )}
+          `
+        ),
+        section(
+          "runtime",
+          "mdi:timer-outline",
+          "config_panel.acc_runtime",
+          saidSummary(
+            `${z.duration_eco_min} / ${z.duration_normal_min} / ${z.duration_extra_min} ${t(
+              this.hass,
+              "config_panel.zones_min_suffix"
+            )}`
+          ),
+          () => html`
         <div class="duration-row">
           ${modeInput("duration_eco_min", "config_panel.zones_duration_eco")}
           ${modeInput("duration_normal_min", "config_panel.zones_duration_normal")}
           ${modeInput("duration_extra_min", "config_panel.zones_duration_extra")}
         </div>
-        <p class="hint">${t(this.hass, "config_panel.zones_runtime_desc")}</p>
-      </div>
-
-      <div class="section-title">${t(this.hass, "config_panel.zones_behavior_title")}</div>
-      <div class="field-block">
-        <div class="switch-rows">
-          <div class="switch-row">
-            <ha-switch
-              .disabled=${this._busy}
-              .checked=${z.enabled}
-              @change=${(e: Event) => {
-                z.enabled = Boolean((e.target as HTMLInputElement & { checked: boolean }).checked);
-                this.requestUpdate();
-              }}
-            ></ha-switch>
-            <span class="switch-row-label">${t(this.hass, "config_panel.zones_enabled")}</span>
-          </div>
+        ${renderInlineHelp(
+              this.hass,
+              "config_panel.zones_runtime_help_summary",
+              ["config_panel.zones_runtime_desc"],
+              "mdi:information-outline"
+            )}
+          `
+        ),
+      ],
+      options: [
+        section(
+          "behavior",
+          "mdi:call-split",
+          "config_panel.zones_behavior_title",
+          z.exclusive
+            ? saidSummary(t(this.hass, "config_panel.sum_exclusive"))
+            : quietSummary(t(this.hass, "config_panel.sum_parallel")),
+          () => html`
           <div class="switch-row">
             <ha-switch
               .disabled=${this._busy}
@@ -896,12 +956,20 @@ export class ViewZones extends LitElement {
             ></ha-switch>
             <span class="switch-row-label">${t(this.hass, "config_panel.zones_exclusive")}</span>
           </div>
-        </div>
-        <p class="hint">${t(this.hass, "config_panel.zones_behavior_desc")}</p>
-      </div>
-
-      <div class="section-title">${t(this.hass, "config_panel.zones_water_title")}</div>
-      <div class="field-block">
+            ${renderInlineHelp(
+              this.hass,
+              "config_panel.zones_behavior_help_summary",
+              ["config_panel.zones_behavior_desc"],
+              "mdi:information-outline"
+            )}
+          `
+        ),
+        section(
+          "water",
+          "mdi:water-outline",
+          "config_panel.zones_water_title",
+          water,
+          () => html`
         <div class="field-row">
           ${renderNativeEntityField(
             this.hass,
@@ -939,18 +1007,23 @@ export class ViewZones extends LitElement {
           ],
           "mdi:water-outline"
         )}
-      </div>
-
-      <div class="section-title">${t(this.hass, "config_panel.zones_advanced_title")}</div>
-      <div class="field-block">
-        <details class="inline-help" ?open=${Boolean(
-          z.start_service || z.duration_field || z.duration_unit || z.start_entity_id
-        )}>
-          <summary>
-            <ha-icon class="inline-help-icon" icon="mdi:tune"></ha-icon>
-            ${t(this.hass, "config_panel.zones_advanced_summary")}
-          </summary>
-          <p>${t(this.hass, "config_panel.zones_advanced_desc")}</p>
+          `
+        ),
+        section(
+          "supply",
+          "mdi:pipe-valve",
+          "config_panel.acc_supply",
+          entitiesSummary(this.hass, z.supply_entity_ids, noneSummary(this.hass)),
+          () => this._renderSupplyFields(z)
+        ),
+        section(
+          "start",
+          "mdi:tune",
+          "config_panel.acc_start_service",
+          customStart
+            ? saidSummary(z.start_service || t(this.hass, "config_panel.zones_start_preset_custom"))
+            : quietSummary(t(this.hass, "config_panel.sum_start_default")),
+          () => html`
           <div class="field-row">
             <label class="stacked-field-label" for="si-preset-${z.zone_id || "new"}">
               ${t(this.hass, "config_panel.zones_start_preset")}
@@ -1038,14 +1111,20 @@ export class ViewZones extends LitElement {
               { allowCustom: true }
             )}
           </div>
-          <p class="hint">${t(this.hass, "config_panel.zones_advanced_target_desc")}</p>
-        </details>
-        <details class="inline-help" ?open=${Boolean(z.countdown_entity_id)}>
-          <summary>
-            <ha-icon class="inline-help-icon" icon="mdi:timer-lock-outline"></ha-icon>
-            ${t(this.hass, "config_panel.zones_countdown_summary")}
-          </summary>
-          <p>${t(this.hass, "config_panel.zones_countdown_desc")}</p>
+          ${renderInlineHelp(
+              this.hass,
+              "config_panel.zones_start_help_summary",
+              ["config_panel.zones_advanced_desc", "config_panel.zones_advanced_target_desc"],
+              "mdi:information-outline"
+            )}
+          `
+        ),
+        section(
+          "countdown",
+          "mdi:timer-lock-outline",
+          "config_panel.acc_countdown",
+          entitiesSummary(this.hass, [z.countdown_entity_id], noneSummary(this.hass)),
+          () => html`
           <div class="field-row">
             ${renderNativeEntityField(
               this.hass,
@@ -1073,9 +1152,47 @@ export class ViewZones extends LitElement {
               <option value="seconds">${t(this.hass, "config_panel.zones_duration_unit_seconds")}</option>
             </select>
           </div>
-        </details>
-        ${this._renderSupplyFields(z)}
+          ${renderInlineHelp(
+              this.hass,
+              "config_panel.zones_countdown_help_summary",
+              ["config_panel.zones_countdown_desc"],
+              "mdi:information-outline"
+            )}
+          `
+        ),
+      ],
+    };
+  }
+
+  private _renderZoneFields(z: ZoneRow): TemplateResult {
+    const sections = this._zoneSections(z);
+    const toggle = (id: string | null): void => {
+      this._openSection = id;
+    };
+    return html`
+      <div class="acc-lead">
+        <ha-input
+          .label=${t(this.hass, "config_panel.zones_field_zone_name")}
+          .value=${z.name}
+          @input=${(e: Event) => {
+            z.name = (e.target as HTMLInputElement).value;
+            this.requestUpdate();
+          }}
+        ></ha-input>
+        <ha-switch
+          aria-label=${t(this.hass, "config_panel.zones_enabled")}
+          title=${t(this.hass, "config_panel.zones_enabled")}
+          .disabled=${this._busy}
+          .checked=${z.enabled}
+          @change=${(e: Event) => {
+            z.enabled = Boolean((e.target as HTMLInputElement & { checked: boolean }).checked);
+            this.requestUpdate();
+          }}
+        ></ha-switch>
       </div>
+      ${renderAccordion(sections.basics, this._openSection, toggle)}
+      ${renderAccordionGroup(t(this.hass, "config_panel.acc_more_options"))}
+      ${renderAccordion(sections.options, this._openSection, toggle)}
     `;
   }
 
@@ -1089,12 +1206,6 @@ export class ViewZones extends LitElement {
   private _renderSupplyFields(z: ZoneRow): TemplateResult {
     const installationDelay = Number(this.installation?.pre_start_delay_sec ?? 10);
     return html`
-      <details class="inline-help" ?open=${z.supply_entity_ids.some(Boolean)}>
-        <summary>
-          <ha-icon class="inline-help-icon" icon="mdi:pipe-valve"></ha-icon>
-          ${t(this.hass, "config_panel.zones_supply_summary")}
-        </summary>
-        <p>${t(this.hass, "config_panel.zones_supply_desc")}</p>
         <div class="field-row">
           <div class="entity-picker-rows">
             ${z.supply_entity_ids.map(
@@ -1163,7 +1274,12 @@ export class ViewZones extends LitElement {
             }}
           ></ha-input>
         </div>
-      </details>
+        ${renderInlineHelp(
+          this.hass,
+          "config_panel.zones_supply_help_summary",
+          ["config_panel.zones_supply_desc"],
+          "mdi:information-outline"
+        )}
     `;
   }
 
@@ -1225,6 +1341,32 @@ export class ViewZones extends LitElement {
       </button>
     `;
     const primaryBtn = inRun ? stopBtn : runBtn;
+    // Beside the runtimes on a wide screen; on a phone behind the chevron,
+    // so a row is a name and a line, and a list of zones fits the screen.
+    const details = html`
+      ${this._waterPerRun(z)
+        ? html`<span class="meta"
+            ><ha-icon icon="mdi:water-outline"></ha-icon>${this._waterPerRun(z)}
+            ${t(this.hass, "config_panel.water_per_run")}</span
+          >`
+        : nothing}
+      ${this._waterLastRun(z)
+        ? html`<span class="meta"
+            ><ha-icon icon="mdi:water-check-outline"></ha-icon>${t(
+              this.hass,
+              "config_panel.general_water_last_run"
+            )}
+            ${this._waterLastRun(z)}</span
+          >`
+        : nothing}
+      ${slotN > 0
+        ? html`<span class="meta"
+            ><ha-icon icon="mdi:format-list-bulleted"></ha-icon>${slotN === 1
+              ? t(this.hass, "config_panel.zones_in_cycles_one")
+              : t(this.hass, "config_panel.zones_in_cycles_many", { n: slotN })}</span
+          >`
+        : nothing}
+    `;
     const editBtn = html`
       <button
         type="button"
@@ -1316,33 +1458,14 @@ export class ViewZones extends LitElement {
                 })}
                 ${" "}${t(this.hass, "config_panel.zones_min_suffix")}
               </span>
-              ${this._waterPerRun(z)
-                ? html`<span class="meta"
-                    ><ha-icon icon="mdi:water-outline"></ha-icon>${this._waterPerRun(z)}
-                    ${t(this.hass, "config_panel.water_per_run")}</span
-                  >`
-                : nothing}
-              ${this._waterLastRun(z)
-                ? html`<span class="meta"
-                    ><ha-icon icon="mdi:water-check-outline"></ha-icon>${t(
-                      this.hass,
-                      "config_panel.general_water_last_run"
-                    )}
-                    ${this._waterLastRun(z)}</span
-                  >`
-                : nothing}
-              ${slotN > 0
-                ? html`<span class="meta"
-                    ><ha-icon icon="mdi:format-list-bulleted"></ha-icon>${slotN === 1
-                      ? t(this.hass, "config_panel.zones_in_cycles_one")
-                      : t(this.hass, "config_panel.zones_in_cycles_many", { n: slotN })}</span
-                  >`
-                : nothing}
-              ${firstOut
-                ? html`<span class="meta ellipsis"
-                    ><ha-icon icon="mdi:toggle-switch-outline"></ha-icon>${firstOut}</span
-                  >`
-                : nothing}
+              <span class="meta-extra hide-narrow">
+                ${details}
+                ${firstOut
+                  ? html`<span class="meta ellipsis"
+                      ><ha-icon icon="mdi:toggle-switch-outline"></ha-icon>${firstOut}</span
+                    >`
+                  : nothing}
+              </span>
             </div>
           </div>
           <div class="icon-group hide-narrow" role="group">
@@ -1360,6 +1483,7 @@ export class ViewZones extends LitElement {
         </div>
         ${expanded
           ? html`<div class="compact-row-detail only-narrow">
+              <div class="meta-line">${details}</div>
               ${firstOut ? html`<p class="out-line">${outs.join(", ")}</p>` : nothing}
               <div class="drawer-actions">
                 ${inRun
@@ -1425,7 +1549,7 @@ export class ViewZones extends LitElement {
                 ${issuesCount > 0 ? html`<span class="count">${issuesCount}</span>` : nothing}
               </button>
             </div>
-            <button type="button" class="btn hide-narrow" @click=${() => (this._addDialogOpen = true)}>
+            <button type="button" class="btn hide-narrow" @click=${() => this._openAdd()}>
               ${t(this.hass, "config_panel.zones_add_zone")}
             </button>
           </div>
@@ -1445,7 +1569,7 @@ export class ViewZones extends LitElement {
             ? html`<div class="empty-state">
                 <ha-icon icon="mdi:vector-square"></ha-icon>
                 <p>${t(this.hass, "config_panel.zones_empty")}</p>
-                <button type="button" class="btn" @click=${() => (this._addDialogOpen = true)}>
+                <button type="button" class="btn" @click=${() => this._openAdd()}>
                   ${t(this.hass, "config_panel.zones_add_zone")}
                 </button>
               </div>`
@@ -1478,7 +1602,7 @@ export class ViewZones extends LitElement {
         class="fab"
         aria-label=${t(this.hass, "config_panel.zones_add_zone")}
         title=${t(this.hass, "config_panel.zones_add_zone")}
-        @click=${() => (this._addDialogOpen = true)}
+        @click=${() => this._openAdd()}
       >
         <ha-icon icon="mdi:plus"></ha-icon>
       </button>
@@ -1488,7 +1612,7 @@ export class ViewZones extends LitElement {
         header-title=${t(this.hass, "config_panel.zones_dialog_new_title")}
         @closed=${() => this._closeAddDialog()}
       >
-        ${this._renderZoneFields(this._new)}
+        ${this._addDialogOpen ? this._renderZoneFields(this._new) : nothing}
         <div slot="footer" class="dialog-footer">
           <div class="dialog-footer-row">
             <div class="dialog-footer-lead"></div>
@@ -1521,18 +1645,29 @@ export class ViewZones extends LitElement {
           <div class="dialog-footer-row">
             <div class="dialog-footer-lead">
               ${edit
-                ? html`<button
-                    type="button"
-                    class="btn-danger"
-                    ?disabled=${this._busy}
-                    @click=${() => {
-                      if (edit && confirm(t(this.hass, "config_panel.zones_confirm_delete"))) {
-                        void this._saveZone("delete", edit.zone_id);
-                      }
-                    }}
-                  >
-                    ${t(this.hass, "config_panel.zones_delete_zone")}
-                  </button>`
+                ? html`<details class="more-menu">
+                    <summary
+                      aria-label=${t(this.hass, "config_panel.general_more")}
+                      title=${t(this.hass, "config_panel.general_more")}
+                    >
+                      <ha-icon icon="mdi:dots-vertical"></ha-icon>
+                    </summary>
+                    <div class="more-pop">
+                      <button
+                        type="button"
+                        class="danger"
+                        ?disabled=${this._busy}
+                        @click=${() => {
+                          if (edit && confirm(t(this.hass, "config_panel.zones_confirm_delete"))) {
+                            void this._saveZone("delete", edit.zone_id);
+                          }
+                        }}
+                      >
+                        <ha-icon icon="mdi:trash-can-outline"></ha-icon>
+                        ${t(this.hass, "config_panel.zones_delete_zone")}
+                      </button>
+                    </div>
+                  </details>`
                 : nothing}
             </div>
             <div class="dialog-footer-actions">

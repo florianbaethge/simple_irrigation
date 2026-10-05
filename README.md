@@ -36,6 +36,8 @@ Outputs can be any mix of `switch`, `input_boolean`, `group` and `valve` entitie
 | **Timetable** | Week-at-a-glance grid (zones × weekdays, morning / daytime / evening) with per-day totals, using the same phase and mode timing as a real run — every Cycle & Soak pass is drawn. On phones it becomes a per-day list. Click a run to jump straight to its editor. |
 | **Settings** | Installation name (shown in the panel header), optional **pre-start** and **post-run scripts**, pre-start outputs & delay, watering mode, max parallel zones, an optional **water meter** on the supply line, global **conditions**, default installation, service reference and raw diagnostics. |
 
+**Editors are accordions.** A zone, a schedule and the settings each open as a short list of sections, every one closed to a line that says what it holds — *When: Daily · 06:00*, *Zones: Front lawn, Back lawn · ~20 min*, *Cycle & Soak: Off*. What every schedule needs comes first; conditions, rests, season and scripts sit under **More options** and say by themselves whether they are in use. Explanations are behind the small info lines, so nothing has to be scrolled past on a phone. Deleting, and splitting a slot into single days, are in the **⋮** menu next to *Cancel* and *Save*.
+
 ---
 
 ## Screenshots
@@ -48,7 +50,7 @@ Outputs can be any mix of `switch`, `input_boolean`, `group` and `valve` entitie
 
 ![Zones tab — zone list with modes, exclusive and issue filters](https://raw.githubusercontent.com/florianbaethge/simple_irrigation/main/screenshots/zones.png)
 
-![Edit zone — outputs, per-mode runtimes, exclusive](https://raw.githubusercontent.com/florianbaethge/simple_irrigation/main/screenshots/zone_edit.png)
+![Edit zone — sections with their summaries, outputs open](https://raw.githubusercontent.com/florianbaethge/simple_irrigation/main/screenshots/zone_edit.png)
 
 ![Edit zone — Water section with meter entity, flow rate and how to measure it](https://raw.githubusercontent.com/florianbaethge/simple_irrigation/main/screenshots/zone_edit_water.png)
 
@@ -58,7 +60,7 @@ Outputs can be any mix of `switch`, `input_boolean`, `group` and `valve` entitie
 
 ![New irrigation cycle wizard — live 14-day preview](https://raw.githubusercontent.com/florianbaethge/simple_irrigation/main/screenshots/cycle_wizard.png)
 
-![Edit slot — weekday picker, week cycle, run order and phases](https://raw.githubusercontent.com/florianbaethge/simple_irrigation/main/screenshots/schedule_edit.png)
+![Edit slot — sections with their summaries, When open: weekdays, start time, week cycle](https://raw.githubusercontent.com/florianbaethge/simple_irrigation/main/screenshots/schedule_edit.png)
 
 ![Edit slot — Cycle & Soak: repetitions and rests, with the help expanded](https://raw.githubusercontent.com/florianbaethge/simple_irrigation/main/screenshots/schedule_edit_cycle_soak.png)
 
@@ -68,7 +70,7 @@ Outputs can be any mix of `switch`, `input_boolean`, `group` and `valve` entitie
 
 ### Settings
 
-![Settings tab — installation, pre-start, watering, defaults](https://raw.githubusercontent.com/florianbaethge/simple_irrigation/main/screenshots/settings.png)
+![Settings tab — every section closed to a line that says what is set](https://raw.githubusercontent.com/florianbaethge/simple_irrigation/main/screenshots/settings.png)
 
 ---
 
@@ -110,7 +112,7 @@ You can add **multiple** config entries for separate gardens or seasonal plans (
 
 #### Duration-aware start services
 
-Some irrigation integrations do not start a zone with a regular `turn_on`. Instead, their start action requires the watering duration in the same service call. Open a zone, scroll to **Advanced** and expand **Custom start service with duration**.
+Some irrigation integrations do not start a zone with a regular `turn_on`. Instead, their start action requires the watering duration in the same service call. Open a zone and, under **More options**, its **Start service** section.
 
 ![Edit zone — advanced start settings with preset, duration field and start target](https://raw.githubusercontent.com/florianbaethge/simple_irrigation/main/screenshots/zone_edit_advanced.png)
 
@@ -144,7 +146,7 @@ Simple Irrigation closes every output itself — but only while Home Assistant i
 
 #### Supply: an upstream valve or a pump for some of the zones
 
-The installation's **pre-start outputs** are on for a whole run and for every zone. Some gardens need less than that: a master valve that feeds only the drip lines, a cistern pump that only some zones draw from. Open a zone, scroll to **Advanced** and expand **Supply (upstream valve or pump)** to name the outputs that must be open for *this* zone to get water.
+The installation's **pre-start outputs** are on for a whole run and for every zone. Some gardens need less than that: a master valve that feeds only the drip lines, a cistern pump that only some zones draw from. Open a zone and, under **More options**, its **Supply** section to name the outputs that must be open for *this* zone to get water.
 
 - The supply opens **before** the zone and closes **after** it — never the other way round, also on *Stop* and *Skip phase*.
 - Zones that name the same output **share** it. It is switched once for three drip lines watering one after the other, and it stays open for zones watering together.
@@ -168,7 +170,7 @@ A **cycle** is a repeating watering cadence. The wizard offers:
 Why the split? A slot waters on chosen weekdays at **one time of day** and, optionally, only in **odd** or **even** ISO calendar weeks. That covers most cadences in one slot — but a true *every-2-days* rhythm needs two slots on alternating parity (odd weeks Mon/Wed/Fri/Sun, even weeks Tue/Thu/Sat), and every further start time needs the cadence's slots once more. Whatever takes more than one slot appears as a **cycle** with member rows and a **Detach into single slots** action; everything else is a plain, single slot. Either way, **every row expands to a 14-day run strip** so you can see exactly when it fires.
 
 - **Several start times a day:** fresh seed, pots in a heat wave and a greenhouse want water more than once a day. In the wizard's time step, **Add start time** gives a cycle up to eight start times. The whole cycle — zones, run order, conditions, Cycle & Soak — runs at each of them and stays one row to edit. This is not Cycle & Soak: that repeats the phases back to back with short rests, this spreads whole runs over the day. The wizard warns when two start times are closer together than one run takes — what becomes of the later one is described under [When schedules overlap](#when-schedules-overlap).
-- **Fixed minutes:** in a slot's run order — and in the wizard's zone step — every zone has a minutes field. Empty, the zone waters as long as the active mode says, and the field shows what that is. A number fixes it for this schedule, whatever the mode: the lawn gets twenty minutes in the morning and five in the evening without a second set of zones. The row carries a **Fixed minutes** badge, and all estimates count with it. An automation can set and clear the same field with `simple_irrigation.set_zone_duration`.
+- **Fixed minutes:** in a slot's **Zones** section — and in the wizard's zone step — every zone has a minutes field. Empty, the zone waters as long as the active mode says, and the field shows what that is. A number fixes it for this schedule, whatever the mode: the lawn gets twenty minutes in the morning and five in the evening without a second set of zones. The row carries a **Fixed minutes** badge, and all estimates count with it. An automation can set and clear the same field with `simple_irrigation.set_zone_duration`.
 - **Run order & phases:** the ordered zone list is grouped into **phases** by the *max parallel* limit and *exclusive* flags. The editor shows the phase breakdown live.
 - **Optimize cycles:** detects single slots that are one schedule written out day by day — same time, zones, conditions, scripts, season and fixed minutes, on days a cadence of the wizard produces exactly — and offers to fold them into one cycle. Nothing runs differently afterwards; slots that differ in any of it are left alone.
 - **Run now:** *Run next slot now* (Overview), *Run this slot now* (a schedule row) and *Run zone now* (Zones) all use the same pre-start and shutdown pipeline as a scheduled run.

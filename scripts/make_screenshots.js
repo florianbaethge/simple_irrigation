@@ -208,6 +208,7 @@ async function gotoTab(page, tab, view, w = 1180, h = 1100) {
     for (const e of walk(document)) if (e.tagName === "SI-VIEW-ZONES") view = e;
     const rows = view._zonesFromInstallation();
     const z = rows.find((r) => r.name === "Drip Orchard") || rows[0];
+    view._openSection = "outputs";
     view._editDraft = view._cloneZone(z);
     view.requestUpdate();
   }, walkSrc);
@@ -224,6 +225,7 @@ async function gotoTab(page, tab, view, w = 1180, h = 1100) {
     for (const e of walk(document)) if (e.tagName === "SI-VIEW-ZONES") view = e;
     const rows = view._zonesFromInstallation();
     const z = rows.find((r) => r.name === "Front Lawn") || rows[0];
+    view._openSection = "start";
     view._editDraft = view._cloneZone(z);
     view.requestUpdate();
   }, walkSrc);
@@ -231,7 +233,7 @@ async function gotoTab(page, tab, view, w = 1180, h = 1100) {
   await page.evaluate((ws) => {
     eval(ws);
     for (const e of walk(document)) {
-      if (e.tagName === "DETAILS" && /start service/i.test(e.textContent)) e.open = true;
+      if (e.tagName === "DETAILS" && /start service is needed/i.test(e.textContent) && e.offsetHeight > 0) e.open = true;
     }
   }, walkSrc);
   await sleep(600);
@@ -248,6 +250,7 @@ async function gotoTab(page, tab, view, w = 1180, h = 1100) {
     for (const e of walk(document)) if (e.tagName === "SI-VIEW-ZONES") view = e;
     const rows = view._zonesFromInstallation();
     const z = rows.find((r) => r.name === "Front Lawn") || rows[0];
+    view._openSection = "water";
     view._editDraft = view._cloneZone(z);
     view.requestUpdate();
   }, walkSrc);
@@ -268,7 +271,7 @@ async function gotoTab(page, tab, view, w = 1180, h = 1100) {
     let view = null;
     for (const e of walk(document)) if (e.tagName === "SI-VIEW-SCHEDULE") view = e;
     const s = view._slots().find((x) => x.name === "Morning lawns") || view._slots()[0];
-    view._addZonePick = "";
+    view._openSection = "when";
     view._slotEditDraft = view._cloneSlot(s);
     view.requestUpdate();
   }, walkSrc);
@@ -282,7 +285,7 @@ async function gotoTab(page, tab, view, w = 1180, h = 1100) {
     let view = null;
     for (const e of walk(document)) if (e.tagName === "SI-VIEW-SCHEDULE") view = e;
     const s = view._slots().find((x) => x.name === "Weekly deep soak") || view._slots()[0];
-    view._addZonePick = "";
+    view._openSection = "cycle_soak";
     view._slotEditDraft = view._cloneSlot(s);
     view.requestUpdate();
   }, walkSrc);

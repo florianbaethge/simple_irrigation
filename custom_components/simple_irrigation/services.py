@@ -8,7 +8,7 @@ from typing import Any
 import voluptuous as vol
 
 from homeassistant.core import HomeAssistant, ServiceCall
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.util import dt as dt_util
 
@@ -37,6 +37,7 @@ from .const import (
     SERVICE_STOP_ZONE,
 )
 from .models import Installation
+from .validation import not_bool
 
 
 def _set_slot_zone_minutes(
@@ -50,7 +51,7 @@ def _set_slot_zone_minutes(
     slot = next((s for s in inst.schedule_slots if s.slot_id == slot_id), None)
     if slot is None:
         msg = f"Unknown Simple Irrigation schedule slot: {slot_id}"
-        raise HomeAssistantError(msg)
+        raise ServiceValidationError(msg)
     members = (
         [s for s in inst.schedule_slots if s.cycle_id == slot.cycle_id]
         if slot.cycle_id
@@ -58,7 +59,7 @@ def _set_slot_zone_minutes(
     )
     if any(zone_id not in member.zone_ids_ordered for member in members):
         msg = f"Zone {zone_id} is not part of schedule slot {slot_id}"
-        raise HomeAssistantError(msg)
+        raise ServiceValidationError(msg)
     changed = False
     for member in members:
         if member.zone_minutes.get(zone_id) == minutes:
@@ -72,19 +73,34 @@ def _set_slot_zone_minutes(
 
 
 def _get_domain_data(hass: HomeAssistant, call: ServiceCall) -> dict[str, Any]:
-    """Resolve integration runtime data for a config entry (explicit or first loaded)."""
+    """Resolve integration runtime data for a config entry.
+
+    The one that is named; without a name the only one there is, else the one
+    flagged as default -- the card picks the same way -- else the first loaded.
+    """
+    loaded: dict[str, dict[str, Any]] = hass.data.get(DOMAIN, {})
     entry_id = call.data.get(ATTR_CONFIG_ENTRY_ID)
     if entry_id:
-        data = hass.data.get(DOMAIN, {}).get(entry_id)
+        data = loaded.get(entry_id)
         if data is None:
             msg = f"Unknown Simple Irrigation config entry: {entry_id}"
-            raise HomeAssistantError(msg)
+            raise ServiceValidationError(msg)
         return data
-    entries = hass.config_entries.async_entries(DOMAIN)
-    if not entries:
-        raise HomeAssistantError("No Simple Irrigation config entry")
-    first_id = entries[0].entry_id
-    return hass.data[DOMAIN][first_id]
+    # hass.data[DOMAIN] also holds flags that are no installation; an entry
+    # that is not loaded has nothing there at all.
+    candidates = [
+        loaded[entry.entry_id]
+        for entry in hass.config_entries.async_entries(DOMAIN)
+        if isinstance(loaded.get(entry.entry_id), dict)
+    ]
+    if not candidates:
+        raise ServiceValidationError("No Simple Irrigation installation is loaded")
+    if len(candidates) > 1:
+        for data in candidates:
+            coordinator = data.get("coordinator")
+            if coordinator is not None and coordinator.installation.is_default is True:
+                return data
+    return candidates[0]
 
 
 async def async_setup_services(hass: HomeAssistant) -> None:
@@ -144,7 +160,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         zid = call.data[ATTR_ZONE_ID]
         if zid not in inst.zones:
             msg = f"Unknown Simple Irrigation zone: {zid}"
-            raise HomeAssistantError(msg)
+            raise ServiceValidationError(msg)
         inst.zones[zid].enabled = bool(call.data[ATTR_ENABLED])
         await coordinator.async_update_installation(inst)
 
@@ -155,12 +171,14 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         zid = call.data[ATTR_ZONE_ID]
         if zid not in inst.zones:
             msg = f"Unknown Simple Irrigation zone: {zid}"
-            raise HomeAssistantError(msg)
+            raise ServiceValidationError(msg)
         minutes = call.data.get(ATTR_DURATION_MIN)
         if ATTR_SLOT_ID in call.data:
             changed = _set_slot_zone_minutes(inst, call.data[ATTR_SLOT_ID], zid, minutes)
         elif minutes is None:
-            raise HomeAssistantError("duration_min is required to set a zone's runtime for a mode")
+            raise ServiceValidationError(
+                "duration_min is required to set a zone's runtime for a mode"
+            )
         else:
             changed = inst.zones[zid].set_duration_for_mode(call.data[ATTR_MODE], minutes)
         # Called every hour by an automation, mostly with the value it had.
@@ -207,7 +225,9 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         schema=vol.Schema(
             {
                 vol.Required(ATTR_ZONE_ID): cv.string,
-                vol.Required(ATTR_DURATION_MIN): vol.All(vol.Coerce(int), vol.Range(min=1)),
+                vol.Required(ATTR_DURATION_MIN): vol.All(
+                    not_bool, vol.Coerce(int), vol.Range(min=1)
+                ),
                 vol.Optional(ATTR_CONFIG_ENTRY_ID): cv.string,
             }
         ),
@@ -283,7 +303,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             {
                 vol.Required(ATTR_ZONE_ID): cv.string,
                 vol.Optional(ATTR_DURATION_MIN): vol.All(
-                    vol.Coerce(int), vol.Range(min=0, max=MAX_ZONE_DURATION_MIN)
+                    not_bool, vol.Coerce(int), vol.Range(min=0, max=MAX_ZONE_DURATION_MIN)
                 ),
                 # Where the minutes go: into the zone's runtime for one mode, or
                 # into one schedule as that zone's fixed minutes. Not both.

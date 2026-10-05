@@ -665,6 +665,7 @@
     "settings_season_hint": "Zeitpläne bewässern nur in diesen Zeiträumen von selbst, jedes Jahr. Kein Zeitraum: ganzjährig. Ein Zeitplan kann eigene Zeiträume haben, und „Jetzt starten“ geht immer.",
     "overview_season_opens": "Außerhalb der Saison – Zeitpläne starten wieder am {date}.",
     "errors_invalid_season": "Ein Zeitraum nennt einen Tag, den es nicht gibt.",
+    "errors_supply_is_zone_output": "Ein Ausgang ist entweder das Ventil einer Zone oder eine Versorgung, nicht beides.",
     "settings_default_hint": "Der Seitenleisten-Eintrag öffnet direkt diese Anlage.",
     "settings_automations_summary": "Dienste & IDs",
     "settings_automations_body": "Diese Dienste für Automationen nutzen: set_mode, set_zone_enabled, set_zone_duration, pause_until, clear_pause, run_zone, run_schedule_slot, stop_all, stop_zone, skip_phase. Die Config-Entry-ID unten identifiziert diese Anlage.",

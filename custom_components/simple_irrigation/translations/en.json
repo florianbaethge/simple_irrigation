@@ -665,6 +665,7 @@
     "settings_season_hint": "Schedules water by themselves only in these periods, every year. No period: all year. A schedule can bring its own periods, and Run now always works.",
     "overview_season_opens": "Out of season — schedules start again on {date}.",
     "errors_invalid_season": "A period names a day that does not exist.",
+    "errors_supply_is_zone_output": "An output is either a zone's valve or a supply, not both.",
     "settings_default_hint": "Opening the sidebar entry jumps straight to this installation.",
     "settings_automations_summary": "Service calls & IDs",
     "settings_automations_body": "Use these services from automations: set_mode, set_zone_enabled, set_zone_duration, pause_until, clear_pause, run_zone, run_schedule_slot, stop_all, stop_zone, skip_phase. The config entry id below identifies this installation.",

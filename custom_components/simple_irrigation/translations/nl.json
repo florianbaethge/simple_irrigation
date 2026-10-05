@@ -665,6 +665,7 @@
     "settings_season_hint": "Schema’s geven alleen in deze periodes uit zichzelf water, elk jaar. Geen periode: het hele jaar. Een schema kan eigen periodes hebben, en ‘Nu starten’ werkt altijd.",
     "overview_season_opens": "Buiten het seizoen — schema’s starten weer op {date}.",
     "errors_invalid_season": "Een periode noemt een dag die niet bestaat.",
+    "errors_supply_is_zone_output": "Een uitgang is ofwel de klep van een zone ofwel een toevoer, niet allebei.",
     "settings_default_hint": "Het openen van de zijbalk-item springt rechtstreeks naar deze installatie.",
     "settings_automations_summary": "Serviceoproepen & ID's",
     "settings_automations_body": "Gebruik deze services van automaties: set_mode, set_zone_enabled, set_zone_duration, pause_until, clear_pause, run_zone, run_schedule_slot, stop_all, stop_zone, skip_phase. De config entry id hieronder identificeert deze installatie.",

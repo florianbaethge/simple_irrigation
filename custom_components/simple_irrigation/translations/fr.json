@@ -665,6 +665,7 @@
     "settings_season_hint": "Les programmes n’arrosent d’eux-mêmes que pendant ces périodes, chaque année. Aucune période : toute l’année. Un programme peut avoir ses propres périodes, et « Lancer maintenant » fonctionne toujours.",
     "overview_season_opens": "Hors saison — les programmes reprennent le {date}.",
     "errors_invalid_season": "Une période indique un jour qui n’existe pas.",
+    "errors_supply_is_zone_output": "Une sortie est soit la vanne d’une zone, soit une alimentation, pas les deux.",
     "settings_default_hint": "Ouvrir l’entrée de la barre latérale mène directement à cette installation.",
     "settings_automations_summary": "Appels de service et ID",
     "settings_automations_body": "Utilisez ces services depuis vos automatisations : set_mode, set_zone_enabled, set_zone_duration, pause_until, clear_pause, run_zone, run_schedule_slot, stop_all, stop_zone, skip_phase. L’ID d’entrée de configuration ci-dessous identifie cette installation.",

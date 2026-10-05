@@ -159,11 +159,13 @@ def _cadence(slot: ScheduleSlot) -> dict[str, Any]:
 
 
 def _slot_zone_ids(inst: Installation, slot: ScheduleSlot) -> list[str]:
-    """Zone ids of a slot that would actually water (enabled, known)."""
+    """Zone ids of a slot that would actually water: known, enabled, with minutes to run."""
     return [
         zid
         for zid in slot.zone_ids_ordered
-        if zid in inst.zones and inst.zones[zid].enabled
+        if zid in inst.zones
+        and inst.zones[zid].enabled
+        and slot.duration_for(inst.zones[zid], inst.mode) > 0
     ]
 
 

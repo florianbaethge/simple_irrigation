@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import logging
 import uuid
 from dataclasses import replace
@@ -69,6 +70,8 @@ from .validation import (
     validate_script_entity,
     validate_script_timeout,
     validate_water_meter_entity,
+    strict_int,
+    validate_supply_against_zones,
     validate_zone_payload,
 )
 
@@ -96,28 +99,39 @@ SLOT_SCRIPT_TIMEOUT_SCHEMA = vol.Any(
 
 # Cycle & Soak fields as the panel sends them. Zero minutes is a valid soak
 # ("none"), so these are plain ranges rather than positive_int.
-SLOT_REPETITIONS_SCHEMA = vol.All(int, vol.Range(min=1, max=MAX_REPETITIONS))
-SLOT_SOAK_SCHEMA = vol.All(int, vol.Range(min=0, max=MAX_SOAK_MIN))
-ZONE_DURATION_SCHEMA = vol.All(int, vol.Range(min=0, max=MAX_ZONE_DURATION_MIN))
-SUPPLY_DELAY_SCHEMA = vol.All(int, vol.Range(min=0, max=MAX_SUPPLY_DELAY_SEC))
+SLOT_REPETITIONS_SCHEMA = vol.All(strict_int, vol.Range(min=1, max=MAX_REPETITIONS))
+SLOT_SOAK_SCHEMA = vol.All(strict_int, vol.Range(min=0, max=MAX_SOAK_MIN))
+ZONE_DURATION_SCHEMA = vol.All(strict_int, vol.Range(min=0, max=MAX_ZONE_DURATION_MIN))
+SUPPLY_DELAY_SCHEMA = vol.All(strict_int, vol.Range(min=0, max=MAX_SUPPLY_DELAY_SEC))
 
 
 def _cycle_member_ids(existing: list[ScheduleSlot], specs: list[dict[str, Any]]) -> list[str]:
     """Slot ids for a cycle's members after an edit, one per spec.
 
     A member keeps its id for as long as it keeps its days and its time, so its
-    switch entity goes on meaning the same run. Ids that fall free go to the
-    members that are new, and only then are fresh ones made.
+    switch entity goes on meaning the same run. An id that falls free -- its
+    time was moved, or the rhythm now starts in the other week -- goes to a new
+    member on the same days, and to no other: a switch that used to stop the
+    Tuesday run must not come to stop the Monday one. What is left gets a fresh
+    id, and the switch of an id nobody took goes with it.
     """
     kept = {(tuple(s.weekdays), s.week_parity, s.time_local): s.slot_id for s in existing}
     wanted = [
         (tuple(spec["weekdays"]), spec["week_parity"], spec["time_local"]) for spec in specs
     ]
-    free = [slot_id for key, slot_id in kept.items() if key not in wanted]
-    return [
-        kept[key] if key in kept else (free.pop(0) if free else uuid.uuid4().hex)
-        for key in wanted
-    ]
+    free: dict[tuple[int, ...], list[str]] = {}
+    for key, slot_id in kept.items():
+        if key not in wanted:
+            free.setdefault(key[0], []).append(slot_id)
+    ids: list[str] = []
+    for key in wanted:
+        if key in kept:
+            ids.append(kept[key])
+        elif free.get(key[0]):
+            ids.append(free[key[0]].pop(0))
+        else:
+            ids.append(uuid.uuid4().hex)
+    return ids
 
 
 def _copy_slot_cycle_soak(src: ScheduleSlot, dst: ScheduleSlot) -> None:
@@ -298,7 +312,7 @@ def _schedule_next_summary(hass: HomeAssistant, inst: Installation) -> dict[str,
         nxt = next_slot_fire(inst, slot, after, tz)
         if nxt is None:
             continue
-        if abs((nxt - global_next).total_seconds()) < 1:
+        if abs(nxt.timestamp() - global_next.timestamp()) < 1:
             matching.append(slot)
 
     # Weekday the schedule actually fires next (all matching slots share global_next).
@@ -306,7 +320,11 @@ def _schedule_next_summary(hass: HomeAssistant, inst: Installation) -> dict[str,
     zones = inst.zones
     out_slots: list[dict[str, Any]] = []
     for s in matching:
-        names = [zones[zi].name if zi in zones else zi for zi in s.zone_ids_ordered]
+        names = [
+            zones[zi].name
+            for zi in s.zone_ids_ordered
+            if zi in zones and s.duration_for(zones[zi], inst.mode) > 0
+        ]
         out_slots.append(
             {
                 "slot_id": s.slot_id,
@@ -375,7 +393,9 @@ def _require_admin(request) -> None:
 
     user = request.get(KEY_HASS_USER)
     if user is None or not user.is_admin:
-        raise Unauthorized("Admin required")
+        # No message: the first argument is a Context, and a str there raises
+        # on its own -- a 500 where a 401 belongs.
+        raise Unauthorized()
 
 
 @callback
@@ -446,7 +466,7 @@ class SimpleIrrigationPanelGlobalView(HomeAssistantView):
                 vol.Optional("season"): SEASON_SCHEMA,
                 vol.Optional("wait_when_busy"): cv.boolean,
                 vol.Optional("wait_max_min"): vol.All(
-                    int, vol.Range(min=1, max=MAX_WAIT_MAX_MIN)
+                    strict_int, vol.Range(min=1, max=MAX_WAIT_MAX_MIN)
                 ),
             }
         )
@@ -459,7 +479,9 @@ class SimpleIrrigationPanelGlobalView(HomeAssistantView):
         coord = _get_coordinator(hass, entry.entry_id)
         if coord is None:
             return self.json({"success": False, "error": "not_found"}, status_code=404)
-        inst = coord.installation
+        # On a copy: a save that is refused half-way must leave nothing behind
+        # for the next, unrelated save to write to the store.
+        inst = copy.deepcopy(coord.installation)
 
         if "name" in data and data["name"]:
             inst.name = str(data["name"]).strip() or inst.name
@@ -632,7 +654,12 @@ class SimpleIrrigationPanelZoneView(HomeAssistantView):
                 "supply_lead_sec": zone_data.get("supply_lead_sec"),
                 "supply_trail_sec": zone_data.get("supply_trail_sec", 0),
             }
-            err = validate_zone_payload(hass, payload)
+            err = validate_zone_payload(hass, payload) or validate_supply_against_zones(
+                None,
+                parse_zone_switch_entities(payload),
+                parse_entity_ids(payload["supply_entity_ids"]),
+                inst.zones,
+            )
             if err:
                 return self.json({"success": False, "error": err}, status_code=400)
             entity_ids = parse_zone_switch_entities(payload)
@@ -712,7 +739,12 @@ class SimpleIrrigationPanelZoneView(HomeAssistantView):
             "supply_lead_sec": zone_data.get("supply_lead_sec", zone.supply_lead_sec),
             "supply_trail_sec": zone_data.get("supply_trail_sec", zone.supply_trail_sec),
         }
-        err = validate_zone_payload(hass, merged)
+        err = validate_zone_payload(hass, merged) or validate_supply_against_zones(
+            zid,
+            parse_zone_switch_entities(merged),
+            parse_entity_ids(merged["supply_entity_ids"]),
+            inst.zones,
+        )
         if err:
             return self.json({"success": False, "error": err}, status_code=400)
         zone.name = merged["name"].strip()
@@ -807,7 +839,9 @@ class SimpleIrrigationPanelSlotView(HomeAssistantView):
         coord = _get_coordinator(hass, data["entry_id"])
         if coord is None:
             return self.json({"success": False, "error": "not_found"}, status_code=404)
-        inst = coord.installation
+        # On a copy, like the global settings: every action here changes the
+        # schedule field by field and may still be refused further down.
+        inst = copy.deepcopy(coord.installation)
         action = data["action"]
 
         def _find_slot(sid: str) -> ScheduleSlot | None:
@@ -870,7 +904,6 @@ class SimpleIrrigationPanelSlotView(HomeAssistantView):
                     return self.json({"success": False, "error": "invalid_time"}, status_code=400)
             # Earliest first, each once: what the members and the wizard go by.
             meta["times"] = normalize_start_times(meta.get("times"))
-            enabled = bool(data.get("enabled", True))
             incoming_id = str(data.get("cycle_id") or "")  # set when editing an existing cycle
             anchor = int(meta.get("anchor_weekday", 0))
             p0 = anchor_week_parity(anchor, dt_util.now().date())
@@ -893,6 +926,17 @@ class SimpleIrrigationPanelSlotView(HomeAssistantView):
                 else []
             )
             member_ids = _cycle_member_ids(existing, specs)
+            # On or off: what the payload says, for all of them. Without a word
+            # on it each member stays as it is -- one that was switched off on
+            # its own is not switched back on by an edit of the cycle -- and a
+            # new one is on unless the whole cycle is off.
+            was_enabled = {s.slot_id: s.enabled for s in existing}
+            fresh_enabled = any(was_enabled.values()) if was_enabled else True
+
+            def _member_enabled(slot_id: str) -> bool:
+                if "enabled" in data:
+                    return bool(data["enabled"])
+                return was_enabled.get(slot_id, fresh_enabled)
 
             # Guards: take them from the payload, else keep what the edited cycle
             # already had. All members of a cycle share the same conditions.
@@ -912,7 +956,7 @@ class SimpleIrrigationPanelSlotView(HomeAssistantView):
                     slot_id=member_ids[i],
                     weekdays=list(spec["weekdays"]),
                     time_local=spec["time_local"],
-                    enabled=enabled,
+                    enabled=_member_enabled(member_ids[i]),
                     zone_ids_ordered=list(zone_ids),
                     name=label,
                     week_parity=spec["week_parity"],

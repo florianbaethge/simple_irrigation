@@ -53,7 +53,9 @@ def compute_next_runs(
         if global_next is None or nxt.timestamp() < global_next.timestamp():
             global_next = nxt
         for zid in slot.zone_ids_ordered:
-            if zid in zone_next:
+            # A zone this slot leaves out -- fixed to 0 minutes -- has no next
+            # run in it.
+            if zid in zone_next and slot.duration_for(inst.zones[zid], inst.mode) > 0:
                 cur = zone_next[zid]
                 if cur is None or nxt.timestamp() < cur.timestamp():
                     zone_next[zid] = nxt

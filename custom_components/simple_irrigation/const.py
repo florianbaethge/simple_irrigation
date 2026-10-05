@@ -113,6 +113,10 @@ ATTR_MODE: Final = "mode"
 ATTR_ENABLED: Final = "enabled"
 ATTR_SCHEDULED: Final = "scheduled"
 
+# set_zone_duration targets: one of the MODES, the installation's current mode, or all three.
+DURATION_TARGET_ACTIVE: Final = "active"
+DURATION_TARGET_ALL: Final = "all"
+
 EVENT_RUN_STARTED: Final = f"{DOMAIN}_run_started"
 EVENT_RUN_FINISHED: Final = f"{DOMAIN}_run_finished"
 EVENT_RUN_FAILED: Final = f"{DOMAIN}_run_failed"
@@ -129,6 +133,7 @@ SERVICE_STOP_ALL: Final = "stop_all"
 SERVICE_STOP_ZONE: Final = "stop_zone"
 SERVICE_SET_MODE: Final = "set_mode"
 SERVICE_SET_ZONE_ENABLED: Final = "set_zone_enabled"
+SERVICE_SET_ZONE_DURATION: Final = "set_zone_duration"
 SERVICE_PAUSE_UNTIL: Final = "pause_until"
 SERVICE_CLEAR_PAUSE: Final = "clear_pause"
 

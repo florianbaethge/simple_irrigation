@@ -427,8 +427,21 @@ All services accept an optional `config_entry_id` when you run more than one Sim
 | `simple_irrigation.stop_zone` | End one zone of the running cycle; the rest carries on (`zone_id`) |
 | `simple_irrigation.set_mode` | Set `eco` / `normal` / `extra` |
 | `simple_irrigation.set_zone_enabled` | Enable/disable a zone |
+| `simple_irrigation.set_zone_duration` | Set a zone's runtime (minutes) from your own calculation; applies to the next run (`zone_id`, `duration_min`, optional `mode`) |
 | `simple_irrigation.pause_until` | Pause automatic runs until a datetime (`until` field) |
 | `simple_irrigation.clear_pause` | Clear the pause |
+
+Example — feed a zone's runtime from a calculation done in Home Assistant (weather, soil moisture, ET…), for instance in a pre-start script, so schedule slots, guards and the hardware countdown keep working as usual:
+
+```yaml
+action: simple_irrigation.set_zone_duration
+data:
+  zone_id: "..."          # the zone's UUID, see Download diagnostics
+  duration_min: "{{ states('sensor.garden_duration') | int }}"
+  mode: active            # eco | normal | extra | active (current mode, default) | all
+```
+
+`set_zone_duration` takes 1–1440 minutes. To skip a zone for one run use `set_zone_enabled` instead. The new runtime applies to the next run; a run already in progress keeps the duration it started with.
 
 Example — set mode from an automation:
 

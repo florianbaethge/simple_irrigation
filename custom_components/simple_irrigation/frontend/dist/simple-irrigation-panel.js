@@ -7124,6 +7124,10 @@ class ViewZones extends i$4 {
         align-items: center;
         justify-content: center;
         gap: 6px;
+        flex: 1 1 0;
+        width: auto;
+        align-self: stretch;
+        white-space: nowrap;
       }
       .out-line {
         margin: 8px 0 0;
@@ -7329,13 +7333,19 @@ class ViewZones extends i$4 {
         const last = tops.length - 1;
         const travelled = clientY - d.startY + (d.scroller.scrollTop - d.startScroll);
         const dy = Math.max(tops[0] - tops[from], Math.min(tops[last] + heights[last] - tops[from] - heights[from], travelled));
-        const centre = tops[from] + heights[from] / 2 + dy;
+        // A neighbour gives way once the dragged row's leading edge is past its
+        // middle. Comparing middles would leave the first and last place out of
+        // reach, since the row cannot be dragged beyond the ends of the list.
+        const top = tops[from] + dy;
+        const bottom = top + heights[from];
         const middle = (i) => tops[i] + heights[i] / 2;
         let to = from;
-        while (to < last && centre > middle(to + 1))
-            to++;
-        while (to > 0 && centre < middle(to - 1))
-            to--;
+        if (dy > 0)
+            while (to < last && bottom > middle(to + 1))
+                to++;
+        else
+            while (to > 0 && top < middle(to - 1))
+                to--;
         this._drag = { ...d, clientY, dy, to };
     }
     /** Scroll the list while the pointer rests near its top or bottom edge. */

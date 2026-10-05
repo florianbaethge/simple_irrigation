@@ -1206,7 +1206,10 @@ export class SimpleIrrigationCard extends LitElement {
     const short = weekdayNames(this.hass, "short");
     const narrow = weekdayNames(this.hass, "narrow");
     const hasParity = week.days.some((d) =>
-      d.runs.some((run) => run.parity_only)
+      d.runs.some((run) => run.parity_only && !run.off_season)
+    );
+    const hasOffSeason = week.days.some((d) =>
+      d.runs.some((run) => run.off_season)
     );
 
     const headTap = this._cardTap();
@@ -1304,6 +1307,12 @@ export class SimpleIrrigationCard extends LitElement {
             ? html`<span>
                 <span class="lkey dash"></span>
                 ${localize(this.hass, "legend_parity_odd")}
+              </span>`
+            : nothing}
+          ${hasOffSeason
+            ? html`<span>
+                <span class="lkey dash"></span>
+                ${localize(this.hass, "legend_off_season")}
               </span>`
             : nothing}
           <span>${localize(this.hass, "legend_scale")}</span>

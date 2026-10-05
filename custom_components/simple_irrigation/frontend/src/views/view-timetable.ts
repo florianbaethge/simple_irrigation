@@ -504,8 +504,10 @@ export class ViewTimetable extends LitElement {
       end,
       mode: modeLabel,
     });
-    if (e.weekParity === "every") return base;
-    return `${base} · ${this._parityLabel(e.weekParity)}`;
+    const parts = [base];
+    if (e.weekParity !== "every") parts.push(this._parityLabel(e.weekParity));
+    if (e.offSeason) parts.push(t(this.hass, "config_panel.season_off"));
+    return parts.join(" · ");
   }
 
   private _entriesForCell(

@@ -47,6 +47,22 @@ import {
   slotZoneMinutes,
 } from "../timetable-model";
 import { renderCycleSoakEditor } from "../cycle-soak-editor";
+import {
+  formatMonthDay,
+  formatSeason,
+  inSeason,
+  lookAheadStart,
+  monthDay,
+  nextDayInSeason,
+  normalizeSeason,
+  type Period,
+} from "../season";
+import {
+  renderSlotSeason,
+  seasonChoice,
+  type SeasonChoice,
+  type SlotSeason,
+} from "../season-editor";
 import { formatVolumeNumber, litresToUnit, volumeUnit } from "../units";
 import {
   renderZoneMinutesInput,
@@ -87,6 +103,10 @@ interface SlotRow {
   cycle_soak: CycleSoak;
   /** Fixed minutes per zone; a zone that is not in here follows the mode. */
   zone_minutes: ZoneMinutes;
+  /** Own periods of the year, standing in for the installation's season. */
+  season: SlotSeason;
+  /** What the editor's season picker shows; settled when the row is read. */
+  season_choice: SeasonChoice;
 }
 
 interface CycleGroup {
@@ -102,6 +122,7 @@ interface CleanupProposal {
   meta: CycleMeta;
   zoneIds: string[];
   zoneMinutes: ZoneMinutes;
+  season: SlotSeason;
   memberIds: string[];
   label: string;
 }
@@ -251,6 +272,10 @@ export class ViewSchedule extends LitElement {
       const o = raw as Record<string, unknown>;
       const wds = normalizeWeekdays(o.weekdays);
       const rid = o.cycle_id ? String(o.cycle_id) : null;
+      const season: SlotSeason = {
+        override: Boolean(o.override_season ?? false),
+        periods: normalizeSeason(o.season),
+      };
       return {
         slot_id: String(o.slot_id ?? ""),
         weekdays: wds.length ? wds : normalizeWeekdays([o.weekday ?? 0]),
@@ -269,8 +294,15 @@ export class ViewSchedule extends LitElement {
         cycle_meta: (o.cycle_meta as CycleMeta) ?? null,
         cycle_soak: cycleSoakOf(o),
         zone_minutes: zoneMinutesOf(o),
+        season,
+        season_choice: seasonChoice(season),
       };
     });
+  }
+
+  /** The periods that decide for a slot: its own, or the installation's. */
+  private _seasonOf(s: SlotRow | undefined): Period[] {
+    return s?.season.override ? s.season.periods : normalizeSeason(this.installation?.season);
   }
 
   /**
@@ -320,6 +352,7 @@ export class ViewSchedule extends LitElement {
       post_run_script: { ...s.post_run_script },
       cycle_soak: { ...s.cycle_soak },
       zone_minutes: { ...s.zone_minutes },
+      season: { override: s.season.override, periods: s.season.periods.map((p) => ({ ...p })) },
     };
   }
 
@@ -361,6 +394,69 @@ export class ViewSchedule extends LitElement {
         u: unit,
       })}</span
     >`;
+  }
+
+  /** "Tue 06:00" for a run this week, "1 Apr 06:00" for one further out. */
+  private _nextLabel(next: Date): string {
+    const time = formatTimeLocalForDisplay(
+      this.hass,
+      `${next.getHours()}:${String(next.getMinutes()).padStart(2, "0")}`
+    );
+    const soon = next.getTime() - Date.now() < 7 * 86400000;
+    const day = soon
+      ? weekdayShort(this.hass, mondayBasedWeekday(next))
+      : formatMonthDay(this.hass, monthDay(next.getMonth() + 1, next.getDate()));
+    return `${day} ${time}`;
+  }
+
+  /** Read-only chip on a row that brings its own season. */
+  private _renderSeasonMeta(s: SlotRow | undefined): TemplateResult | typeof nothing {
+    if (!s?.season.override) return nothing;
+    // "All year" only says something where the installation has a season.
+    if (!s.season.periods.length && !normalizeSeason(this.installation?.season).length) {
+      return nothing;
+    }
+    return html`<span class="meta"
+      ><ha-icon icon="mdi:calendar-range"></ha-icon>${s.season.periods.length
+        ? formatSeason(this.hass, s.season.periods)
+        : t(this.hass, "config_panel.season_choice_all_year")}</span
+    >`;
+  }
+
+  /**
+   * A badge for a row whose own season is closed today, with the day it comes
+   * back. Rows that follow the installation share one line above the list.
+   */
+  private _renderOffSeasonBadge(s: SlotRow | undefined): TemplateResult | typeof nothing {
+    if (!s?.season.override) return nothing;
+    const periods = s.season.periods;
+    const today = new Date();
+    if (inSeason(periods, today)) return nothing;
+    const opens = nextDayInSeason(periods, today);
+    return html`<span class="badge"
+      >${t(this.hass, "config_panel.season_badge_off", {
+        date: opens
+          ? formatMonthDay(this.hass, monthDay(opens.getMonth() + 1, opens.getDate()))
+          : "",
+      })}</span
+    >`;
+  }
+
+  /** One line for every row that follows the installation while its season is closed. */
+  private _renderInstallationOffSeason(): TemplateResult | typeof nothing {
+    const periods = normalizeSeason(this.installation?.season);
+    const today = new Date();
+    if (inSeason(periods, today) || !this._slots().some((s) => !s.season.override)) {
+      return nothing;
+    }
+    const opens = nextDayInSeason(periods, today);
+    return html`<p class="hint">
+      ${t(this.hass, "config_panel.overview_season_opens", {
+        date: opens
+          ? formatMonthDay(this.hass, monthDay(opens.getMonth() + 1, opens.getDate()))
+          : "",
+      })}
+    </p>`;
   }
 
   /** Read-only chip on a row that waters in passes with rests in between. */
@@ -457,13 +553,15 @@ export class ViewSchedule extends LitElement {
 
   private _nextFire(members: SlotRow[]): Date | null {
     const now = new Date();
+    const enabled = members.filter((m) => m.enabled);
+    const start = lookAheadStart(enabled.map((m) => this._seasonOf(m)), now);
     for (let i = 0; i < 21; i++) {
-      const day = new Date(now.getFullYear(), now.getMonth(), now.getDate() + i);
+      const day = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
       const wd = mondayBasedWeekday(day);
-      for (const m of members) {
-        if (!m.enabled) continue;
+      for (const m of enabled) {
         if (!m.weekdays.includes(wd)) continue;
         if (!weekParityMatches(day, m.week_parity)) continue;
+        if (!inSeason(this._seasonOf(m), day)) continue;
         const [h, mi] = m.time_local.split(":").map(Number);
         const cand = new Date(day.getFullYear(), day.getMonth(), day.getDate(), h || 0, mi || 0);
         if (cand > now) return cand;
@@ -643,7 +741,8 @@ export class ViewSchedule extends LitElement {
     const buckets = new Map<string, SlotRow[]>();
     for (const s of custom) {
       const minutes = JSON.stringify(zoneMinutesForSave(s.zone_minutes, s.zone_ids_ordered));
-      const key = `${s.time_local}||${s.zone_ids_ordered.join(",")}||${minutes}`;
+      const season = JSON.stringify(s.season.override ? s.season.periods : null);
+      const key = `${s.time_local}||${s.zone_ids_ordered.join(",")}||${minutes}||${season}`;
       if (!buckets.has(key)) buckets.set(key, []);
       buckets.get(key)!.push(s);
     }
@@ -654,6 +753,7 @@ export class ViewSchedule extends LitElement {
       const time = list[0].time_local;
       const zoneIds = list[0].zone_ids_ordered;
       const zoneMinutes = zoneMinutesForSave(list[0].zone_minutes, zoneIds);
+      const season = list[0].season;
       const memberIds = list.map((s) => s.slot_id);
 
       if (parities.size === 1 && parities.has("every")) {
@@ -663,7 +763,7 @@ export class ViewSchedule extends LitElement {
         const meta: CycleMeta = { times: [time] };
         if (optionId === "weekly") meta.anchor_weekday = union[0];
         else if (optionId === "n_per_week") meta.week_days = union;
-        proposals.push({ optionId, meta, zoneIds, zoneMinutes, memberIds, label: list[0].name });
+        proposals.push({ optionId, meta, zoneIds, zoneMinutes, season, memberIds, label: list[0].name });
       } else if (
         list.length === 2 &&
         parities.has("odd") &&
@@ -675,6 +775,7 @@ export class ViewSchedule extends LitElement {
           meta: { times: [time], n: 2, anchor_weekday: normalizeWeekdays(list[0].weekdays)[0] ?? 0 },
           zoneIds,
           zoneMinutes,
+          season,
           memberIds,
           label: list[0].name,
         });
@@ -707,6 +808,8 @@ export class ViewSchedule extends LitElement {
           cycle_meta: p.meta as Record<string, unknown>,
           zone_ids_ordered: p.zoneIds,
           zone_minutes: p.zoneMinutes,
+          override_season: p.season.override,
+          season: p.season.periods,
           enabled: true,
         });
         if (!res.success) {
@@ -832,6 +935,8 @@ export class ViewSchedule extends LitElement {
       soak_between_phases_min: d.cycle_soak.soakBetweenPhasesMin,
       soak_between_repetitions_min: d.cycle_soak.soakBetweenRepetitionsMin,
       zone_minutes: zoneMinutesForSave(d.zone_minutes, d.zone_ids_ordered),
+      override_season: d.season.override,
+      season: d.season.periods,
     });
     if (ok) this._closeEditDialog();
   }
@@ -971,7 +1076,7 @@ export class ViewSchedule extends LitElement {
       week_parity: m.week_parity,
     }));
     const today = new Date();
-    const strip = previewStrip(specs, today, today, 14);
+    const strip = previewStrip(specs, today, today, 14, this._seasonOf(g.members[0]));
 
     return html`
       <div class="compact-row ${accent}">
@@ -990,6 +1095,7 @@ export class ViewSchedule extends LitElement {
               <span class="ellipsis">${label}</span>
               <span class="badge badge-primary">${this._cycleBadge(g.kind, g.meta)}</span>
               ${this._renderFixedMinutesBadge(g.members[0])}
+              ${this._renderOffSeasonBadge(g.members[0])}
               ${!anyEnabled
                 ? html`<span class="badge">${t(this.hass, "config_panel.cycle_paused_n", {
                     n: g.members.length,
@@ -1020,15 +1126,11 @@ export class ViewSchedule extends LitElement {
                     g.members[0].ignore_global_guards
                   )}${this._renderScriptMeta(g.members[0])}${this._renderCycleSoakMeta(
                     g.members[0]
-                  )}${this._renderWaterMeta(g.members[0])}`
+                  )}${this._renderSeasonMeta(g.members[0])}${this._renderWaterMeta(g.members[0])}`
                 : nothing}
               ${next
                 ? html`<span class="meta"
-                    ><ha-icon icon="mdi:skip-next-outline"></ha-icon>${weekdayShort(
-                      this.hass,
-                      mondayBasedWeekday(next)
-                    )}
-                    ${formatTimeLocalForDisplay(this.hass, `${next.getHours()}:${String(next.getMinutes()).padStart(2, "0")}`)}</span
+                    ><ha-icon icon="mdi:skip-next-outline"></ha-icon>${this._nextLabel(next)}</span
                   >`
                 : nothing}
               <span class="meta"
@@ -1076,7 +1178,7 @@ export class ViewSchedule extends LitElement {
           ? html`<div class="compact-row-detail">
               <div class="day-strip" style="margin-top:10px">
                 ${strip.map(
-                  (d) => html`<div class="day-cell ${d.run ? "run" : ""} ${d.isToday ? "today" : ""}">
+                  (d) => html`<div class="day-cell ${d.run ? "run" : ""} ${d.off ? "off" : ""} ${d.isToday ? "today" : ""}">
                     <span class="dc-dow">${weekdayShort(this.hass, mondayBasedWeekday(d.date))}</span>
                     <span class="dc-dom">${d.date.getDate()}</span>
                   </div>`
@@ -1109,7 +1211,8 @@ export class ViewSchedule extends LitElement {
       [{ weekdays: s.weekdays, time_local: s.time_local, week_parity: s.week_parity }],
       today,
       today,
-      14
+      14,
+      this._seasonOf(s)
     );
     return html`
       <div class="compact-row ${accent}">
@@ -1133,6 +1236,7 @@ export class ViewSchedule extends LitElement {
                 ? html`<span class="badge badge-primary badge-dot">${this._parityLabel(s.week_parity)}</span>`
                 : nothing}
               ${this._renderFixedMinutesBadge(s)}
+              ${this._renderOffSeasonBadge(s)}
             </div>
             <div class="meta-line">
               <span class="meta"
@@ -1145,14 +1249,11 @@ export class ViewSchedule extends LitElement {
               ${this._renderGuardMeta(s.guards, s.ignore_global_guards)}
               ${this._renderScriptMeta(s)}
               ${this._renderCycleSoakMeta(s)}
+              ${this._renderSeasonMeta(s)}
               ${this._renderWaterMeta(s)}
               ${next
                 ? html`<span class="meta"
-                    ><ha-icon icon="mdi:skip-next-outline"></ha-icon>${weekdayShort(
-                      this.hass,
-                      mondayBasedWeekday(next)
-                    )}
-                    ${formatTimeLocalForDisplay(this.hass, `${next.getHours()}:${String(next.getMinutes()).padStart(2, "0")}`)}</span
+                    ><ha-icon icon="mdi:skip-next-outline"></ha-icon>${this._nextLabel(next)}</span
                   >`
                 : nothing}
             </div>
@@ -1190,7 +1291,7 @@ export class ViewSchedule extends LitElement {
           ? html`<div class="compact-row-detail">
               <div class="day-strip" style="margin-top:10px">
                 ${strip.map(
-                  (d) => html`<div class="day-cell ${d.run ? "run" : ""} ${d.isToday ? "today" : ""}">
+                  (d) => html`<div class="day-cell ${d.run ? "run" : ""} ${d.off ? "off" : ""} ${d.isToday ? "today" : ""}">
                     <span class="dc-dow">${weekdayShort(this.hass, mondayBasedWeekday(d.date))}</span>
                     <span class="dc-dom">${d.date.getDate()}</span>
                   </div>`
@@ -1429,6 +1530,11 @@ export class ViewSchedule extends LitElement {
         draft.cycle_soak = next;
         this.requestUpdate();
       })}
+      ${renderSlotSeason(this.hass, draft.season, draft.season_choice, this._busy, (next, choice) => {
+        draft.season = next;
+        draft.season_choice = choice;
+        this.requestUpdate();
+      })}
     `;
   }
 
@@ -1466,6 +1572,7 @@ export class ViewSchedule extends LitElement {
                 </button>
               </div>`
             : html`
+                ${this._renderInstallationOffSeason()}
                 ${groups.map((g) => this._renderCycleRow(g))}
                 ${custom.map((s) => this._renderCustomRow(s))}
               `}

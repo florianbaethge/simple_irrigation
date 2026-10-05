@@ -48,6 +48,20 @@ import {
 } from "./schedule-phases";
 import { renderCycleSoakEditor } from "./cycle-soak-editor";
 import {
+  inSeason,
+  nextDayInSeason,
+  normalizeSeason,
+  seasonFor,
+  seasonsOverlap,
+  type Period,
+} from "./season";
+import {
+  renderSlotSeason,
+  seasonChoice,
+  type SeasonChoice,
+  type SlotSeason,
+} from "./season-editor";
+import {
   durationForMode,
   minutesToTimeLocal,
   parseTimeLocalToMinutes,
@@ -247,6 +261,9 @@ export class CycleWizard extends LitElement {
   @state() private _preStartScript: ScriptOverride = EMPTY_SCRIPT_OVERRIDE;
   @state() private _postRunScript: ScriptOverride = EMPTY_SCRIPT_OVERRIDE;
   @state() private _cycleSoak: CycleSoak = PLAIN_RUN;
+  // Own periods of the year; without them the cycle follows the installation.
+  @state() private _season: SlotSeason = { override: false, periods: [] };
+  @state() private _seasonChoice: SeasonChoice = "inherit";
   @state() private _cycleId: string | null = null;
   @state() private _busy = false;
   @state() private _msg?: string;
@@ -277,6 +294,8 @@ export class CycleWizard extends LitElement {
       this._preStartScript = { ...EMPTY_SCRIPT_OVERRIDE };
       this._postRunScript = { ...EMPTY_SCRIPT_OVERRIDE };
       this._cycleSoak = { ...PLAIN_RUN };
+      this._season = { override: false, periods: [] };
+      this._seasonChoice = "inherit";
       this._syncDefaultsForOption();
     }
     this._step = opts?.step ?? 1;
@@ -318,6 +337,18 @@ export class CycleWizard extends LitElement {
     this._preStartScript = normalizeScriptOverride(first, "pre_start");
     this._postRunScript = normalizeScriptOverride(first, "post_run");
     this._cycleSoak = cycleSoakOf(first);
+    this._season = {
+      override: Boolean(first.override_season ?? false),
+      periods: normalizeSeason(first.season),
+    };
+    this._seasonChoice = seasonChoice(this._season);
+  }
+
+  /** The periods that decide for this cycle: its own, or the installation's. */
+  private _periods(): Period[] {
+    return this._season.override
+      ? this._season.periods
+      : normalizeSeason(this.installation?.season);
   }
 
   private _option(): KindOption {
@@ -426,6 +457,7 @@ export class CycleWizard extends LitElement {
     const zones = this.installation?.zones as Record<string, Record<string, unknown>> | undefined;
     if (!zones) return false;
     const est = this._estimateMin();
+    const season = this._periods();
     const mine = this._slots().map((s) => ({
       days: new Set(s.weekdays),
       start: parseTimeLocalToMinutes(s.time_local),
@@ -435,6 +467,8 @@ export class CycleWizard extends LitElement {
     for (const slot of existing) {
       if (this._cycleId && String(slot.cycle_id ?? "") === this._cycleId) continue;
       if (!(slot.enabled ?? true)) continue;
+      // A summer and a spring schedule at the same hour never meet.
+      if (!seasonsOverlap(season, seasonFor(this.installation, slot))) continue;
       const days = new Set(
         Array.isArray(slot.weekdays) ? (slot.weekdays as number[]) : [Number(slot.weekday ?? 0)]
       );
@@ -455,9 +489,12 @@ export class CycleWizard extends LitElement {
   private _firstRun(slots: CycleSlotSpec[]): Date | null {
     const now = new Date();
     const starts = normalizeStartTimes(this._times).map(parseTimeLocalToMinutes);
+    const season = this._periods();
+    // Out of season the first run is months away: look from where it opens.
+    const from = nextDayInSeason(season, now) ?? now;
     for (let i = 0; i <= 28; i++) {
-      const day = new Date(now.getFullYear(), now.getMonth(), now.getDate() + i);
-      if (!firstRunDate(slots, day, 1)) continue;
+      const day = new Date(from.getFullYear(), from.getMonth(), from.getDate() + i);
+      if (!inSeason(season, day) || !firstRunDate(slots, day, 1)) continue;
       for (const start of starts) {
         const at = new Date(day.getFullYear(), day.getMonth(), day.getDate(), 0, start);
         if (at > now) return at;
@@ -527,6 +564,8 @@ export class CycleWizard extends LitElement {
         soak_between_phases_min: this._cycleSoak.soakBetweenPhasesMin,
         soak_between_repetitions_min: this._cycleSoak.soakBetweenRepetitionsMin,
         zone_minutes: zoneMinutesForSave(this._zoneMinutes, this._zoneIds),
+        override_season: this._season.override,
+        season: this._season.periods,
       });
       if (!res.success) {
         this._msg = formatApiError(res.error, this.hass);
@@ -610,7 +649,7 @@ export class CycleWizard extends LitElement {
     const slots = this._slots();
     const today = new Date();
     const start = today;
-    const strip = previewStrip(slots, start, today, 14);
+    const strip = previewStrip(slots, start, today, 14, this._periods());
     const gaps = previewGaps(slots, start);
     const uniqueGaps = [...new Set(gaps)];
     const first = this._firstRun(slots);
@@ -694,7 +733,7 @@ export class CycleWizard extends LitElement {
       <div class="day-strip">
         ${strip.map(
           (d) => html`
-            <div class="day-cell ${d.run ? "run" : ""} ${d.isToday ? "today" : ""}">
+            <div class="day-cell ${d.run ? "run" : ""} ${d.off ? "off" : ""} ${d.isToday ? "today" : ""}">
               <span class="dc-dow">${weekdayShort(this.hass, mondayBasedWeekday(d.date))}</span>
               <span class="dc-dom">${d.date.getDate()}</span>
             </div>
@@ -857,6 +896,10 @@ export class CycleWizard extends LitElement {
 
       ${renderCycleSoakEditor(this.hass, this._cycleSoak, this._busy, (next) => {
         this._cycleSoak = next;
+      })}
+      ${renderSlotSeason(this.hass, this._season, this._seasonChoice, this._busy, (next, choice) => {
+        this._season = next;
+        this._seasonChoice = choice;
       })}
 
       <div class="field-block">

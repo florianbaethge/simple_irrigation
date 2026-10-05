@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 from .const import (
     DEFAULT_WAIT_MAX_MIN,
     MAX_REPETITIONS,
+    MAX_SEASON_PERIODS,
     MAX_SOAK_MIN,
     MAX_SUPPLY_DELAY_SEC,
     MAX_WAIT_MAX_MIN,
@@ -92,6 +93,74 @@ def parse_guards(raw: Any) -> list[Guard]:
             continue
         out.append(guard)
     return out
+
+
+_DAYS_IN_MONTH = (31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31)
+
+
+def _parse_month_day(raw: Any) -> tuple[int, int] | None:
+    """``"MM-DD"`` as (month, day); None for anything that is no day of the year."""
+    parts = str(raw or "").strip().split("-")
+    if len(parts) != 2:
+        return None
+    try:
+        month, day = int(parts[0]), int(parts[1])
+    except ValueError:
+        return None
+    if not 1 <= month <= 12 or not 1 <= day <= _DAYS_IN_MONTH[month - 1]:
+        return None
+    return month, day
+
+
+@dataclass(frozen=True)
+class Period:
+    """A stretch of the year, the same every year, both days included.
+
+    Held as (month, day). ``start`` after ``end`` runs across New Year. The
+    29th of February needs no rule of its own: in a year without one, a period
+    ending on it ends on the 28th and one starting on it starts on 1 March.
+    """
+
+    start: tuple[int, int]
+    end: tuple[int, int]
+
+    def contains(self, day: date) -> bool:
+        """Whether ``day`` lies in this period."""
+        month_day = (day.month, day.day)
+        if self.start <= self.end:
+            return self.start <= month_day <= self.end
+        return month_day >= self.start or month_day <= self.end
+
+    def to_dict(self) -> dict[str, str]:
+        """Serialize to JSON-compatible dict."""
+        return {
+            "from": f"{self.start[0]:02d}-{self.start[1]:02d}",
+            "to": f"{self.end[0]:02d}-{self.end[1]:02d}",
+        }
+
+    @staticmethod
+    def from_dict(data: Any) -> Period | None:
+        """Deserialize one period; None when it names no two days of the year."""
+        if not isinstance(data, dict):
+            return None
+        start, end = _parse_month_day(data.get("from")), _parse_month_day(data.get("to"))
+        if start is None or end is None:
+            return None
+        return Period(start, end)
+
+
+def parse_season(raw: Any) -> list[Period]:
+    """A season from a payload or the store: its usable periods, no more than six."""
+    out: list[Period] = []
+    if not isinstance(raw, (list, tuple)):
+        return out
+    for item in raw:
+        period = Period.from_dict(item)
+        if period is None:
+            _LOGGER.warning("Dropping unusable season period: %r", item)
+        elif period not in out:
+            out.append(period)
+    return out[:MAX_SEASON_PERIODS]
 
 
 @dataclass
@@ -316,6 +385,12 @@ class ScheduleSlot:
     # How long a zone waters in this slot, whatever the mode says. A zone that
     # is not in here follows the mode, which is how every slot starts out.
     zone_minutes: dict[str, int] = field(default_factory=dict)
+    # --- Season --------------------------------------------------------------
+    # When in the year this slot waters by itself. Without the flag it follows
+    # the installation's season; with it, its own periods stand in for that --
+    # and none at all means the whole year, whatever the installation says.
+    override_season: bool = False
+    season: list[Period] = field(default_factory=list)
 
     def duration_for(self, zone: Zone, mode: str) -> int:
         """Minutes ``zone`` waters in this slot: its fixed minutes, else the mode's."""
@@ -367,6 +442,8 @@ class ScheduleSlot:
             "soak_between_phases_min": self.soak_between_phases_min,
             "soak_between_repetitions_min": self.soak_between_repetitions_min,
             "zone_minutes": dict(self.zone_minutes),
+            "override_season": self.override_season,
+            "season": [p.to_dict() for p in self.season],
         }
 
     @staticmethod
@@ -418,6 +495,8 @@ class ScheduleSlot:
             zone_minutes=parse_zone_minutes(
                 data.get("zone_minutes"), data.get("zone_ids_ordered", [])
             ),
+            override_season=bool(data.get("override_season", False)),
+            season=parse_season(data.get("season")),
         )
 
 
@@ -509,6 +588,9 @@ class Installation:
     # may wait for its turn -- and then for no longer than this many minutes.
     wait_when_busy: bool = False
     wait_max_min: int = DEFAULT_WAIT_MAX_MIN
+    # When in the year schedules water by themselves; empty is the whole year.
+    # A slot may bring its own. Manual runs do not ask.
+    season: list[Period] = field(default_factory=list)
     # In the order they are listed in, which is also the run order a new cycle
     # starts with. A slot's own ``zone_ids_ordered`` decides how that slot waters.
     zones: dict[str, Zone] = field(default_factory=dict)
@@ -547,6 +629,7 @@ class Installation:
             "guards": [g.to_dict() for g in self.guards],
             "wait_when_busy": self.wait_when_busy,
             "wait_max_min": self.wait_max_min,
+            "season": [p.to_dict() for p in self.season],
             "zones": {k: v.to_dict() for k, v in self.zones.items()},
             "zone_order": list(self.zones),
             "schedule_slots": [s.to_dict() for s in self.schedule_slots],
@@ -592,6 +675,7 @@ class Installation:
             guards=parse_guards(data.get("guards")),
             wait_when_busy=bool(data.get("wait_when_busy", False)),
             wait_max_min=parse_wait_max(data.get("wait_max_min")),
+            season=parse_season(data.get("season")),
             zones=zones,
             schedule_slots=schedule_slots,
         )

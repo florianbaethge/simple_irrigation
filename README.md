@@ -255,12 +255,36 @@ Two deliberate behaviours:
 
 Manual runs (*Run now*, *Run zone now*) always start, regardless of conditions.
 
+### Season
+
+A **season** says when in the year schedules water by themselves — 1 April to 31 October, and nothing in winter, without switching every schedule off in autumn and remembering to switch it on again in spring. It is made of **periods**: a day and a month to a day and a month, both days included, the same every year. A period may run across New Year, and there may be several of them.
+
+- **Settings → Season** is the season of the whole installation. One period is all most gardens need; with no period, schedules water all year, as they always have.
+- **A schedule can bring its own.** In the slot editor and the cycle wizard, **Season** offers *Like the installation*, *All year* and *Own periods*. Own periods **take the place of** the installation's season, they are not added to it — a schedule from 1 March waters in March, even if the installation opens in April.
+
+That is what makes one garden with different rhythms through the year possible, without duplicating zones:
+
+| Schedule | Season |
+|----------|--------|
+| Lawn, daily | Own periods: 1 Jun – 31 Aug |
+| Lawn, every 3 days | Own periods: 1 Apr – 31 May **and** 1 Sep – 31 Oct |
+| Beds | Like the installation (1 Apr – 31 Oct) |
+| Greenhouse | All year |
+
+Together with a schedule's **fixed minutes**, each of them can also water for a different length of time.
+
+- **Out of season a schedule is simply not due.** It stays switched on and keeps everything it is set to; nothing is reported as skipped, and nothing waits. Its *next run* — in the panel, on the card and in the `next_run` sensors — is the first one after its season opens again.
+- **Manual runs never ask.** *Run now*, *Run zone now* and the services start at any time of the year.
+- Overview, Schedule and Timetable say when the installation is out of season and when it comes back; a schedule with its own season shows its periods in its row. The 14-day strips and the card's week draw days out of season dashed.
+- The date that counts is the day the schedule is due, in Home Assistant's time zone. Pause and conditions apply on top, as before.
+
 **Stopping a single zone.** While a zone waters, its row in **Zones** shows the remaining time and a stop button (■); the same is available as `simple_irrigation.stop_zone`. Only that zone ends — its outputs go off, the other zones of the run carry on, and a zone still waiting its turn is taken out of the plan. Stopping the last zone simply lets the run finish normally, post-run script included. The `simple_irrigation_zone_finished` event carries `stopped: true` for a zone that was cut short.
 
 ### Modes, pre-start, pause
 
 - **Watering mode (Eco / Normal / Extra):** chosen on Overview or Settings, or via `simple_irrigation.set_mode` for weather/tank automations.
 - **Max parallel zones:** caps concurrency; exclusive zones still run alone.
+- **Season:** when in the year schedules water by themselves — see [Season](#season).
 - **Let schedules wait for their turn:** what happens to a schedule that comes due during another run — see [When schedules overlap](#when-schedules-overlap).
 - **Pre-start / post-run scripts:** optional scripts run **before** the pre-start outputs and **after** the last one goes off — see below.
 - **Pre-start outputs & delay:** outputs turned on before any zone (pump / master valve), with an editable delay to build pressure — both configured on **Settings**. An output that only some zones need goes into those zones' **Supply** instead.

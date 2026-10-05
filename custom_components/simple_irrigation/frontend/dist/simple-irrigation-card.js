@@ -438,6 +438,7 @@ const TRANSLATIONS = {
         legend_run: "scheduled run · height = duration",
         legend_parity_odd: "odd weeks only",
         legend_parity_even: "even weeks only",
+        legend_off_season: "out of season",
         legend_scale: "top of column = 00:00, bottom = 24:00",
         week_paused: "paused",
         week_empty: "No schedule slots yet.",
@@ -626,6 +627,7 @@ const TRANSLATIONS = {
         legend_run: "exécution planifiée · hauteur = durée",
         legend_parity_odd: "semaines impaires uniquement",
         legend_parity_even: "semaines paires uniquement",
+        legend_off_season: "hors saison",
         legend_scale: "haut de colonne = 00:00, bas = 24:00",
         week_paused: "en pause",
         week_empty: "Aucun créneau de programmation pour l’instant.",
@@ -807,6 +809,7 @@ const TRANSLATIONS = {
         legend_run: "geplanter Lauf · Höhe = Dauer",
         legend_parity_odd: "nur ungerade Wochen",
         legend_parity_even: "nur gerade Wochen",
+        legend_off_season: "außerhalb der Saison",
         legend_scale: "Spaltenanfang = 00:00, Ende = 24:00",
         week_paused: "pausiert",
         week_empty: "Noch keine Zeitpläne.",
@@ -981,6 +984,7 @@ const TRANSLATIONS = {
         legend_run: "geplande beurt · hoogte = duur",
         legend_parity_odd: "alleen oneven weken",
         legend_parity_even: "alleen even weken",
+        legend_off_season: "buiten het seizoen",
         legend_scale: "bovenkant kolom = 00:00, onderkant = 24:00",
         week_paused: "gepauzeerd",
         week_empty: "Nog geen tijdvakken.",
@@ -1155,6 +1159,7 @@ const TRANSLATIONS = {
         legend_run: "irrigazione programmata · altezza = durata",
         legend_parity_odd: "solo settimane dispari",
         legend_parity_even: "solo settimane pari",
+        legend_off_season: "fuori stagione",
         legend_scale: "inizio colonna = 00:00, fine = 24:00",
         week_paused: "in pausa",
         week_empty: "Nessuna fascia oraria.",
@@ -4785,7 +4790,8 @@ let SimpleIrrigationCard = class SimpleIrrigationCard extends i$2 {
         const week = snap.week;
         const short = weekdayNames(this.hass, "short");
         const narrow = weekdayNames(this.hass, "narrow");
-        const hasParity = week.days.some((d) => d.runs.some((run) => run.parity_only));
+        const hasParity = week.days.some((d) => d.runs.some((run) => run.parity_only && !run.off_season));
+        const hasOffSeason = week.days.some((d) => d.runs.some((run) => run.off_season));
         const headTap = this._cardTap();
         if (!week.days.length || !snap.slots.length) {
             return b `
@@ -4878,6 +4884,12 @@ let SimpleIrrigationCard = class SimpleIrrigationCard extends i$2 {
             ? b `<span>
                 <span class="lkey dash"></span>
                 ${localize(this.hass, "legend_parity_odd")}
+              </span>`
+            : A}
+          ${hasOffSeason
+            ? b `<span>
+                <span class="lkey dash"></span>
+                ${localize(this.hass, "legend_off_season")}
               </span>`
             : A}
           <span>${localize(this.hass, "legend_scale")}</span>

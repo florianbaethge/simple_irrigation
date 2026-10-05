@@ -1,6 +1,7 @@
 /** Weekly timetable entries from schedule slots (local wall clock, Mon=0 … Sun=6). */
 
 import { computePhases, cycleSoakOf, expandProgram, isSoak, type ZonePhaseInput } from "./schedule-phases";
+import { inSeason, seasonFor } from "./season";
 import { zoneMinutesOf } from "./zone-minutes-input";
 import { orderedZoneIds } from "./zone-order";
 
@@ -35,8 +36,10 @@ export interface TimetableEntry {
   startMin: number;
   endMin: number;
   bucket: TimetableBucket;
-  /** Plan, slot, and zone all on — theme “active” styling. */
+  /** Plan, slot, and zone all on, and in season today — theme “active” styling. */
   enabled: boolean;
+  /** The slot is out of season today; the timetable shows it like one switched off. */
+  offSeason: boolean;
   mode: string;
   slotId: string;
   weekParity: WeekParity;
@@ -189,6 +192,7 @@ export function buildTimetableEntries(installation: Record<string, unknown>): Ti
       : [];
 
     const fixed = zoneMinutesOf(slot);
+    const offSeason = !inSeason(seasonFor(installation, slot), new Date());
     const slotStartMin = parseTimeLocalToMinutes(timeLocal);
     const phases = computePhases(ordered, zonesById, maxParallel, false);
     // Cycle & Soak: every pass draws its own blocks, a rest just moves the cursor.
@@ -229,7 +233,8 @@ export function buildTimetableEntries(installation: Record<string, unknown>): Ti
             startMin,
             endMin,
             bucket: bucketFromStartMin(startMin),
-            enabled: planEnabled && slotEnabled && zoneEnabled,
+            enabled: planEnabled && slotEnabled && zoneEnabled && !offSeason,
+            offSeason,
             mode,
             slotId,
             weekParity,

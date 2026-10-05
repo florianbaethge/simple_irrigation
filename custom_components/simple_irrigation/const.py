@@ -80,6 +80,9 @@ MAX_ZONE_DURATION_MIN: Final = 240
 # Longest a supply output may lead or trail its zone, like the pre-start delay.
 MAX_SUPPLY_DELAY_SEC: Final = 3600
 
+# How many periods a season may be made of: spring, summer, autumn and some room.
+MAX_SEASON_PERIODS: Final = 6
+
 # Schedules that came due while something else ran, if the installation lets
 # them wait: how long at most by default, the longest that can be asked for,
 # and how many may line up. The last is a safety net, not a setting.

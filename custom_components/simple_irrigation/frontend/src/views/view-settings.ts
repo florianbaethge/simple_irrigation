@@ -7,6 +7,8 @@ import {
 } from "../data/api";
 import { renderNativeEntityField } from "../entity-input";
 import { renderInlineHelp } from "../inline-help";
+import { normalizeSeason, type Period } from "../season";
+import { renderSeasonEditor } from "../season-editor";
 import {
   GUARD_ENTITY_DOMAINS,
   guardsForSave,
@@ -88,6 +90,7 @@ export class ViewSettings extends LitElement {
   private _mode = "normal";
   private _maxParallel = 2;
   @state() private _waitWhenBusy = false;
+  @state() private _season: Period[] = [];
   private _waitMaxMin = 120;
   private _preStart: string[] = [];
   private _waterMeter = "";
@@ -111,6 +114,7 @@ export class ViewSettings extends LitElement {
     this._maxParallel = Number(inst.max_parallel_zones ?? 2);
     this._isDefault = Boolean(inst.is_default ?? false);
     this._waitWhenBusy = Boolean(inst.wait_when_busy ?? false);
+    this._season = normalizeSeason(inst.season);
     const wm = Number(inst.wait_max_min ?? 120);
     this._waitMaxMin = Number.isFinite(wm) ? Math.max(1, Math.min(720, Math.round(wm))) : 120;
     const ps = Array.isArray(inst.pre_start_switches)
@@ -178,6 +182,7 @@ export class ViewSettings extends LitElement {
         mode: this._mode,
         max_parallel_zones: this._maxParallel,
         wait_when_busy: this._waitWhenBusy,
+        season: this._season,
         wait_max_min: this._waitMaxMin,
         is_default: this._isDefault,
         guards: guardsForSave(this._guards),
@@ -512,6 +517,15 @@ export class ViewSettings extends LitElement {
                   ></ha-input>
                 </div>`
               : nothing}
+          </div>
+
+          <div class="section-title">${t(this.hass, "config_panel.settings_section_season")}</div>
+          <div class="field-block">
+            ${renderSeasonEditor(this.hass, this._season, this._busy, (next) => {
+              this._season = next;
+              this._markDirty();
+            })}
+            <p class="hint">${t(this.hass, "config_panel.settings_season_hint")}</p>
           </div>
 
           <div class="section-title">${t(this.hass, "config_panel.settings_section_water")}</div>

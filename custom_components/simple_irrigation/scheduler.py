@@ -23,7 +23,7 @@ from .grouping import compute_phases
 from .guards import guards_allow_run
 from .models import Installation, ScheduleSlot, Zone
 from .program import RunStep, expand_program
-from .time_util import next_slot_fire_local_any
+from .season import next_slot_fire
 
 if TYPE_CHECKING:
     from .coordinator import SimpleIrrigationCoordinator
@@ -47,13 +47,7 @@ def compute_next_runs(
     for slot in inst.schedule_slots:
         if not slot.enabled:
             continue
-        nxt = next_slot_fire_local_any(
-            after,
-            slot.weekdays,
-            slot.time_local,
-            tz,
-            slot.week_parity,
-        )
+        nxt = next_slot_fire(inst, slot, after, tz)
         if nxt is None:
             continue
         if global_next is None or nxt < global_next:
@@ -243,13 +237,7 @@ class IrrigationScheduler:
             for slot in inst.schedule_slots:
                 if not slot.enabled:
                     continue
-                nxt = next_slot_fire_local_any(
-                    now - timedelta(minutes=1),
-                    slot.weekdays,
-                    slot.time_local,
-                    tz,
-                    slot.week_parity,
-                )
+                nxt = next_slot_fire(inst, slot, now - timedelta(minutes=1), tz)
                 if nxt is None:
                     continue
                 if abs((now - nxt).total_seconds()) < 90:

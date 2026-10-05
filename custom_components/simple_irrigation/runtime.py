@@ -46,6 +46,7 @@ from .scheduler import (
     program_for_slots,
     report_schedule_skipped,
 )
+from .season import next_slot_fire
 from .scripts import ScriptCall, effective_post_run_script, effective_pre_start_script
 from .water import (
     SOURCE_ESTIMATED,
@@ -1320,8 +1321,6 @@ class IrrigationRuntime:
 
     async def async_run_due_now(self) -> None:
         """Run phases for schedule slots that are due now (service)."""
-        from .time_util import next_slot_fire_local_any
-
         inst = self.coordinator.installation
         tz = dt_util.get_time_zone(self.hass.config.time_zone)
         if tz is None:
@@ -1331,13 +1330,7 @@ class IrrigationRuntime:
         for slot in inst.schedule_slots:
             if not slot.enabled:
                 continue
-            nxt = next_slot_fire_local_any(
-                now - timedelta(minutes=2),
-                slot.weekdays,
-                slot.time_local,
-                tz,
-                slot.week_parity,
-            )
+            nxt = next_slot_fire(inst, slot, now - timedelta(minutes=2), tz)
             if nxt is None:
                 continue
             if abs((now - nxt).total_seconds()) < 120:

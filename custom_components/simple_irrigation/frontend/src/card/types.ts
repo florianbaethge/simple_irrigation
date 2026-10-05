@@ -107,6 +107,8 @@ export interface WeekRun {
   start_min: number;
   duration_min: number;
   parity_only: boolean;
+  /** Dashed like a parity-only run, but because the day is out of season. */
+  off_season?: boolean;
   paused: boolean;
 }
 

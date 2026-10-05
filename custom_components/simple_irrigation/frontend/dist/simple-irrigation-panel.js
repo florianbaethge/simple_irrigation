@@ -1167,6 +1167,12 @@ const sharedStyles = i$7 `
     border-color: color-mix(in srgb, var(--primary-color) 45%, transparent);
     color: var(--text-primary-color, #fff);
   }
+  /* Due by its rhythm, but out of season: drawn, not filled. */
+  .day-strip .day-cell.off {
+    border-style: dashed;
+    border-color: color-mix(in srgb, var(--primary-color) 55%, transparent);
+    background: transparent;
+  }
   .day-strip .day-cell.today {
     outline: 2px solid var(--primary-color);
     outline-offset: 1px;
@@ -1540,6 +1546,129 @@ function programMinutes(phases, cs, zoneMinutes) {
     return total;
 }
 
+/**
+ * Seasons: when in the year a schedule waters by itself. Mirrors season.py —
+ * the panel previews what the scheduler will do, so both must agree.
+ *
+ * A period is two days of the year, both included, the same every year; it may
+ * run across New Year. A season is a list of periods, and an empty list is the
+ * whole year. A slot follows the installation's season unless it brings its own.
+ */
+/** The same cap as the backend (MAX_SEASON_PERIODS in const.py). */
+const MAX_SEASON_PERIODS = 6;
+const DAYS_IN_MONTH = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+/** How many days a month can have; February counts its leap day. */
+function daysInMonth(month) {
+    return DAYS_IN_MONTH[month - 1] ?? 31;
+}
+/** "MM-DD" as [month, day], or null for anything that is no day of the year. */
+function parseMonthDay(raw) {
+    const parts = String(raw ?? "").trim().split("-");
+    if (parts.length !== 2)
+        return null;
+    const month = Number(parts[0]);
+    const day = Number(parts[1]);
+    if (!Number.isInteger(month) || !Number.isInteger(day))
+        return null;
+    if (month < 1 || month > 12 || day < 1 || day > daysInMonth(month))
+        return null;
+    return [month, day];
+}
+function monthDay(month, day) {
+    return `${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+/** A season from the panel state: its usable periods, each once. */
+function normalizeSeason(raw) {
+    if (!Array.isArray(raw))
+        return [];
+    const out = [];
+    for (const item of raw) {
+        const rec = (item ?? {});
+        const from = parseMonthDay(rec.from);
+        const to = parseMonthDay(rec.to);
+        if (!from || !to)
+            continue;
+        const period = { from: monthDay(...from), to: monthDay(...to) };
+        if (!out.some((p) => p.from === period.from && p.to === period.to))
+            out.push(period);
+    }
+    return out.slice(0, MAX_SEASON_PERIODS);
+}
+function periodContains(period, day) {
+    // "MM-DD" sorts like the calendar, so the strings can be compared as they are.
+    const md = monthDay(day.getMonth() + 1, day.getDate());
+    return period.from <= period.to
+        ? period.from <= md && md <= period.to
+        : md >= period.from || md <= period.to;
+}
+/** Whether `day` is in season. No periods at all is the whole year. */
+function inSeason(periods, day) {
+    return periods.length === 0 || periods.some((period) => periodContains(period, day));
+}
+/** The periods that decide for a slot: its own, or the installation's. */
+function seasonFor(installation, slot) {
+    return slot?.override_season
+        ? normalizeSeason(slot.season)
+        : normalizeSeason(installation?.season);
+}
+/** The first day from `day` on that is in season (null if there is none). */
+function nextDayInSeason(periods, day) {
+    for (let i = 0; i < 367; i++) {
+        const candidate = new Date(day.getFullYear(), day.getMonth(), day.getDate() + i);
+        if (inSeason(periods, candidate))
+            return candidate;
+    }
+    return null;
+}
+/** Whether two seasons share a day of the year. */
+function seasonsOverlap(a, b) {
+    if (a.length === 0 || b.length === 0)
+        return true;
+    for (let i = 0; i < 366; i++) {
+        // A leap year, so the 29th of February is looked at too.
+        const day = new Date(2024, 0, 1 + i);
+        if (inSeason(a, day) && inSeason(b, day))
+            return true;
+    }
+    return false;
+}
+/**
+ * Where a day-by-day look-ahead should start: today while anything is in
+ * season, otherwise the day the first of these seasons opens. Out of season
+ * nothing fires for months, and a three-week window from today would be empty.
+ */
+function lookAheadStart(seasons, today) {
+    let first = null;
+    for (const periods of seasons) {
+        const opening = nextDayInSeason(periods, today);
+        if (opening && (!first || opening < first))
+            first = opening;
+    }
+    return first ?? today;
+}
+function language(hass) {
+    return hass?.locale?.language ?? hass?.language ?? undefined;
+}
+/** "1 Apr" in the user's language; a leap year, so the 29th of February has a name. */
+function formatMonthDay(hass, raw) {
+    const parsed = parseMonthDay(raw);
+    if (!parsed)
+        return raw;
+    return new Intl.DateTimeFormat(language(hass), { day: "numeric", month: "short" }).format(new Date(2024, parsed[0] - 1, parsed[1]));
+}
+/** "1 Apr – 31 Oct, …", in the order of the year. */
+function formatSeason(hass, periods) {
+    return [...periods]
+        .sort((a, b) => a.from.localeCompare(b.from))
+        .map((p) => `${formatMonthDay(hass, p.from)} – ${formatMonthDay(hass, p.to)}`)
+        .join(", ");
+}
+/** Month names for the pickers, January first. */
+function monthNames(hass) {
+    const fmt = new Intl.DateTimeFormat(language(hass), { month: "long" });
+    return Array.from({ length: 12 }, (_, i) => fmt.format(new Date(2024, i, 1)));
+}
+
 /** Longest a zone may run (`MAX_ZONE_DURATION_MIN` in const.py). */
 const MAX_ZONE_MINUTES = 240;
 function zoneMinutesOf(slot) {
@@ -1736,6 +1865,7 @@ function buildTimetableEntries(installation) {
             ? slot.zone_ids_ordered
             : [];
         const fixed = zoneMinutesOf(slot);
+        const offSeason = !inSeason(seasonFor(installation, slot), new Date());
         const slotStartMin = parseTimeLocalToMinutes(timeLocal);
         const phases = computePhases(ordered, zonesById, maxParallel, false);
         // Cycle & Soak: every pass draws its own blocks, a rest just moves the cursor.
@@ -1776,7 +1906,8 @@ function buildTimetableEntries(installation) {
                         startMin,
                         endMin,
                         bucket: bucketFromStartMin(startMin),
-                        enabled: planEnabled && slotEnabled && zoneEnabled,
+                        enabled: planEnabled && slotEnabled && zoneEnabled && !offSeason,
+                        offSeason,
                         mode,
                         slotId,
                         weekParity,
@@ -2052,15 +2183,19 @@ function weekParityMatches(d, parity) {
         return isoWeekNumber(d) % 2 === 0;
     return true;
 }
-/** 14-day strip starting at `start`; a day runs when any slot fires on it. */
-function previewStrip(slots, start, today, days = 14) {
+/**
+ * 14-day strip starting at `start`; a day runs when any slot fires on it and
+ * the day is in `season` (no periods: the whole year).
+ */
+function previewStrip(slots, start, today, days = 14, season = []) {
     const out = [];
     const tKey = today.toDateString();
     for (let i = 0; i < days; i++) {
         const d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
         const wd = mondayBasedWeekday(d);
-        const run = slots.some((s) => s.weekdays.includes(wd) && weekParityMatches(d, s.week_parity));
-        out.push({ date: d, run, isToday: d.toDateString() === tKey });
+        const due = slots.some((s) => s.weekdays.includes(wd) && weekParityMatches(d, s.week_parity));
+        const open = inSeason(season, d);
+        out.push({ date: d, run: due && open, off: due && !open, isToday: d.toDateString() === tKey });
     }
     return out;
 }
@@ -2080,12 +2215,17 @@ function previewGaps(slots, start, days = 28) {
     }
     return gaps;
 }
-/** First date on/after `start` on which any slot fires (null if none within 28 days). */
-function firstRunDate(slots, start, days = 28) {
+/**
+ * First date on/after `start` on which any slot fires in `season` (null if none
+ * within 28 days of the season being open).
+ */
+function firstRunDate(slots, start, days = 28, season = []) {
+    const from = nextDayInSeason(season, start) ?? start;
     for (let i = 0; i < days; i++) {
-        const d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
+        const d = new Date(from.getFullYear(), from.getMonth(), from.getDate() + i);
         const wd = mondayBasedWeekday(d);
-        if (slots.some((s) => s.weekdays.includes(wd) && weekParityMatches(d, s.week_parity))) {
+        if (inSeason(season, d) &&
+            slots.some((s) => s.weekdays.includes(wd) && weekParityMatches(d, s.week_parity))) {
             return d;
         }
     }
@@ -2428,6 +2568,19 @@ class ViewOverview extends i$4 {
             return names.join(", ");
         return `${names.slice(0, 2).join(", ")} +${names.length - 2}`;
     }
+    /**
+     * The day the first schedule comes back into season, while none is in season
+     * today; null when something is in season or nothing is scheduled at all.
+     */
+    _seasonOpens() {
+        const slots = this._inst.schedule_slots ?? [];
+        const enabled = slots.filter((slot) => slot.enabled ?? true);
+        if (!enabled.length)
+            return null;
+        const today = new Date();
+        const opens = lookAheadStart(enabled.map((slot) => seasonFor(this._inst, slot)), today);
+        return opens.toDateString() === today.toDateString() ? null : opens;
+    }
     /** The next `limit` distinct run fires across all enabled slots (client-side). */
     _upcomingRuns(limit) {
         const slots = this._inst.schedule_slots ?? [];
@@ -2437,8 +2590,9 @@ class ViewOverview extends i$4 {
         const now = new Date();
         const runs = [];
         const mode = this._mode();
+        const start = this._seasonOpens() ?? now;
         for (let i = 0; i < 21 && runs.length < limit * 4; i++) {
-            const day = new Date(now.getFullYear(), now.getMonth(), now.getDate() + i);
+            const day = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
             const wd = mondayBasedWeekday(day);
             for (const slot of slots) {
                 if (!(slot.enabled ?? true))
@@ -2450,6 +2604,8 @@ class ViewOverview extends i$4 {
                     continue;
                 const parity = String(slot.week_parity ?? "every");
                 if (!weekParityMatches(day, parity))
+                    continue;
+                if (!inSeason(seasonFor(this._inst, slot), day))
                     continue;
                 const [h, mi] = String(slot.time_local ?? "06:00").split(":").map(Number);
                 const when = new Date(day.getFullYear(), day.getMonth(), day.getDate(), h || 0, mi || 0);
@@ -2483,6 +2639,9 @@ class ViewOverview extends i$4 {
             return t$2(this.hass, "config_panel.overview_today");
         if (diff === 1)
             return t$2(this.hass, "config_panel.overview_tomorrow");
+        // Further out than a week a weekday says nothing: the season's first runs.
+        if (diff >= 7)
+            return formatMonthDay(this.hass, monthDay(d.getMonth() + 1, d.getDate()));
         return weekdayLong(this.hass, mondayBasedWeekday(d));
     }
     _fmtCountdown(ms) {
@@ -2804,6 +2963,7 @@ class ViewOverview extends i$4 {
     `;
     }
     _renderNextRuns(runs) {
+        const seasonOpens = this._seasonOpens();
         return b `
       <ha-card>
         <div class="card-header">
@@ -2818,6 +2978,13 @@ class ViewOverview extends i$4 {
         <div class="card-content">
           ${!this._planEnabled()
             ? b `<p class="hint">${t$2(this.hass, "config_panel.general_plan_off_hint")}</p>`
+            : A}
+          ${seasonOpens && this._planEnabled()
+            ? b `<p class="hint">
+                ${t$2(this.hass, "config_panel.overview_season_opens", {
+                date: formatMonthDay(this.hass, monthDay(seasonOpens.getMonth() + 1, seasonOpens.getDate())),
+            })}
+              </p>`
             : A}
           ${runs.length
             ? runs.map((r, i) => {
@@ -3386,6 +3553,40 @@ const formLayoutStyles = i$7 `
     display: block;
     width: 100%;
   }
+  /* A season's periods: "from" and "to" side by side, one under the other
+     where they do not fit. */
+  .season-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    width: 100%;
+    margin-top: 10px;
+  }
+  .season-rows > button.btn-outline {
+    align-self: flex-start;
+  }
+  .season-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 16px;
+  }
+  .season-date {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .season-date-label {
+    min-width: 2.6em;
+    font-size: 0.875rem;
+    color: var(--secondary-text-color);
+  }
+  .season-date select.season-day {
+    width: 4.6em;
+  }
+  .season-date select.season-month {
+    width: 9.5em;
+  }
   button.row-remove {
     flex-shrink: 0;
     padding: 8px 12px;
@@ -3571,6 +3772,118 @@ function renderCycleSoakEditor(hass, cs, busy, onChange) {
   `;
 }
 
+/** What a new period starts out as: the one most gardens want. */
+const DEFAULT_PERIOD = { from: "04-01", to: "10-31" };
+/**
+ * The list of periods a season is made of: day and month, from and to, for
+ * each. Settings and the slot editors share it. A day picker, not a date
+ * field — a date would ask for a year, and the season has none.
+ */
+function renderSeasonEditor(hass, periods, busy, onChange) {
+    const months = monthNames(hass);
+    const picker = (index, key, labelKey) => {
+        const [month, day] = parseMonthDay(periods[index][key]) ?? [1, 1];
+        const set = (nextMonth, nextDay) => {
+            // A shorter month takes its own last day: 31 March becomes 30 April.
+            const value = monthDay(nextMonth, Math.max(1, Math.min(nextDay, daysInMonth(nextMonth))));
+            onChange(periods.map((p, i) => (i === index ? { ...p, [key]: value } : p)));
+        };
+        return b `
+      <div class="season-date">
+        <span class="season-date-label">${t$2(hass, labelKey)}</span>
+        <select
+          class="field-select season-day"
+          aria-label=${t$2(hass, "config_panel.season_day")}
+          ?disabled=${busy}
+          @change=${(e) => set(month, Number(e.target.value))}
+        >
+          ${Array.from({ length: daysInMonth(month) }, (_, i) => i + 1).map((d) => b `<option value=${d} ?selected=${d === day}>${d}</option>`)}
+        </select>
+        <select
+          class="field-select season-month"
+          aria-label=${t$2(hass, "config_panel.season_month")}
+          ?disabled=${busy}
+          @change=${(e) => set(Number(e.target.value), day)}
+        >
+          ${months.map((name, i) => b `<option value=${i + 1} ?selected=${i + 1 === month}>${name}</option>`)}
+        </select>
+      </div>
+    `;
+    };
+    return b `
+    <div class="season-rows">
+      ${periods.map((_period, i) => b `
+          <div class="season-row">
+            ${picker(i, "from", "config_panel.season_from")}
+            ${picker(i, "to", "config_panel.season_to")}
+            <button
+              type="button"
+              class="row-remove"
+              ?disabled=${busy}
+              @click=${() => onChange(periods.filter((_p, idx) => idx !== i))}
+            >
+              ${t$2(hass, "config_panel.general_remove")}
+            </button>
+          </div>
+        `)}
+      ${periods.length < MAX_SEASON_PERIODS
+        ? b `<button
+            type="button"
+            class="btn-outline"
+            ?disabled=${busy}
+            @click=${() => onChange([...periods, { ...DEFAULT_PERIOD }])}
+          >
+            ${t$2(hass, "config_panel.season_add")}
+          </button>`
+        : A}
+    </div>
+  `;
+}
+function seasonChoice(season) {
+    if (!season.override)
+        return "inherit";
+    return season.periods.length ? "own" : "all_year";
+}
+/**
+ * The season block of the slot editor and the cycle wizard: follow the
+ * installation, water all year, or bring own periods. Folded away while the
+ * slot simply follows the installation.
+ */
+function renderSlotSeason(hass, season, choice, busy, onChange) {
+    const pick = (next) => {
+        if (next === "inherit")
+            onChange({ override: false, periods: season.periods }, next);
+        else if (next === "all_year")
+            onChange({ override: true, periods: [] }, next);
+        else
+            onChange({ override: true, periods: season.periods.length ? season.periods : [{ ...DEFAULT_PERIOD }] }, next);
+    };
+    return b `
+    <details class="inline-help" ?open=${choice !== "inherit"}>
+      <summary>
+        <ha-icon class="inline-help-icon" icon="mdi:calendar-range"></ha-icon>
+        ${t$2(hass, "config_panel.season_slot_summary")}
+      </summary>
+      <p>${t$2(hass, "config_panel.season_slot_desc")}</p>
+      <div class="field-row">
+        <select
+          class="field-select"
+          aria-label=${t$2(hass, "config_panel.season_slot_summary")}
+          ?disabled=${busy}
+          @change=${(e) => pick(e.target.value)}
+        >
+          ${["inherit", "all_year", "own"].map((value) => b `<option value=${value} ?selected=${value === choice}>
+              ${t$2(hass, `config_panel.season_choice_${value}`)}
+            </option>`)}
+        </select>
+      </div>
+      ${choice === "own"
+        ? renderSeasonEditor(hass, season.periods, busy, (periods) => onChange({ override: true, periods }, "own"))
+        : A}
+    </details>
+  `;
+}
+
 const KIND_OPTIONS = [
     { id: "daily", kind: "daily", multiAnchor: false },
     { id: "every_2_days", kind: "every_n_days", n: 2, multiAnchor: false },
@@ -3605,6 +3918,9 @@ class CycleWizard extends i$4 {
         this._preStartScript = EMPTY_SCRIPT_OVERRIDE;
         this._postRunScript = EMPTY_SCRIPT_OVERRIDE;
         this._cycleSoak = PLAIN_RUN;
+        // Own periods of the year; without them the cycle follows the installation.
+        this._season = { override: false, periods: [] };
+        this._seasonChoice = "inherit";
         this._cycleId = null;
         this._busy = false;
         this._seeded = false;
@@ -3765,6 +4081,8 @@ class CycleWizard extends i$4 {
             this._preStartScript = { ...EMPTY_SCRIPT_OVERRIDE };
             this._postRunScript = { ...EMPTY_SCRIPT_OVERRIDE };
             this._cycleSoak = { ...PLAIN_RUN };
+            this._season = { override: false, periods: [] };
+            this._seasonChoice = "inherit";
             this._syncDefaultsForOption();
         }
         this._step = opts?.step ?? 1;
@@ -3806,6 +4124,17 @@ class CycleWizard extends i$4 {
         this._preStartScript = normalizeScriptOverride(first, "pre_start");
         this._postRunScript = normalizeScriptOverride(first, "post_run");
         this._cycleSoak = cycleSoakOf(first);
+        this._season = {
+            override: Boolean(first.override_season ?? false),
+            periods: normalizeSeason(first.season),
+        };
+        this._seasonChoice = seasonChoice(this._season);
+    }
+    /** The periods that decide for this cycle: its own, or the installation's. */
+    _periods() {
+        return this._season.override
+            ? this._season.periods
+            : normalizeSeason(this.installation?.season);
     }
     _option() {
         return KIND_OPTIONS.find((o) => o.id === this._optionId) ?? KIND_OPTIONS[0];
@@ -3909,6 +4238,7 @@ class CycleWizard extends i$4 {
         if (!zones)
             return false;
         const est = this._estimateMin();
+        const season = this._periods();
         const mine = this._slots().map((s) => ({
             days: new Set(s.weekdays),
             start: parseTimeLocalToMinutes(s.time_local),
@@ -3919,6 +4249,9 @@ class CycleWizard extends i$4 {
             if (this._cycleId && String(slot.cycle_id ?? "") === this._cycleId)
                 continue;
             if (!(slot.enabled ?? true))
+                continue;
+            // A summer and a spring schedule at the same hour never meet.
+            if (!seasonsOverlap(season, seasonFor(this.installation, slot)))
                 continue;
             const days = new Set(Array.isArray(slot.weekdays) ? slot.weekdays : [Number(slot.weekday ?? 0)]);
             const start = parseTimeLocalToMinutes(String(slot.time_local ?? "00:00"));
@@ -3939,9 +4272,12 @@ class CycleWizard extends i$4 {
     _firstRun(slots) {
         const now = new Date();
         const starts = normalizeStartTimes(this._times).map(parseTimeLocalToMinutes);
+        const season = this._periods();
+        // Out of season the first run is months away: look from where it opens.
+        const from = nextDayInSeason(season, now) ?? now;
         for (let i = 0; i <= 28; i++) {
-            const day = new Date(now.getFullYear(), now.getMonth(), now.getDate() + i);
-            if (!firstRunDate(slots, day, 1))
+            const day = new Date(from.getFullYear(), from.getMonth(), from.getDate() + i);
+            if (!inSeason(season, day) || !firstRunDate(slots, day, 1))
                 continue;
             for (const start of starts) {
                 const at = new Date(day.getFullYear(), day.getMonth(), day.getDate(), 0, start);
@@ -4009,6 +4345,8 @@ class CycleWizard extends i$4 {
                 soak_between_phases_min: this._cycleSoak.soakBetweenPhasesMin,
                 soak_between_repetitions_min: this._cycleSoak.soakBetweenRepetitionsMin,
                 zone_minutes: zoneMinutesForSave(this._zoneMinutes, this._zoneIds),
+                override_season: this._season.override,
+                season: this._season.periods,
             });
             if (!res.success) {
                 this._msg = formatApiError(res.error, this.hass);
@@ -4091,7 +4429,7 @@ class CycleWizard extends i$4 {
         const slots = this._slots();
         const today = new Date();
         const start = today;
-        const strip = previewStrip(slots, start, today, 14);
+        const strip = previewStrip(slots, start, today, 14, this._periods());
         const gaps = previewGaps(slots, start);
         const uniqueGaps = [...new Set(gaps)];
         const first = this._firstRun(slots);
@@ -4170,7 +4508,7 @@ class CycleWizard extends i$4 {
       <div class="section-title">${t$2(this.hass, "config_panel.cycle_preview_title")}</div>
       <div class="day-strip">
         ${strip.map((d) => b `
-            <div class="day-cell ${d.run ? "run" : ""} ${d.isToday ? "today" : ""}">
+            <div class="day-cell ${d.run ? "run" : ""} ${d.off ? "off" : ""} ${d.isToday ? "today" : ""}">
               <span class="dc-dow">${weekdayShort(this.hass, mondayBasedWeekday(d.date))}</span>
               <span class="dc-dom">${d.date.getDate()}</span>
             </div>
@@ -4319,6 +4657,10 @@ class CycleWizard extends i$4 {
 
       ${renderCycleSoakEditor(this.hass, this._cycleSoak, this._busy, (next) => {
             this._cycleSoak = next;
+        })}
+      ${renderSlotSeason(this.hass, this._season, this._seasonChoice, this._busy, (next, choice) => {
+            this._season = next;
+            this._seasonChoice = choice;
         })}
 
       <div class="field-block">
@@ -4500,6 +4842,12 @@ __decorate([
 ], CycleWizard.prototype, "_cycleSoak", void 0);
 __decorate([
     r()
+], CycleWizard.prototype, "_season", void 0);
+__decorate([
+    r()
+], CycleWizard.prototype, "_seasonChoice", void 0);
+__decorate([
+    r()
 ], CycleWizard.prototype, "_cycleId", void 0);
 __decorate([
     r()
@@ -4647,6 +4995,10 @@ class ViewSchedule extends i$4 {
             const o = raw;
             const wds = normalizeWeekdays(o.weekdays);
             const rid = o.cycle_id ? String(o.cycle_id) : null;
+            const season = {
+                override: Boolean(o.override_season ?? false),
+                periods: normalizeSeason(o.season),
+            };
             return {
                 slot_id: String(o.slot_id ?? ""),
                 weekdays: wds.length ? wds : normalizeWeekdays([o.weekday ?? 0]),
@@ -4664,8 +5016,14 @@ class ViewSchedule extends i$4 {
                 cycle_meta: o.cycle_meta ?? null,
                 cycle_soak: cycleSoakOf(o),
                 zone_minutes: zoneMinutesOf(o),
+                season,
+                season_choice: seasonChoice(season),
             };
         });
+    }
+    /** The periods that decide for a slot: its own, or the installation's. */
+    _seasonOf(s) {
+        return s?.season.override ? s.season.periods : normalizeSeason(this.installation?.season);
     }
     /**
      * Split slots into real cycles (>=2 linked members) and single slots.
@@ -4715,6 +5073,7 @@ class ViewSchedule extends i$4 {
             post_run_script: { ...s.post_run_script },
             cycle_soak: { ...s.cycle_soak },
             zone_minutes: { ...s.zone_minutes },
+            season: { override: s.season.override, periods: s.season.periods.map((p) => ({ ...p })) },
         };
     }
     /** The installation's script for one phase, inherited unless a slot overrides. */
@@ -4745,6 +5104,65 @@ class ViewSchedule extends i$4 {
             u: unit,
         })}</span
     >`;
+    }
+    /** "Tue 06:00" for a run this week, "1 Apr 06:00" for one further out. */
+    _nextLabel(next) {
+        const time = formatTimeLocalForDisplay(this.hass, `${next.getHours()}:${String(next.getMinutes()).padStart(2, "0")}`);
+        const soon = next.getTime() - Date.now() < 7 * 86400000;
+        const day = soon
+            ? weekdayShort(this.hass, mondayBasedWeekday(next))
+            : formatMonthDay(this.hass, monthDay(next.getMonth() + 1, next.getDate()));
+        return `${day} ${time}`;
+    }
+    /** Read-only chip on a row that brings its own season. */
+    _renderSeasonMeta(s) {
+        if (!s?.season.override)
+            return A;
+        // "All year" only says something where the installation has a season.
+        if (!s.season.periods.length && !normalizeSeason(this.installation?.season).length) {
+            return A;
+        }
+        return b `<span class="meta"
+      ><ha-icon icon="mdi:calendar-range"></ha-icon>${s.season.periods.length
+            ? formatSeason(this.hass, s.season.periods)
+            : t$2(this.hass, "config_panel.season_choice_all_year")}</span
+    >`;
+    }
+    /**
+     * A badge for a row whose own season is closed today, with the day it comes
+     * back. Rows that follow the installation share one line above the list.
+     */
+    _renderOffSeasonBadge(s) {
+        if (!s?.season.override)
+            return A;
+        const periods = s.season.periods;
+        const today = new Date();
+        if (inSeason(periods, today))
+            return A;
+        const opens = nextDayInSeason(periods, today);
+        return b `<span class="badge"
+      >${t$2(this.hass, "config_panel.season_badge_off", {
+            date: opens
+                ? formatMonthDay(this.hass, monthDay(opens.getMonth() + 1, opens.getDate()))
+                : "",
+        })}</span
+    >`;
+    }
+    /** One line for every row that follows the installation while its season is closed. */
+    _renderInstallationOffSeason() {
+        const periods = normalizeSeason(this.installation?.season);
+        const today = new Date();
+        if (inSeason(periods, today) || !this._slots().some((s) => !s.season.override)) {
+            return A;
+        }
+        const opens = nextDayInSeason(periods, today);
+        return b `<p class="hint">
+      ${t$2(this.hass, "config_panel.overview_season_opens", {
+            date: opens
+                ? formatMonthDay(this.hass, monthDay(opens.getMonth() + 1, opens.getDate()))
+                : "",
+        })}
+    </p>`;
     }
     /** Read-only chip on a row that waters in passes with rests in between. */
     _renderCycleSoakMeta(s) {
@@ -4829,15 +5247,17 @@ class ViewSchedule extends i$4 {
     }
     _nextFire(members) {
         const now = new Date();
+        const enabled = members.filter((m) => m.enabled);
+        const start = lookAheadStart(enabled.map((m) => this._seasonOf(m)), now);
         for (let i = 0; i < 21; i++) {
-            const day = new Date(now.getFullYear(), now.getMonth(), now.getDate() + i);
+            const day = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
             const wd = mondayBasedWeekday(day);
-            for (const m of members) {
-                if (!m.enabled)
-                    continue;
+            for (const m of enabled) {
                 if (!m.weekdays.includes(wd))
                     continue;
                 if (!weekParityMatches(day, m.week_parity))
+                    continue;
+                if (!inSeason(this._seasonOf(m), day))
                     continue;
                 const [h, mi] = m.time_local.split(":").map(Number);
                 const cand = new Date(day.getFullYear(), day.getMonth(), day.getDate(), h || 0, mi || 0);
@@ -5021,7 +5441,8 @@ class ViewSchedule extends i$4 {
         const buckets = new Map();
         for (const s of custom) {
             const minutes = JSON.stringify(zoneMinutesForSave(s.zone_minutes, s.zone_ids_ordered));
-            const key = `${s.time_local}||${s.zone_ids_ordered.join(",")}||${minutes}`;
+            const season = JSON.stringify(s.season.override ? s.season.periods : null);
+            const key = `${s.time_local}||${s.zone_ids_ordered.join(",")}||${minutes}||${season}`;
             if (!buckets.has(key))
                 buckets.set(key, []);
             buckets.get(key).push(s);
@@ -5034,6 +5455,7 @@ class ViewSchedule extends i$4 {
             const time = list[0].time_local;
             const zoneIds = list[0].zone_ids_ordered;
             const zoneMinutes = zoneMinutesForSave(list[0].zone_minutes, zoneIds);
+            const season = list[0].season;
             const memberIds = list.map((s) => s.slot_id);
             if (parities.size === 1 && parities.has("every")) {
                 // Merge weekday union into a single every-week cycle.
@@ -5044,7 +5466,7 @@ class ViewSchedule extends i$4 {
                     meta.anchor_weekday = union[0];
                 else if (optionId === "n_per_week")
                     meta.week_days = union;
-                proposals.push({ optionId, meta, zoneIds, zoneMinutes, memberIds, label: list[0].name });
+                proposals.push({ optionId, meta, zoneIds, zoneMinutes, season, memberIds, label: list[0].name });
             }
             else if (list.length === 2 &&
                 parities.has("odd") &&
@@ -5055,6 +5477,7 @@ class ViewSchedule extends i$4 {
                     meta: { times: [time], n: 2, anchor_weekday: normalizeWeekdays(list[0].weekdays)[0] ?? 0 },
                     zoneIds,
                     zoneMinutes,
+                    season,
                     memberIds,
                     label: list[0].name,
                 });
@@ -5084,6 +5507,8 @@ class ViewSchedule extends i$4 {
                     cycle_meta: p.meta,
                     zone_ids_ordered: p.zoneIds,
                     zone_minutes: p.zoneMinutes,
+                    override_season: p.season.override,
+                    season: p.season.periods,
                     enabled: true,
                 });
                 if (!res.success) {
@@ -5202,6 +5627,8 @@ class ViewSchedule extends i$4 {
             soak_between_phases_min: d.cycle_soak.soakBetweenPhasesMin,
             soak_between_repetitions_min: d.cycle_soak.soakBetweenRepetitionsMin,
             zone_minutes: zoneMinutesForSave(d.zone_minutes, d.zone_ids_ordered),
+            override_season: d.season.override,
+            season: d.season.periods,
         });
         if (ok)
             this._closeEditDialog();
@@ -5334,7 +5761,7 @@ class ViewSchedule extends i$4 {
             week_parity: m.week_parity,
         }));
         const today = new Date();
-        const strip = previewStrip(specs, today, today, 14);
+        const strip = previewStrip(specs, today, today, 14, this._seasonOf(g.members[0]));
         return b `
       <div class="compact-row ${accent}">
         <div class="compact-row-header">
@@ -5348,6 +5775,7 @@ class ViewSchedule extends i$4 {
               <span class="ellipsis">${label}</span>
               <span class="badge badge-primary">${this._cycleBadge(g.kind, g.meta)}</span>
               ${this._renderFixedMinutesBadge(g.members[0])}
+              ${this._renderOffSeasonBadge(g.members[0])}
               ${!anyEnabled
             ? b `<span class="badge">${t$2(this.hass, "config_panel.cycle_paused_n", {
                 n: g.members.length,
@@ -5366,12 +5794,11 @@ class ViewSchedule extends i$4 {
                 ><ha-icon icon="mdi:vector-square"></ha-icon>${t$2(this.hass, "config_panel.cycle_meta_zones", { z: zoneIds.length, p: phases, m: est })}</span
               >
               ${g.members[0]
-            ? b `${this._renderGuardMeta(g.members[0].guards, g.members[0].ignore_global_guards)}${this._renderScriptMeta(g.members[0])}${this._renderCycleSoakMeta(g.members[0])}${this._renderWaterMeta(g.members[0])}`
+            ? b `${this._renderGuardMeta(g.members[0].guards, g.members[0].ignore_global_guards)}${this._renderScriptMeta(g.members[0])}${this._renderCycleSoakMeta(g.members[0])}${this._renderSeasonMeta(g.members[0])}${this._renderWaterMeta(g.members[0])}`
             : A}
               ${next
             ? b `<span class="meta"
-                    ><ha-icon icon="mdi:skip-next-outline"></ha-icon>${weekdayShort(this.hass, mondayBasedWeekday(next))}
-                    ${formatTimeLocalForDisplay(this.hass, `${next.getHours()}:${String(next.getMinutes()).padStart(2, "0")}`)}</span
+                    ><ha-icon icon="mdi:skip-next-outline"></ha-icon>${this._nextLabel(next)}</span
                   >`
             : A}
               <span class="meta"
@@ -5414,7 +5841,7 @@ class ViewSchedule extends i$4 {
         ${expanded
             ? b `<div class="compact-row-detail">
               <div class="day-strip" style="margin-top:10px">
-                ${strip.map((d) => b `<div class="day-cell ${d.run ? "run" : ""} ${d.isToday ? "today" : ""}">
+                ${strip.map((d) => b `<div class="day-cell ${d.run ? "run" : ""} ${d.off ? "off" : ""} ${d.isToday ? "today" : ""}">
                     <span class="dc-dow">${weekdayShort(this.hass, mondayBasedWeekday(d.date))}</span>
                     <span class="dc-dom">${d.date.getDate()}</span>
                   </div>`)}
@@ -5441,7 +5868,7 @@ class ViewSchedule extends i$4 {
         const expanded = this._expanded.has(s.slot_id);
         const next = this._nextFire([s]);
         const today = new Date();
-        const strip = previewStrip([{ weekdays: s.weekdays, time_local: s.time_local, week_parity: s.week_parity }], today, today, 14);
+        const strip = previewStrip([{ weekdays: s.weekdays, time_local: s.time_local, week_parity: s.week_parity }], today, today, 14, this._seasonOf(s));
         return b `
       <div class="compact-row ${accent}">
         <div class="compact-row-header">
@@ -5460,6 +5887,7 @@ class ViewSchedule extends i$4 {
             ? b `<span class="badge badge-primary badge-dot">${this._parityLabel(s.week_parity)}</span>`
             : A}
               ${this._renderFixedMinutesBadge(s)}
+              ${this._renderOffSeasonBadge(s)}
             </div>
             <div class="meta-line">
               <span class="meta"
@@ -5468,11 +5896,11 @@ class ViewSchedule extends i$4 {
               ${this._renderGuardMeta(s.guards, s.ignore_global_guards)}
               ${this._renderScriptMeta(s)}
               ${this._renderCycleSoakMeta(s)}
+              ${this._renderSeasonMeta(s)}
               ${this._renderWaterMeta(s)}
               ${next
             ? b `<span class="meta"
-                    ><ha-icon icon="mdi:skip-next-outline"></ha-icon>${weekdayShort(this.hass, mondayBasedWeekday(next))}
-                    ${formatTimeLocalForDisplay(this.hass, `${next.getHours()}:${String(next.getMinutes()).padStart(2, "0")}`)}</span
+                    ><ha-icon icon="mdi:skip-next-outline"></ha-icon>${this._nextLabel(next)}</span
                   >`
             : A}
             </div>
@@ -5509,7 +5937,7 @@ class ViewSchedule extends i$4 {
         ${expanded
             ? b `<div class="compact-row-detail">
               <div class="day-strip" style="margin-top:10px">
-                ${strip.map((d) => b `<div class="day-cell ${d.run ? "run" : ""} ${d.isToday ? "today" : ""}">
+                ${strip.map((d) => b `<div class="day-cell ${d.run ? "run" : ""} ${d.off ? "off" : ""} ${d.isToday ? "today" : ""}">
                     <span class="dc-dow">${weekdayShort(this.hass, mondayBasedWeekday(d.date))}</span>
                     <span class="dc-dom">${d.date.getDate()}</span>
                   </div>`)}
@@ -5716,6 +6144,11 @@ class ViewSchedule extends i$4 {
             draft.cycle_soak = next;
             this.requestUpdate();
         })}
+      ${renderSlotSeason(this.hass, draft.season, draft.season_choice, this._busy, (next, choice) => {
+            draft.season = next;
+            draft.season_choice = choice;
+            this.requestUpdate();
+        })}
     `;
     }
     render() {
@@ -5751,6 +6184,7 @@ class ViewSchedule extends i$4 {
                 </button>
               </div>`
             : b `
+                ${this._renderInstallationOffSeason()}
                 ${groups.map((g) => this._renderCycleRow(g))}
                 ${custom.map((s) => this._renderCustomRow(s))}
               `}
@@ -5891,6 +6325,7 @@ class ViewSettings extends i$4 {
         this._mode = "normal";
         this._maxParallel = 2;
         this._waitWhenBusy = false;
+        this._season = [];
         this._waitMaxMin = 120;
         this._preStart = [];
         this._waterMeter = "";
@@ -5964,6 +6399,7 @@ class ViewSettings extends i$4 {
         this._maxParallel = Number(inst.max_parallel_zones ?? 2);
         this._isDefault = Boolean(inst.is_default ?? false);
         this._waitWhenBusy = Boolean(inst.wait_when_busy ?? false);
+        this._season = normalizeSeason(inst.season);
         const wm = Number(inst.wait_max_min ?? 120);
         this._waitMaxMin = Number.isFinite(wm) ? Math.max(1, Math.min(720, Math.round(wm))) : 120;
         const ps = Array.isArray(inst.pre_start_switches)
@@ -6020,6 +6456,7 @@ class ViewSettings extends i$4 {
                 mode: this._mode,
                 max_parallel_zones: this._maxParallel,
                 wait_when_busy: this._waitWhenBusy,
+                season: this._season,
                 wait_max_min: this._waitMaxMin,
                 is_default: this._isDefault,
                 guards: guardsForSave(this._guards),
@@ -6320,6 +6757,15 @@ class ViewSettings extends i$4 {
             : A}
           </div>
 
+          <div class="section-title">${t$2(this.hass, "config_panel.settings_section_season")}</div>
+          <div class="field-block">
+            ${renderSeasonEditor(this.hass, this._season, this._busy, (next) => {
+            this._season = next;
+            this._markDirty();
+        })}
+            <p class="hint">${t$2(this.hass, "config_panel.settings_season_hint")}</p>
+          </div>
+
           <div class="section-title">${t$2(this.hass, "config_panel.settings_section_water")}</div>
           <div class="field-block">
             <div class="field-row">
@@ -6458,6 +6904,9 @@ __decorate([
 __decorate([
     r()
 ], ViewSettings.prototype, "_waitWhenBusy", void 0);
+__decorate([
+    r()
+], ViewSettings.prototype, "_season", void 0);
 __decorate([
     r()
 ], ViewSettings.prototype, "_guards", void 0);
@@ -6942,9 +7391,12 @@ class ViewTimetable extends i$4 {
             end,
             mode: modeLabel,
         });
-        if (e.weekParity === "every")
-            return base;
-        return `${base} · ${this._parityLabel(e.weekParity)}`;
+        const parts = [base];
+        if (e.weekParity !== "every")
+            parts.push(this._parityLabel(e.weekParity));
+        if (e.offSeason)
+            parts.push(t$2(this.hass, "config_panel.season_off"));
+        return parts.join(" · ");
     }
     _entriesForCell(map, weekday, zoneId, bucket) {
         return map.get(`${weekday}\t${zoneId}\t${bucket}`) ?? [];

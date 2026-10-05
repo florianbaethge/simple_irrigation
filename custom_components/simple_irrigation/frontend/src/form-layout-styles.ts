@@ -121,6 +121,40 @@ export const formLayoutStyles = css`
     display: block;
     width: 100%;
   }
+  /* A season's periods: "from" and "to" side by side, one under the other
+     where they do not fit. */
+  .season-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    width: 100%;
+    margin-top: 10px;
+  }
+  .season-rows > button.btn-outline {
+    align-self: flex-start;
+  }
+  .season-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 16px;
+  }
+  .season-date {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .season-date-label {
+    min-width: 2.6em;
+    font-size: 0.875rem;
+    color: var(--secondary-text-color);
+  }
+  .season-date select.season-day {
+    width: 4.6em;
+  }
+  .season-date select.season-month {
+    width: 9.5em;
+  }
   button.row-remove {
     flex-shrink: 0;
     padding: 8px 12px;

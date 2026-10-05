@@ -43,6 +43,7 @@ from .models import Installation, ScheduleSlot, Zone
 from .program import soak_minutes
 from .water import planned_litres
 from .runtime import ScheduleSlotRunError, ZoneManualRunError
+from .season import next_slot_fire, slot_in_season
 from .time_util import parse_hh_mm, week_parity_matches
 
 _LOGGER = logging.getLogger(__name__)
@@ -231,13 +232,13 @@ def _slot_payload(inst: Installation, slot: ScheduleSlot) -> dict[str, Any]:
     }
 
 
-def _slot_fires_on(slot: ScheduleSlot, day: date) -> bool:
-    """Whether an enabled slot fires on ``day`` (weekday + ISO-week parity)."""
+def _slot_fires_on(inst: Installation, slot: ScheduleSlot, day: date) -> bool:
+    """Whether an enabled slot fires on ``day`` (weekday, ISO-week parity, season)."""
     if not slot.enabled:
         return False
     if day.weekday() not in slot.weekdays:
         return False
-    return week_parity_matches(day, slot.week_parity)
+    return week_parity_matches(day, slot.week_parity) and slot_in_season(inst, slot, day)
 
 
 def _next_firings(
@@ -257,13 +258,22 @@ def _next_firings(
     today = now.astimezone(tz).date()
     pause_until = inst.pause_until
 
+    # Out of season nothing fires for months: start looking where the first
+    # schedule comes back, so the card says when that is instead of nothing.
+    openings = [
+        fire
+        for slot in inst.schedule_slots
+        if slot.enabled and (fire := next_slot_fire(inst, slot, now, tz)) is not None
+    ]
+    first_day = max(today, min(openings).astimezone(tz).date()) if openings else today
+
     firings: list[tuple[datetime, ScheduleSlot]] = []
     # Two ISO weeks is the longest gap an odd/even slot can have; three gives
     # head-room for a fully paused fortnight without an unbounded loop.
     for offset in range(21):
-        day = today + timedelta(days=offset)
+        day = first_day + timedelta(days=offset)
         for slot in inst.schedule_slots:
-            if not _slot_fires_on(slot, day):
+            if not _slot_fires_on(inst, slot, day):
                 continue
             parsed = parse_hh_mm(slot.time_local)
             if parsed is None:
@@ -322,7 +332,8 @@ def _week(hass: HomeAssistant, inst: Installation) -> dict[str, Any]:
             duration = _slot_duration_min(inst, slot)
             # A parity slot that does not fall in this ISO week is still drawn,
             # dashed, so the rhythm stays visible in a single week's view.
-            fires = week_parity_matches(day, slot.week_parity)
+            off_season = not slot_in_season(inst, slot, day)
+            fires = week_parity_matches(day, slot.week_parity) and not off_season
             fire_at = datetime.combine(
                 day, datetime.min.time().replace(hour=hour, minute=minute), tzinfo=tz
             )
@@ -334,6 +345,8 @@ def _week(hass: HomeAssistant, inst: Installation) -> dict[str, Any]:
                     "start_min": hour * 60 + minute,
                     "duration_min": duration,
                     "parity_only": not fires,
+                    # Out of season it is drawn the same way, and says why.
+                    "off_season": off_season,
                     "paused": paused,
                 }
             )

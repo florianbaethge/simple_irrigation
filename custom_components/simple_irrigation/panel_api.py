@@ -22,6 +22,7 @@ from homeassistant.util import dt as dt_util
 from .const import (
     MAX_REPETITIONS,
     MAX_SOAK_MIN,
+    MAX_SEASON_PERIODS,
     MAX_SUPPLY_DELAY_SEC,
     MAX_WAIT_MAX_MIN,
     MAX_ZONE_DURATION_MIN,
@@ -40,6 +41,7 @@ from .grouping import compute_phases
 from .models import (
     Guard,
     Installation,
+    Period,
     ScheduleSlot,
     Zone,
     normalize_weekdays,
@@ -56,7 +58,8 @@ from .cycle import (
 )
 from .runtime import ScheduleSlotRunError, ZoneManualRunError, ZoneStopError
 from .scheduler import compute_next_runs, phases_for_slot
-from .time_util import next_slot_fire_local_any, parse_hh_mm
+from .season import next_slot_fire
+from .time_util import parse_hh_mm
 from .validation import (
     parse_guard_list,
     parse_zone_switch_entities,
@@ -132,6 +135,44 @@ def _apply_slot_cycle_soak(slot: ScheduleSlot, data: dict[str, Any]) -> None:
         slot.soak_between_phases_min = int(data["soak_between_phases_min"])
     if "soak_between_repetitions_min" in data:
         slot.soak_between_repetitions_min = int(data["soak_between_repetitions_min"])
+
+
+# Periods of the year as {"from": "MM-DD", "to": "MM-DD"}; which days those are
+# is checked when they are applied.
+SEASON_SCHEMA = vol.All(
+    [vol.Schema({vol.Required("from"): cv.string, vol.Required("to"): cv.string})],
+    vol.Length(max=MAX_SEASON_PERIODS),
+)
+
+
+def _season_from_payload(raw: list[dict[str, str]]) -> list[Period] | None:
+    """The payload's periods, each once; None if one names no day of the year."""
+    periods: list[Period] = []
+    for item in raw:
+        period = Period.from_dict(item)
+        if period is None:
+            return None
+        if period not in periods:
+            periods.append(period)
+    return periods
+
+
+def _copy_slot_season(src: ScheduleSlot, dst: ScheduleSlot) -> None:
+    """Carry the season over to a slot derived from ``src`` (split, cycle)."""
+    dst.override_season = src.override_season
+    dst.season = list(src.season)
+
+
+def _apply_slot_season(slot: ScheduleSlot, data: dict[str, Any]) -> str | None:
+    """Copy the payload's season onto a slot; absent keys keep theirs."""
+    if "season" in data:
+        periods = _season_from_payload(data["season"])
+        if periods is None:
+            return "invalid_season"
+        slot.season = periods
+    if "override_season" in data:
+        slot.override_season = bool(data["override_season"])
+    return None
 
 
 def _apply_slot_zone_minutes(slot: ScheduleSlot, data: dict[str, Any]) -> None:
@@ -254,9 +295,7 @@ def _schedule_next_summary(hass: HomeAssistant, inst: Installation) -> dict[str,
     for slot in inst.schedule_slots:
         if not slot.enabled:
             continue
-        nxt = next_slot_fire_local_any(
-            after, slot.weekdays, slot.time_local, tz, slot.week_parity
-        )
+        nxt = next_slot_fire(inst, slot, after, tz)
         if nxt is None:
             continue
         if abs((nxt - global_next).total_seconds()) < 1:
@@ -404,6 +443,7 @@ class SimpleIrrigationPanelGlobalView(HomeAssistantView):
                 vol.Optional("pause_until"): vol.Any(cv.string, None),
                 vol.Optional("guards"): GUARD_LIST_SCHEMA,
                 vol.Optional("water_meter_entity_id"): vol.Any(cv.string, None),
+                vol.Optional("season"): SEASON_SCHEMA,
                 vol.Optional("wait_when_busy"): cv.boolean,
                 vol.Optional("wait_max_min"): vol.All(
                     int, vol.Range(min=1, max=MAX_WAIT_MAX_MIN)
@@ -475,6 +515,11 @@ class SimpleIrrigationPanelGlobalView(HomeAssistantView):
             if err:
                 return self.json({"success": False, "error": err}, status_code=400)
             inst.water_meter_entity_id = meter
+        if "season" in data:
+            season = _season_from_payload(data["season"])
+            if season is None:
+                return self.json({"success": False, "error": "invalid_season"}, status_code=400)
+            inst.season = season
         if "wait_when_busy" in data:
             inst.wait_when_busy = bool(data["wait_when_busy"])
         if "wait_max_min" in data:
@@ -736,6 +781,8 @@ class SimpleIrrigationPanelSlotView(HomeAssistantView):
                 vol.Optional("soak_between_phases_min"): SLOT_SOAK_SCHEMA,
                 vol.Optional("soak_between_repetitions_min"): SLOT_SOAK_SCHEMA,
                 vol.Optional("zone_minutes"): {cv.string: ZONE_DURATION_SCHEMA},
+                vol.Optional("override_season"): cv.boolean,
+                vol.Optional("season"): SEASON_SCHEMA,
                 vol.Optional("cycle_id"): vol.Any(cv.string, None),
                 vol.Optional("cycle_kind"): vol.In(CYCLE_KINDS),
                 vol.Optional("cycle_meta"): vol.Schema(
@@ -796,7 +843,9 @@ class SimpleIrrigationPanelSlotView(HomeAssistantView):
                 guards=guards,
                 ignore_global_guards=bool(data.get("ignore_global_guards", False)),
             )
-            script_err = _apply_slot_script_overrides(hass, slot, data)
+            script_err = _apply_slot_script_overrides(hass, slot, data) or _apply_slot_season(
+                slot, data
+            )
             if script_err:
                 return self.json({"success": False, "error": script_err}, status_code=400)
             _apply_slot_cycle_soak(slot, data)
@@ -882,8 +931,11 @@ class SimpleIrrigationPanelSlotView(HomeAssistantView):
                 if existing:
                     _copy_slot_script_overrides(existing[0], member)
                     _copy_slot_cycle_soak(existing[0], member)
+                    _copy_slot_season(existing[0], member)
                     member.zone_minutes = dict(existing[0].zone_minutes)
-                script_err = _apply_slot_script_overrides(hass, member, data)
+                script_err = _apply_slot_script_overrides(
+                    hass, member, data
+                ) or _apply_slot_season(member, data)
                 if script_err:
                     return self.json({"success": False, "error": script_err}, status_code=400)
                 _apply_slot_cycle_soak(member, data)
@@ -955,6 +1007,7 @@ class SimpleIrrigationPanelSlotView(HomeAssistantView):
             for new_slot in new_slots:
                 _copy_slot_script_overrides(slot, new_slot)
                 _copy_slot_cycle_soak(slot, new_slot)
+                _copy_slot_season(slot, new_slot)
                 new_slot.zone_minutes = dict(slot.zone_minutes)
             inst.schedule_slots[idx : idx + 1] = new_slots
             await coord.async_update_installation(inst)
@@ -1001,6 +1054,9 @@ class SimpleIrrigationPanelSlotView(HomeAssistantView):
             script_err = _apply_slot_script_overrides(hass, slot, data)
             if script_err:
                 return self.json({"success": False, "error": script_err}, status_code=400)
+            season_err = _apply_slot_season(slot, data)
+            if season_err:
+                return self.json({"success": False, "error": season_err}, status_code=400)
             _apply_slot_cycle_soak(slot, data)
             _apply_slot_zone_minutes(slot, data)
             if "cycle_id" in data:

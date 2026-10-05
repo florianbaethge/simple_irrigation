@@ -7,6 +7,7 @@
  * can only express a 2-week cycle.
  */
 
+import { inSeason, nextDayInSeason, type Period } from "./season";
 import { isoWeekNumber, type WeekParity } from "./timetable-model";
 
 export type CycleKind =
@@ -209,23 +210,30 @@ export function weekParityMatches(d: Date, parity: WeekParity): boolean {
 export interface PreviewDay {
   date: Date;
   run: boolean;
+  /** The rhythm would fire, but the day is out of season. */
+  off: boolean;
   isToday: boolean;
 }
 
-/** 14-day strip starting at `start`; a day runs when any slot fires on it. */
+/**
+ * 14-day strip starting at `start`; a day runs when any slot fires on it and
+ * the day is in `season` (no periods: the whole year).
+ */
 export function previewStrip(
   slots: CycleSlotSpec[],
   start: Date,
   today: Date,
-  days = 14
+  days = 14,
+  season: Period[] = []
 ): PreviewDay[] {
   const out: PreviewDay[] = [];
   const tKey = today.toDateString();
   for (let i = 0; i < days; i++) {
     const d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
     const wd = mondayBasedWeekday(d);
-    const run = slots.some((s) => s.weekdays.includes(wd) && weekParityMatches(d, s.week_parity));
-    out.push({ date: d, run, isToday: d.toDateString() === tKey });
+    const due = slots.some((s) => s.weekdays.includes(wd) && weekParityMatches(d, s.week_parity));
+    const open = inSeason(season, d);
+    out.push({ date: d, run: due && open, off: due && !open, isToday: d.toDateString() === tKey });
   }
   return out;
 }
@@ -247,12 +255,24 @@ export function previewGaps(slots: CycleSlotSpec[], start: Date, days = 28): num
   return gaps;
 }
 
-/** First date on/after `start` on which any slot fires (null if none within 28 days). */
-export function firstRunDate(slots: CycleSlotSpec[], start: Date, days = 28): Date | null {
+/**
+ * First date on/after `start` on which any slot fires in `season` (null if none
+ * within 28 days of the season being open).
+ */
+export function firstRunDate(
+  slots: CycleSlotSpec[],
+  start: Date,
+  days = 28,
+  season: Period[] = []
+): Date | null {
+  const from = nextDayInSeason(season, start) ?? start;
   for (let i = 0; i < days; i++) {
-    const d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
+    const d = new Date(from.getFullYear(), from.getMonth(), from.getDate() + i);
     const wd = mondayBasedWeekday(d);
-    if (slots.some((s) => s.weekdays.includes(wd) && weekParityMatches(d, s.week_parity))) {
+    if (
+      inSeason(season, d) &&
+      slots.some((s) => s.weekdays.includes(wd) && weekParityMatches(d, s.week_parity))
+    ) {
       return d;
     }
   }

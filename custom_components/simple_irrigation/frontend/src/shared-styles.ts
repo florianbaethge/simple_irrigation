@@ -673,6 +673,12 @@ export const sharedStyles = css`
     border-color: color-mix(in srgb, var(--primary-color) 45%, transparent);
     color: var(--text-primary-color, #fff);
   }
+  /* Due by its rhythm, but out of season: drawn, not filled. */
+  .day-strip .day-cell.off {
+    border-style: dashed;
+    border-color: color-mix(in srgb, var(--primary-color) 55%, transparent);
+    background: transparent;
+  }
   .day-strip .day-cell.today {
     outline: 2px solid var(--primary-color);
     outline-offset: 1px;

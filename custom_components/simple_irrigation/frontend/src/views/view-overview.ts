@@ -11,6 +11,7 @@ import { durationForMode, plannedLitres, slotZoneMinutes } from "../timetable-mo
 import { zoneMinutesOf } from "../zone-minutes-input";
 import { formatVolumeNumber, litresToUnit, volumeUnit } from "../units";
 import { mondayBasedWeekday, weekParityMatches, type CycleMeta } from "../cycle";
+import { formatMonthDay, inSeason, lookAheadStart, monthDay, seasonFor } from "../season";
 import type { HomeAssistant, ScheduleNext } from "../types";
 
 const MODES = ["eco", "normal", "extra"] as const;
@@ -380,6 +381,22 @@ export class ViewOverview extends LitElement {
     return `${names.slice(0, 2).join(", ")} +${names.length - 2}`;
   }
 
+  /**
+   * The day the first schedule comes back into season, while none is in season
+   * today; null when something is in season or nothing is scheduled at all.
+   */
+  private _seasonOpens(): Date | null {
+    const slots = (this._inst.schedule_slots as Array<Record<string, unknown>> | undefined) ?? [];
+    const enabled = slots.filter((slot) => slot.enabled ?? true);
+    if (!enabled.length) return null;
+    const today = new Date();
+    const opens = lookAheadStart(
+      enabled.map((slot) => seasonFor(this._inst, slot)),
+      today
+    );
+    return opens.toDateString() === today.toDateString() ? null : opens;
+  }
+
   /** The next `limit` distinct run fires across all enabled slots (client-side). */
   private _upcomingRuns(limit: number): UpcomingRun[] {
     const slots = (this._inst.schedule_slots as Array<Record<string, unknown>> | undefined) ?? [];
@@ -388,9 +405,10 @@ export class ViewOverview extends LitElement {
     const now = new Date();
     const runs: UpcomingRun[] = [];
     const mode = this._mode();
+    const start = this._seasonOpens() ?? now;
 
     for (let i = 0; i < 21 && runs.length < limit * 4; i++) {
-      const day = new Date(now.getFullYear(), now.getMonth(), now.getDate() + i);
+      const day = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
       const wd = mondayBasedWeekday(day);
       for (const slot of slots) {
         if (!(slot.enabled ?? true)) continue;
@@ -400,6 +418,7 @@ export class ViewOverview extends LitElement {
         if (!weekdays.includes(wd)) continue;
         const parity = String(slot.week_parity ?? "every");
         if (!weekParityMatches(day, parity as "every" | "odd" | "even")) continue;
+        if (!inSeason(seasonFor(this._inst, slot), day)) continue;
         const [h, mi] = String(slot.time_local ?? "06:00").split(":").map(Number);
         const when = new Date(day.getFullYear(), day.getMonth(), day.getDate(), h || 0, mi || 0);
         if (when <= now) continue;
@@ -435,6 +454,8 @@ export class ViewOverview extends LitElement {
     const diff = Math.round((startD.getTime() - startToday.getTime()) / 86400000);
     if (diff === 0) return t(this.hass, "config_panel.overview_today");
     if (diff === 1) return t(this.hass, "config_panel.overview_tomorrow");
+    // Further out than a week a weekday says nothing: the season's first runs.
+    if (diff >= 7) return formatMonthDay(this.hass, monthDay(d.getMonth() + 1, d.getDate()));
     return weekdayLong(this.hass, mondayBasedWeekday(d));
   }
 
@@ -786,6 +807,7 @@ export class ViewOverview extends LitElement {
   }
 
   private _renderNextRuns(runs: UpcomingRun[]): TemplateResult {
+    const seasonOpens = this._seasonOpens();
     return html`
       <ha-card>
         <div class="card-header">
@@ -800,6 +822,16 @@ export class ViewOverview extends LitElement {
         <div class="card-content">
           ${!this._planEnabled()
             ? html`<p class="hint">${t(this.hass, "config_panel.general_plan_off_hint")}</p>`
+            : nothing}
+          ${seasonOpens && this._planEnabled()
+            ? html`<p class="hint">
+                ${t(this.hass, "config_panel.overview_season_opens", {
+                  date: formatMonthDay(
+                    this.hass,
+                    monthDay(seasonOpens.getMonth() + 1, seasonOpens.getDate())
+                  ),
+                })}
+              </p>`
             : nothing}
           ${runs.length
             ? runs.map((r, i) => {

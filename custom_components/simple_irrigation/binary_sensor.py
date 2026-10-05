@@ -28,7 +28,8 @@ async def async_setup_entry(
         PausedBinarySensor(coordinator),
         ErrorBinarySensor(coordinator),
     ]
-    for zid, zone in coordinator.installation.zones.items():
+    for zid in coordinator.installation.ordered_zone_ids():
+        zone = coordinator.installation.zones[zid]
         entities.append(ZoneActiveBinarySensor(coordinator, zid, zone.name))
     async_add_entities(entities)
 

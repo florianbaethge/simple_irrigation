@@ -24,6 +24,14 @@ export const saveZone = (
 ): Promise<{ success: boolean; error?: string; zone_id?: string }> =>
   hass.callApi("POST", "simple_irrigation/panel/zone", { entry_id: entryId, ...body });
 
+/** Persist the complete display/default-selection order as one atomic update. */
+export const saveZoneOrder = (
+  hass: HomeAssistant,
+  entryId: string,
+  zoneOrder: string[]
+): Promise<{ success: boolean; error?: string }> =>
+  saveZone(hass, entryId, { action: "reorder", zone_order: zoneOrder });
+
 export const saveSlot = (
   hass: HomeAssistant,
   entryId: string,

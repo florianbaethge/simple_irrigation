@@ -25,8 +25,8 @@ import { sharedStyles } from "./shared-styles";
 import { weekdayLong, weekdayShort, formatTimeLocalForDisplay } from "./date-format";
 import {
   anchorWeekParity,
-  firstRunDate,
   generateCycleSlots,
+  nextFire,
   mondayBasedWeekday,
   previewGaps,
   previewStrip,
@@ -48,8 +48,6 @@ import {
 } from "./schedule-phases";
 import { renderCycleSoakEditor } from "./cycle-soak-editor";
 import {
-  inSeason,
-  nextDayInSeason,
   normalizeSeason,
   seasonFor,
   seasonsOverlap,
@@ -264,6 +262,8 @@ export class CycleWizard extends LitElement {
   // Own periods of the year; without them the cycle follows the installation.
   @state() private _season: SlotSeason = { override: false, periods: [] };
   @state() private _seasonChoice: SeasonChoice = "inherit";
+  // An entry of the cycle was edited on its own; saving here evens them out.
+  @state() private _membersDiffer = false;
   @state() private _cycleId: string | null = null;
   @state() private _busy = false;
   @state() private _msg?: string;
@@ -296,6 +296,7 @@ export class CycleWizard extends LitElement {
       this._cycleSoak = { ...PLAIN_RUN };
       this._season = { override: false, periods: [] };
       this._seasonChoice = "inherit";
+      this._membersDiffer = false;
       this._syncDefaultsForOption();
     }
     this._step = opts?.step ?? 1;
@@ -317,9 +318,12 @@ export class CycleWizard extends LitElement {
           : "every_2_days"
         : kind;
     this._label = String(meta.label ?? first.name ?? "");
-    // From the members, not from the metadata: a member's time can be edited on
-    // its own, and what the cycle really does is what should be shown.
-    this._times = normalizeStartTimes(slots.map((s) => s.time_local));
+    // The cycle's own start times. Not the union of what its entries say: one
+    // entry moved to another time on its own would turn "06:00" into "06:00
+    // and 07:00" for every watering day the moment this is saved.
+    const memberTimes = normalizeStartTimes(slots.map((s) => s.time_local));
+    const cycleTimes = normalizeStartTimes(meta.times);
+    this._times = cycleTimes.length ? cycleTimes : memberTimes;
     if (!this._times.length) this._times = ["19:00"];
     this._anchor = Number(meta.anchor_weekday ?? 0);
     this._weekDays =
@@ -342,6 +346,34 @@ export class CycleWizard extends LitElement {
       periods: normalizeSeason(first.season),
     };
     this._seasonChoice = seasonChoice(this._season);
+    this._membersDiffer = this._differ(slots, memberTimes);
+  }
+
+  /**
+   * Whether the entries of a cycle no longer look like one cycle: days or
+   * times that the cadence would not produce, or settings that differ from
+   * entry to entry. Saving the wizard writes one cadence and one set of
+   * settings to all of them, and whoever saves should know that first.
+   */
+  private _differ(slots: Array<Record<string, unknown>>, memberTimes: string[]): boolean {
+    const days = (s: { weekdays?: unknown; time_local?: unknown }): string =>
+      `${[...((s.weekdays as number[]) ?? [])].sort().join(",")}@${String(s.time_local ?? "")}`;
+    const have = slots.map(days).sort().join("|");
+    const want = this._slots().map(days).sort().join("|");
+    if (have !== want || memberTimes.join() !== this._times.join()) return true;
+    const settings = (s: Record<string, unknown>): string =>
+      JSON.stringify([
+        s.zone_ids_ordered,
+        zoneMinutesOf(s),
+        Boolean(s.override_season),
+        normalizeSeason(s.season),
+        cycleSoakOf(s),
+        normalizeGuards(s.guards),
+        Boolean(s.ignore_global_guards),
+        normalizeScriptOverride(s, "pre_start"),
+        normalizeScriptOverride(s, "post_run"),
+      ]);
+    return slots.some((s) => settings(s) !== settings(slots[0]));
   }
 
   /** The periods that decide for this cycle: its own, or the installation's. */
@@ -488,19 +520,13 @@ export class CycleWizard extends LitElement {
   /** When the cycle would first run: the next start time still ahead on a watering day. */
   private _firstRun(slots: CycleSlotSpec[]): Date | null {
     const now = new Date();
-    const starts = normalizeStartTimes(this._times).map(parseTimeLocalToMinutes);
     const season = this._periods();
-    // Out of season the first run is months away: look from where it opens.
-    const from = nextDayInSeason(season, now) ?? now;
-    for (let i = 0; i <= 28; i++) {
-      const day = new Date(from.getFullYear(), from.getMonth(), from.getDate() + i);
-      if (!inSeason(season, day) || !firstRunDate(slots, day, 1)) continue;
-      for (const start of starts) {
-        const at = new Date(day.getFullYear(), day.getMonth(), day.getDate(), 0, start);
-        if (at > now) return at;
-      }
+    let first: Date | null = null;
+    for (const slot of slots) {
+      const at = nextFire(slot, season, now);
+      if (at && (!first || at < first)) first = at;
     }
-    return null;
+    return first;
   }
 
   /** Two of the cycle's own start times closer together than one run takes. */
@@ -555,7 +581,9 @@ export class CycleWizard extends LitElement {
         cycle_kind: opt.kind,
         cycle_meta: this._meta() as Record<string, unknown>,
         zone_ids_ordered: this._zoneIds,
-        enabled: this._enabled,
+        // A new cycle starts switched on. An edited one says nothing: each
+        // of its entries keeps its own switch.
+        ...(this._cycleId ? {} : { enabled: this._enabled }),
         guards: guardsForSave(this._guards),
         ignore_global_guards: this._ignoreGlobalGuards,
         ...scriptOverrideForSave(this._preStartScript, "pre_start"),
@@ -684,11 +712,6 @@ export class CycleWizard extends LitElement {
                 const next = [...this._times];
                 next[index] = (e.target as HTMLInputElement).value || "06:00";
                 this._times = next;
-              }}
-              @blur=${() => {
-                // Back in the order of the clock, but not under the fingers:
-                // the field has been left by now.
-                if (!this._hasDuplicateTime()) this._times = normalizeStartTimes(this._times);
               }}
             />
             ${this._times.length > 1
@@ -1022,6 +1045,9 @@ export class CycleWizard extends LitElement {
           ${[1, 2, 3].map((n) => html`<span class="step ${this._step >= n ? "done" : ""}"></span>`)}
         </div>
         ${this._msg ? html`<div class="error">${this._msg}</div>` : nothing}
+        ${this._membersDiffer
+          ? html`<div class="warning">${t(this.hass, "config_panel.cycle_members_differ")}</div>`
+          : nothing}
         ${this._step === 1
           ? this._renderStep1()
           : this._step === 2

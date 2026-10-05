@@ -751,6 +751,7 @@
     "cycle_conflict_own_times": "Deux heures de début sont plus rapprochées que la durée d’une exécution (environ {n} min).",
     "cycle_conflict_skipped": "Un départ qui tombe pendant une exécution encore en cours est ignoré.",
     "cycle_conflict_waits": "Un départ qui tombe pendant une exécution encore en cours attend et s’exécute ensuite.",
+    "cycle_members_differ": "Des entrées de ce cycle ont été modifiées séparément. L’enregistrement les ramène toutes à ce qui est affiché ici.",
     "cycle_conflict_shift": "Décaler de +1 h",
     "cycle_quick_daily_evening": "Tous les soirs",
     "cycle_quick_2_per_week": "2× par semaine",

@@ -47,7 +47,8 @@ export const upsertCycle = (
     cycle_kind: string;
     cycle_meta: Record<string, unknown>;
     zone_ids_ordered: string[];
-    enabled: boolean;
+    /** All entries on or off; left out, each entry keeps its own switch. */
+    enabled?: boolean;
     guards?: Guard[];
     ignore_global_guards?: boolean;
     /** Script overrides — `override_<phase>_script`, `<phase>_script`, `…_timeout_sec`. */

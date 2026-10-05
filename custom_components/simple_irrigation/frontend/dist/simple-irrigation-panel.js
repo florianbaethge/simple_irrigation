@@ -1633,6 +1633,20 @@ function seasonsOverlap(a, b) {
     return false;
 }
 /**
+ * The first day from `from` on that is in season and on which `due` says the
+ * rhythm fires. Day by day for two years, which is how far the backend looks
+ * too: a weekly slot whose season ends on Tuesday has its next Wednesday in
+ * spring, and a period shorter than the rhythm is passed over.
+ */
+function firstDueDay(periods, from, due) {
+    for (let i = 0; i < 732; i++) {
+        const day = new Date(from.getFullYear(), from.getMonth(), from.getDate() + i);
+        if (due(day) && inSeason(periods, day))
+            return day;
+    }
+    return null;
+}
+/**
  * Where a day-by-day look-ahead should start: today while anything is in
  * season, otherwise the day the first of these seasons opens. Out of season
  * nothing fires for months, and a three-week window from today would be empty.
@@ -1647,7 +1661,9 @@ function lookAheadStart(seasons, today) {
     return first ?? today;
 }
 function language(hass) {
-    return hass?.locale?.language ?? hass?.language ?? undefined;
+    // Intl wants "pt-BR"; Home Assistant may hand out "pt_BR".
+    const tag = hass?.locale?.language ?? hass?.language ?? undefined;
+    return tag ? tag.replace(/_/g, "-") : undefined;
 }
 /** "1 Apr" in the user's language; a leap year, so the 29th of February has a name. */
 function formatMonthDay(hass, raw) {
@@ -2199,6 +2215,27 @@ function previewStrip(slots, start, today, days = 14, season = []) {
     }
     return out;
 }
+/**
+ * When a slot fires next, strictly after `now`, inside `season`. What the
+ * scheduler works out as next_slot_fire: the rhythm decides the day, the
+ * season may push it months out, and today counts while its time is ahead.
+ */
+function nextFire(slot, season, now) {
+    const due = (d) => slot.weekdays.includes(mondayBasedWeekday(d)) && weekParityMatches(d, slot.week_parity);
+    const [hour, minute] = slot.time_local.split(":").map(Number);
+    let from = now;
+    for (let attempt = 0; attempt < 2; attempt++) {
+        const day = firstDueDay(season, from, due);
+        if (!day)
+            return null;
+        const at = new Date(day.getFullYear(), day.getMonth(), day.getDate(), hour || 0, minute || 0);
+        if (at > now)
+            return at;
+        // Today's time has passed: the next day it is due.
+        from = new Date(day.getFullYear(), day.getMonth(), day.getDate() + 1);
+    }
+    return null;
+}
 /** Day-gaps between consecutive fires over a 28-day window from `start`. */
 function previewGaps(slots, start, days = 28) {
     const fires = [];
@@ -2214,22 +2251,6 @@ function previewGaps(slots, start, days = 28) {
         gaps.push(Math.round((fires[i + 1].getTime() - fires[i].getTime()) / 86400000));
     }
     return gaps;
-}
-/**
- * First date on/after `start` on which any slot fires in `season` (null if none
- * within 28 days of the season being open).
- */
-function firstRunDate(slots, start, days = 28, season = []) {
-    const from = nextDayInSeason(season, start) ?? start;
-    for (let i = 0; i < days; i++) {
-        const d = new Date(from.getFullYear(), from.getMonth(), from.getDate() + i);
-        const wd = mondayBasedWeekday(d);
-        if (inSeason(season, d) &&
-            slots.some((s) => s.weekdays.includes(wd) && weekParityMatches(d, s.week_parity))) {
-            return d;
-        }
-    }
-    return null;
 }
 
 const MODES = ["eco", "normal", "extra"];
@@ -2590,7 +2611,26 @@ class ViewOverview extends i$4 {
         const now = new Date();
         const runs = [];
         const mode = this._mode();
-        const start = this._seasonOpens() ?? now;
+        // From the day anything fires next. Mostly that is today; out of season,
+        // or in the last days of one, it may be months away -- and a three-week
+        // window from today would come up empty.
+        let start = now;
+        let first = null;
+        for (const slot of slots) {
+            if (!(slot.enabled ?? true))
+                continue;
+            const at = nextFire({
+                weekdays: Array.isArray(slot.weekdays)
+                    ? slot.weekdays
+                    : [Number(slot.weekday ?? 0)],
+                week_parity: String(slot.week_parity ?? "every"),
+                time_local: String(slot.time_local ?? "06:00"),
+            }, seasonFor(this._inst, slot), now);
+            if (at && (!first || at < first))
+                first = at;
+        }
+        if (first)
+            start = first;
         for (let i = 0; i < 21 && runs.length < limit * 4; i++) {
             const day = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
             const wd = mondayBasedWeekday(day);
@@ -2795,7 +2835,9 @@ class ViewOverview extends i$4 {
             : runState === "error"
                 ? t$2(this.hass, "config_panel.general_state_error_idle")
                 : t$2(this.hass, "config_panel.general_state_idle");
-        const showSkip = runBusy && runState !== "stopping" && (runState === "preparing" || upcoming.length > 0);
+        // Only while watering or resting. Before the first zone there is no phase
+        // to skip -- only the pump building pressure, and the backend ignores it.
+        const showSkip = runState === "running" && (upcoming.length > 0 || soaking);
         const runWater = this._liveWater(activeIds);
         const lastWater = typeof rs.last_run_water_l === "number" ? rs.last_run_water_l : null;
         // A blocking script is why "Preparing" can sit there for minutes — name it.
@@ -3793,19 +3835,19 @@ function renderSeasonEditor(hass, periods, busy, onChange) {
         <span class="season-date-label">${t$2(hass, labelKey)}</span>
         <select
           class="field-select season-day"
-          aria-label=${t$2(hass, "config_panel.season_day")}
+          aria-label="${t$2(hass, labelKey)}: ${t$2(hass, "config_panel.season_day")}"
           ?disabled=${busy}
           @change=${(e) => set(month, Number(e.target.value))}
         >
-          ${Array.from({ length: daysInMonth(month) }, (_, i) => i + 1).map((d) => b `<option value=${d} ?selected=${d === day}>${d}</option>`)}
+          ${Array.from({ length: daysInMonth(month) }, (_, i) => i + 1).map((d) => b `<option value=${d} .selected=${d === day}>${d}</option>`)}
         </select>
         <select
           class="field-select season-month"
-          aria-label=${t$2(hass, "config_panel.season_month")}
+          aria-label="${t$2(hass, labelKey)}: ${t$2(hass, "config_panel.season_month")}"
           ?disabled=${busy}
           @change=${(e) => set(Number(e.target.value), day)}
         >
-          ${months.map((name, i) => b `<option value=${i + 1} ?selected=${i + 1 === month}>${name}</option>`)}
+          ${months.map((name, i) => b `<option value=${i + 1} .selected=${i + 1 === month}>${name}</option>`)}
         </select>
       </div>
     `;
@@ -3872,7 +3914,7 @@ function renderSlotSeason(hass, season, choice, busy, onChange) {
           ?disabled=${busy}
           @change=${(e) => pick(e.target.value)}
         >
-          ${["inherit", "all_year", "own"].map((value) => b `<option value=${value} ?selected=${value === choice}>
+          ${["inherit", "all_year", "own"].map((value) => b `<option value=${value} .selected=${value === choice}>
               ${t$2(hass, `config_panel.season_choice_${value}`)}
             </option>`)}
         </select>
@@ -3921,6 +3963,8 @@ class CycleWizard extends i$4 {
         // Own periods of the year; without them the cycle follows the installation.
         this._season = { override: false, periods: [] };
         this._seasonChoice = "inherit";
+        // An entry of the cycle was edited on its own; saving here evens them out.
+        this._membersDiffer = false;
         this._cycleId = null;
         this._busy = false;
         this._seeded = false;
@@ -4083,6 +4127,7 @@ class CycleWizard extends i$4 {
             this._cycleSoak = { ...PLAIN_RUN };
             this._season = { override: false, periods: [] };
             this._seasonChoice = "inherit";
+            this._membersDiffer = false;
             this._syncDefaultsForOption();
         }
         this._step = opts?.step ?? 1;
@@ -4103,9 +4148,12 @@ class CycleWizard extends i$4 {
                         : "every_2_days"
                     : kind;
         this._label = String(meta.label ?? first.name ?? "");
-        // From the members, not from the metadata: a member's time can be edited on
-        // its own, and what the cycle really does is what should be shown.
-        this._times = normalizeStartTimes(slots.map((s) => s.time_local));
+        // The cycle's own start times. Not the union of what its entries say: one
+        // entry moved to another time on its own would turn "06:00" into "06:00
+        // and 07:00" for every watering day the moment this is saved.
+        const memberTimes = normalizeStartTimes(slots.map((s) => s.time_local));
+        const cycleTimes = normalizeStartTimes(meta.times);
+        this._times = cycleTimes.length ? cycleTimes : memberTimes;
         if (!this._times.length)
             this._times = ["19:00"];
         this._anchor = Number(meta.anchor_weekday ?? 0);
@@ -4129,6 +4177,32 @@ class CycleWizard extends i$4 {
             periods: normalizeSeason(first.season),
         };
         this._seasonChoice = seasonChoice(this._season);
+        this._membersDiffer = this._differ(slots, memberTimes);
+    }
+    /**
+     * Whether the entries of a cycle no longer look like one cycle: days or
+     * times that the cadence would not produce, or settings that differ from
+     * entry to entry. Saving the wizard writes one cadence and one set of
+     * settings to all of them, and whoever saves should know that first.
+     */
+    _differ(slots, memberTimes) {
+        const days = (s) => `${[...(s.weekdays ?? [])].sort().join(",")}@${String(s.time_local ?? "")}`;
+        const have = slots.map(days).sort().join("|");
+        const want = this._slots().map(days).sort().join("|");
+        if (have !== want || memberTimes.join() !== this._times.join())
+            return true;
+        const settings = (s) => JSON.stringify([
+            s.zone_ids_ordered,
+            zoneMinutesOf(s),
+            Boolean(s.override_season),
+            normalizeSeason(s.season),
+            cycleSoakOf(s),
+            normalizeGuards(s.guards),
+            Boolean(s.ignore_global_guards),
+            normalizeScriptOverride(s, "pre_start"),
+            normalizeScriptOverride(s, "post_run"),
+        ]);
+        return slots.some((s) => settings(s) !== settings(slots[0]));
     }
     /** The periods that decide for this cycle: its own, or the installation's. */
     _periods() {
@@ -4271,21 +4345,14 @@ class CycleWizard extends i$4 {
     /** When the cycle would first run: the next start time still ahead on a watering day. */
     _firstRun(slots) {
         const now = new Date();
-        const starts = normalizeStartTimes(this._times).map(parseTimeLocalToMinutes);
         const season = this._periods();
-        // Out of season the first run is months away: look from where it opens.
-        const from = nextDayInSeason(season, now) ?? now;
-        for (let i = 0; i <= 28; i++) {
-            const day = new Date(from.getFullYear(), from.getMonth(), from.getDate() + i);
-            if (!inSeason(season, day) || !firstRunDate(slots, day, 1))
-                continue;
-            for (const start of starts) {
-                const at = new Date(day.getFullYear(), day.getMonth(), day.getDate(), 0, start);
-                if (at > now)
-                    return at;
-            }
+        let first = null;
+        for (const slot of slots) {
+            const at = nextFire(slot, season, now);
+            if (at && (!first || at < first))
+                first = at;
         }
-        return null;
+        return first;
     }
     /** Two of the cycle's own start times closer together than one run takes. */
     _ownTimesOverlap() {
@@ -4336,7 +4403,9 @@ class CycleWizard extends i$4 {
                 cycle_kind: opt.kind,
                 cycle_meta: this._meta(),
                 zone_ids_ordered: this._zoneIds,
-                enabled: this._enabled,
+                // A new cycle starts switched on. An edited one says nothing: each
+                // of its entries keeps its own switch.
+                ...(this._cycleId ? {} : { enabled: this._enabled }),
                 guards: guardsForSave(this._guards),
                 ignore_global_guards: this._ignoreGlobalGuards,
                 ...scriptOverrideForSave(this._preStartScript, "pre_start"),
@@ -4460,12 +4529,6 @@ class CycleWizard extends i$4 {
             const next = [...this._times];
             next[index] = e.target.value || "06:00";
             this._times = next;
-        }}
-              @blur=${() => {
-            // Back in the order of the clock, but not under the fingers:
-            // the field has been left by now.
-            if (!this._hasDuplicateTime())
-                this._times = normalizeStartTimes(this._times);
         }}
             />
             ${this._times.length > 1
@@ -4758,6 +4821,9 @@ class CycleWizard extends i$4 {
           ${[1, 2, 3].map((n) => b `<span class="step ${this._step >= n ? "done" : ""}"></span>`)}
         </div>
         ${this._msg ? b `<div class="error">${this._msg}</div>` : A}
+        ${this._membersDiffer
+            ? b `<div class="warning">${t$2(this.hass, "config_panel.cycle_members_differ")}</div>`
+            : A}
         ${this._step === 1
             ? this._renderStep1()
             : this._step === 2
@@ -4846,6 +4912,9 @@ __decorate([
 __decorate([
     r()
 ], CycleWizard.prototype, "_seasonChoice", void 0);
+__decorate([
+    r()
+], CycleWizard.prototype, "_membersDiffer", void 0);
 __decorate([
     r()
 ], CycleWizard.prototype, "_cycleId", void 0);
@@ -5247,25 +5316,15 @@ class ViewSchedule extends i$4 {
     }
     _nextFire(members) {
         const now = new Date();
-        const enabled = members.filter((m) => m.enabled);
-        const start = lookAheadStart(enabled.map((m) => this._seasonOf(m)), now);
-        for (let i = 0; i < 21; i++) {
-            const day = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
-            const wd = mondayBasedWeekday(day);
-            for (const m of enabled) {
-                if (!m.weekdays.includes(wd))
-                    continue;
-                if (!weekParityMatches(day, m.week_parity))
-                    continue;
-                if (!inSeason(this._seasonOf(m), day))
-                    continue;
-                const [h, mi] = m.time_local.split(":").map(Number);
-                const cand = new Date(day.getFullYear(), day.getMonth(), day.getDate(), h || 0, mi || 0);
-                if (cand > now)
-                    return cand;
-            }
+        let first = null;
+        for (const m of members) {
+            if (!m.enabled)
+                continue;
+            const at = nextFire(m, this._seasonOf(m), now);
+            if (at && (!first || at < first))
+                first = at;
         }
-        return null;
+        return first;
     }
     // ---- api helpers --------------------------------------------------------
     async _call(body) {
@@ -5435,14 +5494,31 @@ class ViewSchedule extends i$4 {
             this._slotEditDraft = this._cloneSlot(slot);
     }
     // ---- cleanup ------------------------------------------------------------
-    /** Detect ungrouped slots with matching time+zones that form a known cadence. */
+    /**
+     * Ungrouped slots that are one schedule written out day by day: the same
+     * time, zones and settings throughout, and days that a cadence of the wizard
+     * produces exactly. Only then does folding them into a cycle change nothing
+     * about what waters when.
+     */
     _analyzeCleanup() {
         const { custom } = this._groupsAndCustom();
         const buckets = new Map();
         for (const s of custom) {
-            const minutes = JSON.stringify(zoneMinutesForSave(s.zone_minutes, s.zone_ids_ordered));
-            const season = JSON.stringify(s.season.override ? s.season.periods : null);
-            const key = `${s.time_local}||${s.zone_ids_ordered.join(",")}||${minutes}||${season}`;
+            // Everything a cycle's entries share. Two slots that differ in any of it
+            // are two schedules, however alike their days look.
+            const key = JSON.stringify([
+                s.time_local,
+                s.zone_ids_ordered,
+                zoneMinutesForSave(s.zone_minutes, s.zone_ids_ordered),
+                s.season.override ? s.season.periods : null,
+                guardsForSave(s.guards),
+                s.ignore_global_guards,
+                s.pre_start_script,
+                s.post_run_script,
+                s.cycle_soak,
+                s.enabled,
+                s.name,
+            ]);
             if (!buckets.has(key))
                 buckets.set(key, []);
             buckets.get(key).push(s);
@@ -5452,35 +5528,45 @@ class ViewSchedule extends i$4 {
             if (list.length < 2)
                 continue;
             const parities = new Set(list.map((s) => s.week_parity));
-            const time = list[0].time_local;
-            const zoneIds = list[0].zone_ids_ordered;
-            const zoneMinutes = zoneMinutesForSave(list[0].zone_minutes, zoneIds);
-            const season = list[0].season;
+            const model = list[0];
+            const time = model.time_local;
+            const zoneIds = model.zone_ids_ordered;
+            const zoneMinutes = zoneMinutesForSave(model.zone_minutes, zoneIds);
+            const season = model.season;
             const memberIds = list.map((s) => s.slot_id);
+            const shared = { zoneIds, zoneMinutes, season, model, memberIds, label: model.name };
             if (parities.size === 1 && parities.has("every")) {
-                // Merge weekday union into a single every-week cycle.
-                const union = normalizeWeekdays(list.flatMap((s) => s.weekdays));
+                // Every week throughout: the days simply add up. A day named twice
+                // would water twice today and once afterwards -- not the same thing.
+                const all = list.flatMap((s) => s.weekdays);
+                const union = normalizeWeekdays(all);
+                if (union.length !== all.length)
+                    continue;
                 const optionId = union.length === 7 ? "daily" : union.length === 1 ? "weekly" : "n_per_week";
                 const meta = { times: [time] };
                 if (optionId === "weekly")
                     meta.anchor_weekday = union[0];
                 else if (optionId === "n_per_week")
                     meta.week_days = union;
-                proposals.push({ optionId, meta, zoneIds, zoneMinutes, season, memberIds, label: list[0].name });
+                proposals.push({ optionId, meta, ...shared });
             }
-            else if (list.length === 2 &&
-                parities.has("odd") &&
-                parities.has("even")) {
-                // Complementary parity pair → every-2-days.
-                proposals.push({
-                    optionId: "every_2_days",
-                    meta: { times: [time], n: 2, anchor_weekday: normalizeWeekdays(list[0].weekdays)[0] ?? 0 },
-                    zoneIds,
-                    zoneMinutes,
-                    season,
-                    memberIds,
-                    label: list[0].name,
-                });
+            else if (list.length === 2 && parities.has("odd") && parities.has("even")) {
+                // An odd-week and an even-week slot are "every 2 days" only if their
+                // days are the ones that rhythm has, in the weeks it has them. Any
+                // other pair -- Monday in odd weeks, Friday in even ones -- is not.
+                const have = list.map((s) => `${s.weekdays.join(",")}/${s.week_parity}`).sort().join("|");
+                const today = new Date();
+                for (let anchor = 0; anchor < 7; anchor++) {
+                    const meta = { times: [time], n: 2, anchor_weekday: anchor };
+                    const want = generateCycleSlots("every_n_days", meta, anchorWeekParity(anchor, today))
+                        .map((spec) => `${spec.weekdays.join(",")}/${spec.week_parity}`)
+                        .sort()
+                        .join("|");
+                    if (want === have) {
+                        proposals.push({ optionId: "every_2_days", meta, ...shared });
+                        break;
+                    }
+                }
             }
         }
         return proposals;
@@ -5501,15 +5587,24 @@ class ViewSchedule extends i$4 {
             for (const p of proposals) {
                 const opt = p.optionId;
                 const kind = opt === "every_2_days" ? "every_n_days" : opt === "every_3_days" ? "every_n_days" : opt;
+                const m = p.model;
                 const res = await upsertCycle(this.hass, this.entryId, {
                     cycle_id: null,
                     cycle_kind: kind,
-                    cycle_meta: p.meta,
+                    cycle_meta: { ...p.meta, label: p.label },
                     zone_ids_ordered: p.zoneIds,
                     zone_minutes: p.zoneMinutes,
                     override_season: p.season.override,
                     season: p.season.periods,
-                    enabled: true,
+                    // The slots were alike in all of this; the cycle is what they were.
+                    enabled: m.enabled,
+                    guards: guardsForSave(m.guards),
+                    ignore_global_guards: m.ignore_global_guards,
+                    ...scriptOverrideForSave(m.pre_start_script, "pre_start"),
+                    ...scriptOverrideForSave(m.post_run_script, "post_run"),
+                    repetitions: m.cycle_soak.repetitions,
+                    soak_between_phases_min: m.cycle_soak.soakBetweenPhasesMin,
+                    soak_between_repetitions_min: m.cycle_soak.soakBetweenRepetitionsMin,
                 });
                 if (!res.success) {
                     this._msg = formatApiError(res.error, this.hass);
@@ -6094,6 +6189,9 @@ class ViewSchedule extends i$4 {
                         delete draft.zone_minutes[zid];
                     else
                         draft.zone_minutes[zid] = minutes;
+                    // The rows are reused by position: without this the
+                    // typed number stays in its row when the zones move.
+                    this.requestUpdate();
                 })}
                   <span class="zone-actions">
                     <button type="button" class="btn-outline" @click=${() => {
@@ -6323,6 +6421,9 @@ class ViewSettings extends i$4 {
         this._defaultConfirmOtherName = "";
         this._name = "";
         this._mode = "normal";
+        // The mode as it was when this page loaded it. An automation or the card may
+        // have changed it since; saving something else here must not undo that.
+        this._loadedMode = "normal";
         this._maxParallel = 2;
         this._waitWhenBusy = false;
         this._season = [];
@@ -6396,6 +6497,7 @@ class ViewSettings extends i$4 {
         const inst = this.installation ?? {};
         this._name = String(inst.name ?? "");
         this._mode = String(inst.mode ?? "normal");
+        this._loadedMode = this._mode;
         this._maxParallel = Number(inst.max_parallel_zones ?? 2);
         this._isDefault = Boolean(inst.is_default ?? false);
         this._waitWhenBusy = Boolean(inst.wait_when_busy ?? false);
@@ -6430,6 +6532,15 @@ class ViewSettings extends i$4 {
         super.disconnectedCallback();
         window.removeEventListener("beforeunload", this._beforeUnload);
     }
+    /**
+     * A number as it is being typed. An emptied field is not a value yet: it
+     * keeps what was there, instead of snapping to the minimum and having that
+     * written back under the cursor ("90" turning into "190").
+     */
+    _typed(e, min, max, current) {
+        const raw = parseInt(e.target.value, 10);
+        return Number.isNaN(raw) ? current : Math.max(min, Math.min(max, raw));
+    }
     _markDirty() {
         if (!this._dirty) {
             this._dirty = true;
@@ -6453,7 +6564,7 @@ class ViewSettings extends i$4 {
                 pre_start_script_timeout_sec: this._preStartScriptTimeoutSec,
                 post_run_script: this._postRunScript.trim(),
                 post_run_script_timeout_sec: this._postRunScriptTimeoutSec,
-                mode: this._mode,
+                ...(this._mode !== this._loadedMode ? { mode: this._mode } : {}),
                 max_parallel_zones: this._maxParallel,
                 wait_when_busy: this._waitWhenBusy,
                 season: this._season,
@@ -6569,7 +6680,7 @@ class ViewSettings extends i$4 {
                     min="1"
                     max="3600"
                     @input=${(e) => {
-                this._preStartScriptTimeoutSec = Math.max(1, Math.min(3600, parseInt(e.target.value, 10) || 1));
+                this._preStartScriptTimeoutSec = this._typed(e, 1, 3600, this._preStartScriptTimeoutSec);
                 this._markDirty();
             }}
                   ></ha-input>
@@ -6683,7 +6794,7 @@ class ViewSettings extends i$4 {
                     min="1"
                     max="3600"
                     @input=${(e) => {
-                this._postRunScriptTimeoutSec = Math.max(1, Math.min(3600, parseInt(e.target.value, 10) || 1));
+                this._postRunScriptTimeoutSec = this._typed(e, 1, 3600, this._postRunScriptTimeoutSec);
                 this._markDirty();
             }}
                   ></ha-input>
@@ -6721,7 +6832,7 @@ class ViewSettings extends i$4 {
                 min="1"
                 max="16"
                 @input=${(e) => {
-            this._maxParallel = Math.max(1, Math.min(16, parseInt(e.target.value, 10) || 1));
+            this._maxParallel = this._typed(e, 1, 16, this._maxParallel);
             this._markDirty();
         }}
               ></ha-input>
@@ -6749,7 +6860,7 @@ class ViewSettings extends i$4 {
                     min="1"
                     max="720"
                     @input=${(e) => {
-                this._waitMaxMin = Math.max(1, Math.min(720, parseInt(e.target.value, 10) || 1));
+                this._waitMaxMin = this._typed(e, 1, 720, this._waitMaxMin);
                 this._markDirty();
             }}
                   ></ha-input>
@@ -8743,6 +8854,7 @@ class ViewZones extends i$4 {
             .value=${z.supply_lead_sec === null ? "" : String(z.supply_lead_sec)}
             @input=${(e) => {
             z.supply_lead_sec = this._secondsFrom(e);
+            this.requestUpdate();
         }}
           ></ha-input>
           <ha-input
@@ -8753,6 +8865,7 @@ class ViewZones extends i$4 {
             .value=${String(z.supply_trail_sec)}
             @input=${(e) => {
             z.supply_trail_sec = this._secondsFrom(e) ?? 0;
+            this.requestUpdate();
         }}
           ></ha-input>
         </div>

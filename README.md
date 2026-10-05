@@ -150,7 +150,8 @@ The installation's **pre-start outputs** are on for a whole run and for every zo
 - Zones that name the same output **share** it. It is switched once for three drip lines watering one after the other, and it stays open for zones watering together.
 - It closes as soon as **no watering zone needs it**: a pump does not go on running against closed valves while another zone finishes.
 - **Lead time** is how long the zone waits after its supply has opened; empty, the installation's pre-start delay applies. It is only waited for when the supply really had to be opened. **Trail time** keeps the supply open that long after the zone has closed.
-- During a Cycle & Soak rest the supply is closed like every other output, and after a restart it is closed along with the zone that was cut off.
+- During a Cycle & Soak rest the supply is closed like every other output. After a restart that cut a run off, every supply is closed — also one that was still coming up or trailing, with no zone watering at that moment.
+- An output is a zone's valve **or** a supply, not both: the panel refuses a supply that is the valve of any zone, and the other way round.
 
 A pump that only some zones need belongs here rather than in the pre-start outputs. Everything else stays as it is: a zone without a supply runs exactly as before. What it does not do is wait for a valve to *report* open, or start a supply through a service that takes a duration — a supply is an output that is switched on and off.
 
@@ -169,7 +170,7 @@ Why the split? A slot waters on chosen weekdays at **one time of day** and, opti
 - **Several start times a day:** fresh seed, pots in a heat wave and a greenhouse want water more than once a day. In the wizard's time step, **Add start time** gives a cycle up to eight start times. The whole cycle — zones, run order, conditions, Cycle & Soak — runs at each of them and stays one row to edit. This is not Cycle & Soak: that repeats the phases back to back with short rests, this spreads whole runs over the day. The wizard warns when two start times are closer together than one run takes — what becomes of the later one is described under [When schedules overlap](#when-schedules-overlap).
 - **Fixed minutes:** in a slot's run order — and in the wizard's zone step — every zone has a minutes field. Empty, the zone waters as long as the active mode says, and the field shows what that is. A number fixes it for this schedule, whatever the mode: the lawn gets twenty minutes in the morning and five in the evening without a second set of zones. The row carries a **Fixed minutes** badge, and all estimates count with it. An automation can set and clear the same field with `simple_irrigation.set_zone_duration`.
 - **Run order & phases:** the ordered zone list is grouped into **phases** by the *max parallel* limit and *exclusive* flags. The editor shows the phase breakdown live.
-- **Optimize cycles:** detects existing single-day slots that together form a known cadence and offers to merge them into one cycle — no re-entry, nothing runs differently.
+- **Optimize cycles:** detects single slots that are one schedule written out day by day — same time, zones, conditions, scripts, season and fixed minutes, on days a cadence of the wizard produces exactly — and offers to fold them into one cycle. Nothing runs differently afterwards; slots that differ in any of it are left alone.
 - **Run now:** *Run next slot now* (Overview), *Run this slot now* (a schedule row) and *Run zone now* (Zones) all use the same pre-start and shutdown pipeline as a scheduled run.
 
 #### When schedules overlap
@@ -473,7 +474,7 @@ The card is readable by every user, not just admins — it uses its own read-onl
 
 ## Automations and services
 
-All services accept an optional `config_entry_id` when you run more than one Simple Irrigation entry (find it in **Settings → Devices & services** or in diagnostics).
+All services accept an optional `config_entry_id` when you run more than one Simple Irrigation entry (find it in **Settings → Devices & services** or in diagnostics). Without it a service goes to the only installation there is, or — like the dashboard card — to the one marked **Open this installation by default**.
 
 | Service | Typical use |
 |---------|-------------|
@@ -483,7 +484,7 @@ All services accept an optional `config_entry_id` when you run more than one Sim
 | `simple_irrigation.run_due_zones` | Trigger “what’s due now” |
 | `simple_irrigation.stop_all` | Stop the active cycle |
 | `simple_irrigation.stop_zone` | End one zone of the running cycle; the rest carries on (`zone_id`) |
-| `simple_irrigation.skip_phase` | End the running phase, or the Cycle & Soak rest the run is in, and go on to the next. Does nothing while idle |
+| `simple_irrigation.skip_phase` | End the running phase, or the Cycle & Soak rest the run is in, and go on to the next. Does nothing while idle or before the first zone has opened — the pump's time to build pressure is never cut short |
 | `simple_irrigation.set_mode` | Set `eco` / `normal` / `extra` |
 | `simple_irrigation.set_zone_enabled` | Enable/disable a zone |
 | `simple_irrigation.set_zone_duration` | Set how long a zone waters, from your own calculation: its runtime for a mode (`zone_id`, `duration_min`, `mode`), or its fixed minutes in one schedule (`zone_id`, `slot_id`, `duration_min`) |

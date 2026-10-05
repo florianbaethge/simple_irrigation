@@ -43,22 +43,22 @@ export function renderSeasonEditor(
         <span class="season-date-label">${t(hass, labelKey)}</span>
         <select
           class="field-select season-day"
-          aria-label=${t(hass, "config_panel.season_day")}
+          aria-label="${t(hass, labelKey)}: ${t(hass, "config_panel.season_day")}"
           ?disabled=${busy}
           @change=${(e: Event) => set(month, Number((e.target as HTMLSelectElement).value))}
         >
           ${Array.from({ length: daysInMonth(month) }, (_, i) => i + 1).map(
-            (d) => html`<option value=${d} ?selected=${d === day}>${d}</option>`
+            (d) => html`<option value=${d} .selected=${d === day}>${d}</option>`
           )}
         </select>
         <select
           class="field-select season-month"
-          aria-label=${t(hass, "config_panel.season_month")}
+          aria-label="${t(hass, labelKey)}: ${t(hass, "config_panel.season_month")}"
           ?disabled=${busy}
           @change=${(e: Event) => set(Number((e.target as HTMLSelectElement).value), day)}
         >
           ${months.map(
-            (name, i) => html`<option value=${i + 1} ?selected=${i + 1 === month}>${name}</option>`
+            (name, i) => html`<option value=${i + 1} .selected=${i + 1 === month}>${name}</option>`
           )}
         </select>
       </div>
@@ -146,7 +146,7 @@ export function renderSlotSeason(
           @change=${(e: Event) => pick((e.target as HTMLSelectElement).value as SeasonChoice)}
         >
           ${(["inherit", "all_year", "own"] as SeasonChoice[]).map(
-            (value) => html`<option value=${value} ?selected=${value === choice}>
+            (value) => html`<option value=${value} .selected=${value === choice}>
               ${t(hass, `config_panel.season_choice_${value}`)}
             </option>`
           )}

@@ -99,6 +99,24 @@ export function seasonsOverlap(a: Period[], b: Period[]): boolean {
 }
 
 /**
+ * The first day from `from` on that is in season and on which `due` says the
+ * rhythm fires. Day by day for two years, which is how far the backend looks
+ * too: a weekly slot whose season ends on Tuesday has its next Wednesday in
+ * spring, and a period shorter than the rhythm is passed over.
+ */
+export function firstDueDay(
+  periods: Period[],
+  from: Date,
+  due: (day: Date) => boolean
+): Date | null {
+  for (let i = 0; i < 732; i++) {
+    const day = new Date(from.getFullYear(), from.getMonth(), from.getDate() + i);
+    if (due(day) && inSeason(periods, day)) return day;
+  }
+  return null;
+}
+
+/**
  * Where a day-by-day look-ahead should start: today while anything is in
  * season, otherwise the day the first of these seasons opens. Out of season
  * nothing fires for months, and a three-week window from today would be empty.
@@ -113,7 +131,9 @@ export function lookAheadStart(seasons: Period[][], today: Date): Date {
 }
 
 function language(hass: HomeAssistant | undefined): string | undefined {
-  return hass?.locale?.language ?? hass?.language ?? undefined;
+  // Intl wants "pt-BR"; Home Assistant may hand out "pt_BR".
+  const tag = hass?.locale?.language ?? hass?.language ?? undefined;
+  return tag ? tag.replace(/_/g, "-") : undefined;
 }
 
 /** "1 Apr" in the user's language; a leap year, so the 29th of February has a name. */

@@ -740,6 +740,7 @@
     "cycle_conflict_own_times": "Due orari di avvio sono più ravvicinati della durata di un’esecuzione (circa {n} min).",
     "cycle_conflict_skipped": "Un avvio che cade durante un’esecuzione ancora in corso viene saltato.",
     "cycle_conflict_waits": "Un avvio che cade durante un’esecuzione ancora in corso attende e parte dopo.",
+    "cycle_members_differ": "Alcune voci di questo ciclo sono state modificate singolarmente. Salvando, tutte tornano a quanto mostrato qui.",
     "cycle_conflict_shift": "Sposta di +1 h",
     "cycle_quick_daily_evening": "Ogni sera",
     "cycle_quick_2_per_week": "2× a settimana",

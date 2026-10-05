@@ -751,6 +751,7 @@
     "cycle_conflict_own_times": "Two start times are closer together than one run takes (about {n} min).",
     "cycle_conflict_skipped": "A start that falls into a run still under way is skipped.",
     "cycle_conflict_waits": "A start that falls into a run still under way waits and runs after it.",
+    "cycle_members_differ": "Entries of this cycle were changed on their own. Saving sets all of them to what is shown here.",
     "cycle_conflict_shift": "Shift by +1 h",
     "cycle_quick_daily_evening": "Daily evening",
     "cycle_quick_2_per_week": "2× a week",

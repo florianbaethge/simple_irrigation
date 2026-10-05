@@ -51,7 +51,6 @@ import {
   formatMonthDay,
   formatSeason,
   inSeason,
-  lookAheadStart,
   monthDay,
   nextDayInSeason,
   normalizeSeason,
@@ -72,9 +71,11 @@ import {
 } from "../zone-minutes-input";
 import { orderedZoneIds } from "../zone-order";
 import {
+  anchorWeekParity,
+  generateCycleSlots,
   mondayBasedWeekday,
+  nextFire,
   previewStrip,
-  weekParityMatches,
   type CycleMeta,
 } from "../cycle";
 import type { CycleWizard } from "../cycle-wizard";
@@ -123,6 +124,8 @@ interface CleanupProposal {
   zoneIds: string[];
   zoneMinutes: ZoneMinutes;
   season: SlotSeason;
+  /** The slot the others are folded into: its settings become the cycle's. */
+  model: SlotRow;
   memberIds: string[];
   label: string;
 }
@@ -553,21 +556,13 @@ export class ViewSchedule extends LitElement {
 
   private _nextFire(members: SlotRow[]): Date | null {
     const now = new Date();
-    const enabled = members.filter((m) => m.enabled);
-    const start = lookAheadStart(enabled.map((m) => this._seasonOf(m)), now);
-    for (let i = 0; i < 21; i++) {
-      const day = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
-      const wd = mondayBasedWeekday(day);
-      for (const m of enabled) {
-        if (!m.weekdays.includes(wd)) continue;
-        if (!weekParityMatches(day, m.week_parity)) continue;
-        if (!inSeason(this._seasonOf(m), day)) continue;
-        const [h, mi] = m.time_local.split(":").map(Number);
-        const cand = new Date(day.getFullYear(), day.getMonth(), day.getDate(), h || 0, mi || 0);
-        if (cand > now) return cand;
-      }
+    let first: Date | null = null;
+    for (const m of members) {
+      if (!m.enabled) continue;
+      const at = nextFire(m, this._seasonOf(m), now);
+      if (at && (!first || at < first)) first = at;
     }
-    return null;
+    return first;
   }
 
   // ---- api helpers --------------------------------------------------------
@@ -735,14 +730,31 @@ export class ViewSchedule extends LitElement {
 
   // ---- cleanup ------------------------------------------------------------
 
-  /** Detect ungrouped slots with matching time+zones that form a known cadence. */
+  /**
+   * Ungrouped slots that are one schedule written out day by day: the same
+   * time, zones and settings throughout, and days that a cadence of the wizard
+   * produces exactly. Only then does folding them into a cycle change nothing
+   * about what waters when.
+   */
   private _analyzeCleanup(): CleanupProposal[] {
     const { custom } = this._groupsAndCustom();
     const buckets = new Map<string, SlotRow[]>();
     for (const s of custom) {
-      const minutes = JSON.stringify(zoneMinutesForSave(s.zone_minutes, s.zone_ids_ordered));
-      const season = JSON.stringify(s.season.override ? s.season.periods : null);
-      const key = `${s.time_local}||${s.zone_ids_ordered.join(",")}||${minutes}||${season}`;
+      // Everything a cycle's entries share. Two slots that differ in any of it
+      // are two schedules, however alike their days look.
+      const key = JSON.stringify([
+        s.time_local,
+        s.zone_ids_ordered,
+        zoneMinutesForSave(s.zone_minutes, s.zone_ids_ordered),
+        s.season.override ? s.season.periods : null,
+        guardsForSave(s.guards),
+        s.ignore_global_guards,
+        s.pre_start_script,
+        s.post_run_script,
+        s.cycle_soak,
+        s.enabled,
+        s.name,
+      ]);
       if (!buckets.has(key)) buckets.set(key, []);
       buckets.get(key)!.push(s);
     }
@@ -750,35 +762,42 @@ export class ViewSchedule extends LitElement {
     for (const list of buckets.values()) {
       if (list.length < 2) continue;
       const parities = new Set(list.map((s) => s.week_parity));
-      const time = list[0].time_local;
-      const zoneIds = list[0].zone_ids_ordered;
-      const zoneMinutes = zoneMinutesForSave(list[0].zone_minutes, zoneIds);
-      const season = list[0].season;
+      const model = list[0];
+      const time = model.time_local;
+      const zoneIds = model.zone_ids_ordered;
+      const zoneMinutes = zoneMinutesForSave(model.zone_minutes, zoneIds);
+      const season = model.season;
       const memberIds = list.map((s) => s.slot_id);
+      const shared = { zoneIds, zoneMinutes, season, model, memberIds, label: model.name };
 
       if (parities.size === 1 && parities.has("every")) {
-        // Merge weekday union into a single every-week cycle.
-        const union = normalizeWeekdays(list.flatMap((s) => s.weekdays));
+        // Every week throughout: the days simply add up. A day named twice
+        // would water twice today and once afterwards -- not the same thing.
+        const all = list.flatMap((s) => s.weekdays);
+        const union = normalizeWeekdays(all);
+        if (union.length !== all.length) continue;
         const optionId = union.length === 7 ? "daily" : union.length === 1 ? "weekly" : "n_per_week";
         const meta: CycleMeta = { times: [time] };
         if (optionId === "weekly") meta.anchor_weekday = union[0];
         else if (optionId === "n_per_week") meta.week_days = union;
-        proposals.push({ optionId, meta, zoneIds, zoneMinutes, season, memberIds, label: list[0].name });
-      } else if (
-        list.length === 2 &&
-        parities.has("odd") &&
-        parities.has("even")
-      ) {
-        // Complementary parity pair → every-2-days.
-        proposals.push({
-          optionId: "every_2_days",
-          meta: { times: [time], n: 2, anchor_weekday: normalizeWeekdays(list[0].weekdays)[0] ?? 0 },
-          zoneIds,
-          zoneMinutes,
-          season,
-          memberIds,
-          label: list[0].name,
-        });
+        proposals.push({ optionId, meta, ...shared });
+      } else if (list.length === 2 && parities.has("odd") && parities.has("even")) {
+        // An odd-week and an even-week slot are "every 2 days" only if their
+        // days are the ones that rhythm has, in the weeks it has them. Any
+        // other pair -- Monday in odd weeks, Friday in even ones -- is not.
+        const have = list.map((s) => `${s.weekdays.join(",")}/${s.week_parity}`).sort().join("|");
+        const today = new Date();
+        for (let anchor = 0; anchor < 7; anchor++) {
+          const meta: CycleMeta = { times: [time], n: 2, anchor_weekday: anchor };
+          const want = generateCycleSlots("every_n_days", meta, anchorWeekParity(anchor, today))
+            .map((spec) => `${spec.weekdays.join(",")}/${spec.week_parity}`)
+            .sort()
+            .join("|");
+          if (want === have) {
+            proposals.push({ optionId: "every_2_days", meta, ...shared });
+            break;
+          }
+        }
       }
     }
     return proposals;
@@ -802,15 +821,24 @@ export class ViewSchedule extends LitElement {
         const opt = p.optionId;
         const kind =
           opt === "every_2_days" ? "every_n_days" : opt === "every_3_days" ? "every_n_days" : opt;
+        const m = p.model;
         const res = await upsertCycle(this.hass, this.entryId, {
           cycle_id: null,
           cycle_kind: kind,
-          cycle_meta: p.meta as Record<string, unknown>,
+          cycle_meta: { ...p.meta, label: p.label } as Record<string, unknown>,
           zone_ids_ordered: p.zoneIds,
           zone_minutes: p.zoneMinutes,
           override_season: p.season.override,
           season: p.season.periods,
-          enabled: true,
+          // The slots were alike in all of this; the cycle is what they were.
+          enabled: m.enabled,
+          guards: guardsForSave(m.guards),
+          ignore_global_guards: m.ignore_global_guards,
+          ...scriptOverrideForSave(m.pre_start_script, "pre_start"),
+          ...scriptOverrideForSave(m.post_run_script, "post_run"),
+          repetitions: m.cycle_soak.repetitions,
+          soak_between_phases_min: m.cycle_soak.soakBetweenPhasesMin,
+          soak_between_repetitions_min: m.cycle_soak.soakBetweenRepetitionsMin,
         });
         if (!res.success) {
           this._msg = formatApiError(res.error, this.hass);
@@ -1479,6 +1507,9 @@ export class ViewSchedule extends LitElement {
                     (minutes) => {
                       if (minutes === undefined) delete draft.zone_minutes[zid];
                       else draft.zone_minutes[zid] = minutes;
+                      // The rows are reused by position: without this the
+                      // typed number stays in its row when the zones move.
+                      this.requestUpdate();
                     }
                   )}
                   <span class="zone-actions">

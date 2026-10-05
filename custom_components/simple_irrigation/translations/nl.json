@@ -751,6 +751,7 @@
     "cycle_conflict_own_times": "Twee starttijden liggen dichter bij elkaar dan één run duurt (ongeveer {n} min).",
     "cycle_conflict_skipped": "Een start die in een nog lopende run valt, wordt overgeslagen.",
     "cycle_conflict_waits": "Een start die in een nog lopende run valt, wacht en loopt daarna.",
+    "cycle_members_differ": "Onderdelen van deze cyclus zijn afzonderlijk gewijzigd. Opslaan zet ze allemaal op wat hier staat.",
     "cycle_conflict_shift": "Verschuif met +1 u",
     "cycle_quick_daily_evening": "Dagelijks avond",
     "cycle_quick_2_per_week": "2× per week",

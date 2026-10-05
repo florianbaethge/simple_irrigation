@@ -10,7 +10,7 @@ import { computePhases, cycleSoakOf, programMinutes, type ZonePhaseInput } from 
 import { durationForMode, plannedLitres, slotZoneMinutes } from "../timetable-model";
 import { zoneMinutesOf } from "../zone-minutes-input";
 import { formatVolumeNumber, litresToUnit, volumeUnit } from "../units";
-import { mondayBasedWeekday, weekParityMatches, type CycleMeta } from "../cycle";
+import { mondayBasedWeekday, nextFire, weekParityMatches, type CycleMeta } from "../cycle";
 import { formatMonthDay, inSeason, lookAheadStart, monthDay, seasonFor } from "../season";
 import type { HomeAssistant, ScheduleNext } from "../types";
 
@@ -405,7 +405,27 @@ export class ViewOverview extends LitElement {
     const now = new Date();
     const runs: UpcomingRun[] = [];
     const mode = this._mode();
-    const start = this._seasonOpens() ?? now;
+    // From the day anything fires next. Mostly that is today; out of season,
+    // or in the last days of one, it may be months away -- and a three-week
+    // window from today would come up empty.
+    let start = now;
+    let first: Date | null = null;
+    for (const slot of slots) {
+      if (!(slot.enabled ?? true)) continue;
+      const at = nextFire(
+        {
+          weekdays: Array.isArray(slot.weekdays)
+            ? (slot.weekdays as number[])
+            : [Number(slot.weekday ?? 0)],
+          week_parity: String(slot.week_parity ?? "every") as "every" | "odd" | "even",
+          time_local: String(slot.time_local ?? "06:00"),
+        },
+        seasonFor(this._inst, slot),
+        now
+      );
+      if (at && (!first || at < first)) first = at;
+    }
+    if (first) start = first;
 
     for (let i = 0; i < 21 && runs.length < limit * 4; i++) {
       const day = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
@@ -614,8 +634,9 @@ export class ViewOverview extends LitElement {
       : runState === "error"
         ? t(this.hass, "config_panel.general_state_error_idle")
         : t(this.hass, "config_panel.general_state_idle");
-    const showSkip =
-      runBusy && runState !== "stopping" && (runState === "preparing" || upcoming.length > 0);
+    // Only while watering or resting. Before the first zone there is no phase
+    // to skip -- only the pump building pressure, and the backend ignores it.
+    const showSkip = runState === "running" && (upcoming.length > 0 || soaking);
     const runWater = this._liveWater(activeIds);
     const lastWater = typeof rs.last_run_water_l === "number" ? (rs.last_run_water_l as number) : null;
     // A blocking script is why "Preparing" can sit there for minutes — name it.

@@ -1148,6 +1148,7 @@ export class ViewZones extends LitElement {
             .value=${z.supply_lead_sec === null ? "" : String(z.supply_lead_sec)}
             @input=${(e: Event) => {
               z.supply_lead_sec = this._secondsFrom(e);
+              this.requestUpdate();
             }}
           ></ha-input>
           <ha-input
@@ -1158,6 +1159,7 @@ export class ViewZones extends LitElement {
             .value=${String(z.supply_trail_sec)}
             @input=${(e: Event) => {
               z.supply_trail_sec = this._secondsFrom(e) ?? 0;
+              this.requestUpdate();
             }}
           ></ha-input>
         </div>

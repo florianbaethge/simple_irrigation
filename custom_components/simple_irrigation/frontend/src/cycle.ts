@@ -7,7 +7,7 @@
  * can only express a 2-week cycle.
  */
 
-import { inSeason, nextDayInSeason, type Period } from "./season";
+import { firstDueDay, inSeason, nextDayInSeason, type Period } from "./season";
 import { isoWeekNumber, type WeekParity } from "./timetable-model";
 
 export type CycleKind =
@@ -236,6 +236,31 @@ export function previewStrip(
     out.push({ date: d, run: due && open, off: due && !open, isToday: d.toDateString() === tKey });
   }
   return out;
+}
+
+/**
+ * When a slot fires next, strictly after `now`, inside `season`. What the
+ * scheduler works out as next_slot_fire: the rhythm decides the day, the
+ * season may push it months out, and today counts while its time is ahead.
+ */
+export function nextFire(
+  slot: { weekdays: number[]; week_parity: WeekParity; time_local: string },
+  season: Period[],
+  now: Date
+): Date | null {
+  const due = (d: Date): boolean =>
+    slot.weekdays.includes(mondayBasedWeekday(d)) && weekParityMatches(d, slot.week_parity);
+  const [hour, minute] = slot.time_local.split(":").map(Number);
+  let from = now;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const day = firstDueDay(season, from, due);
+    if (!day) return null;
+    const at = new Date(day.getFullYear(), day.getMonth(), day.getDate(), hour || 0, minute || 0);
+    if (at > now) return at;
+    // Today's time has passed: the next day it is due.
+    from = new Date(day.getFullYear(), day.getMonth(), day.getDate() + 1);
+  }
+  return null;
 }
 
 /** Day-gaps between consecutive fires over a 28-day window from `start`. */

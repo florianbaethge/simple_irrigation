@@ -751,6 +751,7 @@
     "cycle_conflict_own_times": "Zwei Startzeiten liegen dichter beieinander, als ein Lauf dauert (ca. {n} min).",
     "cycle_conflict_skipped": "Ein Start, der in einen noch laufenden Lauf fällt, wird übersprungen.",
     "cycle_conflict_waits": "Ein Start, der in einen noch laufenden Lauf fällt, wartet und läuft danach.",
+    "cycle_members_differ": "Einzelne Einträge dieses Zyklus wurden getrennt geändert. Speichern setzt alle auf das, was hier steht.",
     "cycle_conflict_shift": "Um +1 Std. verschieben",
     "cycle_quick_daily_evening": "Täglich abends",
     "cycle_quick_2_per_week": "2× pro Woche",

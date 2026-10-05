@@ -88,6 +88,9 @@ export class ViewSettings extends LitElement {
 
   private _name = "";
   private _mode = "normal";
+  // The mode as it was when this page loaded it. An automation or the card may
+  // have changed it since; saving something else here must not undo that.
+  private _loadedMode = "normal";
   private _maxParallel = 2;
   @state() private _waitWhenBusy = false;
   @state() private _season: Period[] = [];
@@ -111,6 +114,7 @@ export class ViewSettings extends LitElement {
     const inst = this.installation ?? {};
     this._name = String(inst.name ?? "");
     this._mode = String(inst.mode ?? "normal");
+    this._loadedMode = this._mode;
     this._maxParallel = Number(inst.max_parallel_zones ?? 2);
     this._isDefault = Boolean(inst.is_default ?? false);
     this._waitWhenBusy = Boolean(inst.wait_when_busy ?? false);
@@ -155,6 +159,16 @@ export class ViewSettings extends LitElement {
     }
   };
 
+  /**
+   * A number as it is being typed. An emptied field is not a value yet: it
+   * keeps what was there, instead of snapping to the minimum and having that
+   * written back under the cursor ("90" turning into "190").
+   */
+  private _typed(e: Event, min: number, max: number, current: number): number {
+    const raw = parseInt((e.target as HTMLInputElement).value, 10);
+    return Number.isNaN(raw) ? current : Math.max(min, Math.min(max, raw));
+  }
+
   private _markDirty(): void {
     if (!this._dirty) {
       this._dirty = true;
@@ -179,7 +193,7 @@ export class ViewSettings extends LitElement {
         pre_start_script_timeout_sec: this._preStartScriptTimeoutSec,
         post_run_script: this._postRunScript.trim(),
         post_run_script_timeout_sec: this._postRunScriptTimeoutSec,
-        mode: this._mode,
+        ...(this._mode !== this._loadedMode ? { mode: this._mode } : {}),
         max_parallel_zones: this._maxParallel,
         wait_when_busy: this._waitWhenBusy,
         season: this._season,
@@ -302,10 +316,7 @@ export class ViewSettings extends LitElement {
                     min="1"
                     max="3600"
                     @input=${(e: Event) => {
-                      this._preStartScriptTimeoutSec = Math.max(
-                        1,
-                        Math.min(3600, parseInt((e.target as HTMLInputElement).value, 10) || 1)
-                      );
+                      this._preStartScriptTimeoutSec = this._typed(e, 1, 3600, this._preStartScriptTimeoutSec);
                       this._markDirty();
                     }}
                   ></ha-input>
@@ -433,10 +444,7 @@ export class ViewSettings extends LitElement {
                     min="1"
                     max="3600"
                     @input=${(e: Event) => {
-                      this._postRunScriptTimeoutSec = Math.max(
-                        1,
-                        Math.min(3600, parseInt((e.target as HTMLInputElement).value, 10) || 1)
-                      );
+                      this._postRunScriptTimeoutSec = this._typed(e, 1, 3600, this._postRunScriptTimeoutSec);
                       this._markDirty();
                     }}
                   ></ha-input>
@@ -477,10 +485,7 @@ export class ViewSettings extends LitElement {
                 min="1"
                 max="16"
                 @input=${(e: Event) => {
-                  this._maxParallel = Math.max(
-                    1,
-                    Math.min(16, parseInt((e.target as HTMLInputElement).value, 10) || 1)
-                  );
+                  this._maxParallel = this._typed(e, 1, 16, this._maxParallel);
                   this._markDirty();
                 }}
               ></ha-input>
@@ -508,10 +513,7 @@ export class ViewSettings extends LitElement {
                     min="1"
                     max="720"
                     @input=${(e: Event) => {
-                      this._waitMaxMin = Math.max(
-                        1,
-                        Math.min(720, parseInt((e.target as HTMLInputElement).value, 10) || 1)
-                      );
+                      this._waitMaxMin = this._typed(e, 1, 720, this._waitMaxMin);
                       this._markDirty();
                     }}
                   ></ha-input>

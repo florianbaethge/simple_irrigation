@@ -178,17 +178,6 @@ export class ViewZones extends LitElement {
     formLayoutStyles,
     accordionStyles,
     css`
-      .drawer-actions {
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
-        padding-top: 12px;
-      }
-      .drawer-actions .btn-outline {
-        width: 100%;
-        min-height: 46px;
-        margin-top: 0;
-      }
       .compact-row.running {
         border-left-color: var(--primary-color);
         background: color-mix(in srgb, var(--primary-color) 6%, var(--card-background-color));
@@ -1483,21 +1472,33 @@ export class ViewZones extends LitElement {
         </div>
         ${expanded
           ? html`<div class="compact-row-detail only-narrow">
-              <div class="meta-line">${details}</div>
-              ${firstOut ? html`<p class="out-line">${outs.join(", ")}</p>` : nothing}
+              <div class="meta-line">
+                ${details}
+                ${outs.map(
+                  (eid) => html`<span class="meta" title=${eid}
+                    ><ha-icon icon="mdi:toggle-switch-outline"></ha-icon>${summaryEntityName(
+                      this.hass,
+                      eid
+                    )}</span
+                  >`
+                )}
+              </div>
               <div class="drawer-actions">
                 ${inRun
                   ? html`<button type="button" class="btn-outline" ?disabled=${stopDisabled} @click=${() => this._stopZone(z.zone_id)}>
+                      <ha-icon icon="mdi:stop"></ha-icon>
                       ${stopLabel}
                     </button>`
                   : html`<button type="button" class="btn-outline" ?disabled=${runDisabled} @click=${() => this._runZoneNow(z.zone_id)}>
-                      ${t(this.hass, "config_panel.zones_run_zone_now")}
+                      <ha-icon icon="mdi:play"></ha-icon>
+                      ${t(this.hass, "config_panel.schedule_run_now_short")}
                     </button>`}
                 <button
                   type="button"
                   class="btn-outline"
                   @click=${() => this._openEdit(z.zone_id)}
                 >
+                  <ha-icon icon="mdi:pencil"></ha-icon>
                   ${t(this.hass, "config_panel.zones_edit")}
                 </button>
               </div>

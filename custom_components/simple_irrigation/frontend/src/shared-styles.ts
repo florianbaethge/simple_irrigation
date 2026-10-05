@@ -638,15 +638,21 @@ export const sharedStyles = css`
   }
 
   /* 14-day run strip (rhythm preview + expanded rhythm rows). */
+  /* Two weeks in a row; on a phone one week under the other, so a day always
+     sits under the same day and no leftover cell is stretched across the row. */
   .day-strip {
-    display: flex;
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: repeat(14, minmax(0, 1fr));
     gap: 4px;
     margin: 6px 0;
   }
+  @container siview (max-width: 700px) {
+    .day-strip {
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+    }
+  }
   .day-strip .day-cell {
-    flex: 1 1 calc(100% / 14 - 4px);
-    min-width: 30px;
+    min-width: 0;
     height: 34px;
     border-radius: 7px;
     border: 1px solid var(--divider-color);
@@ -762,6 +768,25 @@ export const sharedStyles = css`
     .only-narrow {
       display: none !important;
     }
+  }
+  /* What a row can do, behind its chevron on a phone: side by side. */
+  .drawer-actions {
+    display: flex;
+    gap: 8px;
+    padding: 10px 0 4px;
+  }
+  .drawer-actions .btn-outline {
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 44px;
+    margin-top: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 8px 10px;
+    font-size: 0.9rem;
+    --mdc-icon-size: 18px;
   }
   /* Details of a row that sit in its meta line on a wide screen and behind
      its chevron on a phone: the wrapper itself takes no part in the layout. */

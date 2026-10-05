@@ -1132,15 +1132,21 @@ const sharedStyles = i$7 `
   }
 
   /* 14-day run strip (rhythm preview + expanded rhythm rows). */
+  /* Two weeks in a row; on a phone one week under the other, so a day always
+     sits under the same day and no leftover cell is stretched across the row. */
   .day-strip {
-    display: flex;
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: repeat(14, minmax(0, 1fr));
     gap: 4px;
     margin: 6px 0;
   }
+  @container siview (max-width: 700px) {
+    .day-strip {
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+    }
+  }
   .day-strip .day-cell {
-    flex: 1 1 calc(100% / 14 - 4px);
-    min-width: 30px;
+    min-width: 0;
     height: 34px;
     border-radius: 7px;
     border: 1px solid var(--divider-color);
@@ -1256,6 +1262,25 @@ const sharedStyles = i$7 `
     .only-narrow {
       display: none !important;
     }
+  }
+  /* What a row can do, behind its chevron on a phone: side by side. */
+  .drawer-actions {
+    display: flex;
+    gap: 8px;
+    padding: 10px 0 4px;
+  }
+  .drawer-actions .btn-outline {
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 44px;
+    margin-top: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 8px 10px;
+    font-size: 0.9rem;
+    --mdc-icon-size: 18px;
   }
   /* Details of a row that sit in its meta line on a wide screen and behind
      its chevron on a phone: the wrapper itself takes no part in the layout. */
@@ -5417,23 +5442,7 @@ class ViewSchedule extends i$4 {
         text-align: center;
         justify-content: center;
       }
-      .drawer-actions {
-        display: flex;
-        gap: 8px;
-        padding: 10px 0 4px;
-      }
-      .drawer-actions .btn-outline {
-        flex: 1;
-        min-height: 44px;
-        margin-top: 0;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        gap: 6px;
-        padding: 8px 10px;
-        font-size: 0.9rem;
-        --mdc-icon-size: 18px;
-      }
+
     `,
     ]; }
     // ---- data ---------------------------------------------------------------
@@ -8491,17 +8500,6 @@ class ViewZones extends i$4 {
         formLayoutStyles,
         accordionStyles,
         i$7 `
-      .drawer-actions {
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
-        padding-top: 12px;
-      }
-      .drawer-actions .btn-outline {
-        width: 100%;
-        min-height: 46px;
-        margin-top: 0;
-      }
       .compact-row.running {
         border-left-color: var(--primary-color);
         background: color-mix(in srgb, var(--primary-color) 6%, var(--card-background-color));
@@ -9617,21 +9615,28 @@ class ViewZones extends i$4 {
         </div>
         ${expanded
             ? b `<div class="compact-row-detail only-narrow">
-              <div class="meta-line">${details}</div>
-              ${firstOut ? b `<p class="out-line">${outs.join(", ")}</p>` : A}
+              <div class="meta-line">
+                ${details}
+                ${outs.map((eid) => b `<span class="meta" title=${eid}
+                    ><ha-icon icon="mdi:toggle-switch-outline"></ha-icon>${entityName(this.hass, eid)}</span
+                  >`)}
+              </div>
               <div class="drawer-actions">
                 ${inRun
                 ? b `<button type="button" class="btn-outline" ?disabled=${stopDisabled} @click=${() => this._stopZone(z.zone_id)}>
+                      <ha-icon icon="mdi:stop"></ha-icon>
                       ${stopLabel}
                     </button>`
                 : b `<button type="button" class="btn-outline" ?disabled=${runDisabled} @click=${() => this._runZoneNow(z.zone_id)}>
-                      ${t$2(this.hass, "config_panel.zones_run_zone_now")}
+                      <ha-icon icon="mdi:play"></ha-icon>
+                      ${t$2(this.hass, "config_panel.schedule_run_now_short")}
                     </button>`}
                 <button
                   type="button"
                   class="btn-outline"
                   @click=${() => this._openEdit(z.zone_id)}
                 >
+                  <ha-icon icon="mdi:pencil"></ha-icon>
                   ${t$2(this.hass, "config_panel.zones_edit")}
                 </button>
               </div>

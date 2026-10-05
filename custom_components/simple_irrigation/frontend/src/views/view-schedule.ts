@@ -288,23 +288,7 @@ export class ViewSchedule extends LitElement {
         text-align: center;
         justify-content: center;
       }
-      .drawer-actions {
-        display: flex;
-        gap: 8px;
-        padding: 10px 0 4px;
-      }
-      .drawer-actions .btn-outline {
-        flex: 1;
-        min-height: 44px;
-        margin-top: 0;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        gap: 6px;
-        padding: 8px 10px;
-        font-size: 0.9rem;
-        --mdc-icon-size: 18px;
-      }
+
     `,
   ];
 

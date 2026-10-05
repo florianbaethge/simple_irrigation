@@ -50,12 +50,12 @@ def compute_next_runs(
         nxt = next_slot_fire(inst, slot, after, tz)
         if nxt is None:
             continue
-        if global_next is None or nxt < global_next:
+        if global_next is None or nxt.timestamp() < global_next.timestamp():
             global_next = nxt
         for zid in slot.zone_ids_ordered:
             if zid in zone_next:
                 cur = zone_next[zid]
-                if cur is None or nxt < cur:
+                if cur is None or nxt.timestamp() < cur.timestamp():
                     zone_next[zid] = nxt
 
     return global_next, zone_next
@@ -205,10 +205,12 @@ class IrrigationScheduler:
             when = rs.next_run_global
             if when is None:
                 return
-            if when <= now:
-                when = now + timedelta(seconds=1)
-
+            # In real time, not by the wall clock: around a change of the
+            # clocks the two disagree, and a timer armed in the past fires at
+            # once, finds nothing due and arms itself again -- without end.
             when_utc = dt_util.as_utc(when)
+            if when_utc <= dt_util.as_utc(now):
+                when_utc = dt_util.as_utc(now) + timedelta(seconds=1)
 
             self._unsub = async_track_point_in_time(
                 self.hass,
@@ -240,7 +242,9 @@ class IrrigationScheduler:
                 nxt = next_slot_fire(inst, slot, now - timedelta(minutes=1), tz)
                 if nxt is None:
                     continue
-                if abs((now - nxt).total_seconds()) < 90:
+                # By timestamp: the difference of two wall clocks is off by an
+                # hour on the night the clocks change.
+                if abs(now.timestamp() - nxt.timestamp()) < 90:
                     if self._handled.get(slot.slot_id) == nxt:
                         continue
                     self._handled[slot.slot_id] = nxt

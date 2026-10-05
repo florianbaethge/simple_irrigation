@@ -1,6 +1,8 @@
 import { LitElement, html, css, nothing, type TemplateResult } from "lit";
 import { state } from "lit/decorators.js";
 import { keyed } from "lit/directives/keyed.js";
+import { repeat } from "lit/directives/repeat.js";
+import { styleMap } from "lit/directives/style-map.js";
 import { runZoneNow, saveZone, saveZoneOrder, stopZone } from "../data/api";
 import { renderNativeEntityField } from "../entity-input";
 import { renderInlineHelp } from "../inline-help";
@@ -17,7 +19,7 @@ import { t } from "../i18n";
 import { formLayoutStyles } from "../form-layout-styles";
 import { sharedStyles } from "../shared-styles";
 import { slotInclusionCountPerZone } from "../timetable-model";
-import { orderedZoneEntries, orderedZoneIds } from "../zone-order";
+import { orderedZoneIds } from "../zone-order";
 import type { HomeAssistant } from "../types";
 
 const defaultDomains = ["switch", "input_boolean", "group", "valve"];
@@ -76,6 +78,45 @@ const zoneStartPresets: Record<
 
 type ZoneFilter = "all" | "enabled" | "issues";
 
+/** Distance from the top or bottom edge at which a drag starts scrolling the list. */
+const DRAG_SCROLL_EDGE_PX = 56;
+const DRAG_SCROLL_STEP_PX = 10;
+
+/** A zone row being dragged to a new place in the list. */
+interface ZoneDrag {
+  zoneId: string;
+  pointerId: number;
+  from: number;
+  to: number;
+  /** How far the row has travelled since it was grabbed, list scrolling included. */
+  dy: number;
+  clientY: number;
+  startY: number;
+  scroller: Element;
+  startScroll: number;
+  /** Top and height of every row when the drag began, in list order. */
+  tops: number[];
+  heights: number[];
+  gap: number;
+}
+
+/** The element that scrolls `el`, found across shadow roots and slots. */
+function scrollParent(el: Element): Element {
+  let node: Node | null = el;
+  while (node) {
+    if (node instanceof Element) {
+      const overflow = getComputedStyle(node).overflowY;
+      if ((overflow === "auto" || overflow === "scroll") && node.scrollHeight > node.clientHeight) {
+        return node;
+      }
+      node = node.assignedSlot ?? node.parentNode;
+    } else {
+      node = node instanceof ShadowRoot ? node.host : node.parentNode;
+    }
+  }
+  return document.scrollingElement ?? document.documentElement;
+}
+
 interface ZoneRow {
   zone_id: string;
   name: string;
@@ -110,7 +151,7 @@ export class ViewZones extends LitElement {
   installation!: Record<string, unknown>;
   runState?: Record<string, unknown>;
   outputEntityDomains?: string[];
-  onSaved?: () => void;
+  onSaved?: () => void | Promise<void>;
 
   static styles = [
     sharedStyles,
@@ -131,20 +172,59 @@ export class ViewZones extends LitElement {
         border-left-color: var(--primary-color);
         background: color-mix(in srgb, var(--primary-color) 6%, var(--card-background-color));
       }
-      .compact-row.dragging {
-        opacity: 0.55;
-      }
-      .reorder-actions {
+      /* Tucked into the row's left padding so the name keeps its width on phones. */
+      .drag-handle {
         flex: 0 0 auto;
-      }
-      .drag-marker {
-        color: var(--secondary-text-color);
         display: inline-flex;
         align-items: center;
+        justify-content: center;
+        width: 28px;
+        height: 40px;
+        margin: 0 -6px 0 -8px;
+        padding: 0;
+        border: none;
+        border-radius: 8px;
+        background: transparent;
+        color: var(--secondary-text-color);
         cursor: grab;
+        /* The handle is the one place a touch moves a row instead of the page. */
+        touch-action: none;
+        user-select: none;
+        -webkit-user-select: none;
+        -webkit-touch-callout: none;
       }
-      .drag-marker ha-icon {
+      .drag-handle:hover {
+        color: var(--primary-text-color);
+      }
+      .drag-handle:focus-visible {
+        outline: 2px solid var(--primary-color);
+        outline-offset: -2px;
+      }
+      .drag-handle ha-icon {
         --mdc-icon-size: 20px;
+        pointer-events: none;
+      }
+      .compact-row.dragging {
+        position: relative;
+        z-index: 2;
+        transition: none;
+        box-shadow: 0 6px 18px rgba(0, 0, 0, 0.28);
+      }
+      .compact-row.dragging .drag-handle {
+        cursor: grabbing;
+      }
+      .compact-row.shifting {
+        transition: transform 0.15s ease;
+      }
+      .drawer-move {
+        display: flex;
+        gap: 8px;
+      }
+      .drawer-move .btn-outline {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
       }
       .out-line {
         margin: 8px 0 0;
@@ -166,7 +246,11 @@ export class ViewZones extends LitElement {
   @state() private _editDraft: ZoneRow | null = null;
   @state() private _filter: ZoneFilter = "all";
   @state() private _expanded = new Set<string>();
-  @state() private _dragZoneId?: string;
+  @state() private _drag?: ZoneDrag;
+  /** The order on screen while a reorder is being saved; the installation's otherwise. */
+  @state() private _orderDraft?: string[];
+  private _orderSaving = false;
+  private _dragScrollFrame?: number;
   private _new: ZoneRow = this._blankZone();
   private _tick?: number;
 
@@ -178,6 +262,7 @@ export class ViewZones extends LitElement {
   disconnectedCallback(): void {
     super.disconnectedCallback();
     this._clearTick();
+    this._endDrag();
   }
 
   updated(): void {
@@ -223,7 +308,12 @@ export class ViewZones extends LitElement {
   }
 
   private _zonesFromInstallation(): ZoneRow[] {
-    return orderedZoneEntries<Record<string, unknown>>(this.installation).map(([zone_id, o]) => {
+    const zones = this.installation?.zones as Record<string, Record<string, unknown>> | undefined;
+    if (!zones) return [];
+    // A draft outlives a reload for a moment; skip a zone deleted in the meantime.
+    const ids = this._zoneOrder().filter((id) => id in zones);
+    return ids.map((zone_id) => {
+      const o = zones[zone_id];
       const raw = (o as Record<string, unknown>).switch_entity_ids;
       let ids: string[] = [];
       if (Array.isArray(raw)) ids = raw.map((x) => String(x)).filter(Boolean);
@@ -250,46 +340,160 @@ export class ViewZones extends LitElement {
     });
   }
 
-  /** Save a complete order so the backend can reject stale concurrent edits. */
-  private async _saveZoneOrder(order: string[]): Promise<void> {
-    if (this._busy) return;
-    this._busy = true;
+  private _zoneOrder(): string[] {
+    return this._orderDraft ?? orderedZoneIds(this.installation);
+  }
+
+  /**
+   * Show `order` at once and save it. A move made while a save is under way is
+   * not lost: the draft holds the latest order, and the loop sends it as soon
+   * as the request before it has returned.
+   */
+  private async _commitZoneOrder(order: string[]): Promise<void> {
+    this._orderDraft = order;
+    if (this._orderSaving) return;
+    this._orderSaving = true;
     this._msg = undefined;
-    this.requestUpdate();
+    let sent: string[] | undefined;
     try {
-      const res = await saveZoneOrder(this.hass, this.entryId, order);
-      if (!res.success) this._msg = formatApiError(res.error, this.hass);
-      else this.onSaved?.();
+      while (this._orderDraft !== sent) {
+        sent = this._orderDraft;
+        const res = await saveZoneOrder(this.hass, this.entryId, sent);
+        if (!res.success) throw res.error;
+        // Reload before dropping the draft, so the list never shows the old order.
+        if (this._orderDraft === sent) await this.onSaved?.();
+      }
     } catch (e) {
       this._msg = formatApiError(e, this.hass);
+      // The zones changed under the drag: show what is really there.
+      void this.onSaved?.();
     } finally {
-      this._busy = false;
-      this.requestUpdate();
+      this._orderSaving = false;
+      this._orderDraft = undefined;
     }
   }
 
-  private _moveZone(zoneId: string, offset: -1 | 1): void {
-    const order = orderedZoneIds(this.installation);
+  /** One step up or down, from a key on the handle or a button in the drawer. */
+  private async _moveZone(zoneId: string, offset: -1 | 1, control: string): Promise<void> {
+    const order = [...this._zoneOrder()];
     const from = order.indexOf(zoneId);
     const to = from + offset;
     if (from < 0 || to < 0 || to >= order.length) return;
     [order[from], order[to]] = [order[to], order[from]];
-    void this._saveZoneOrder(order);
+    void this._commitZoneOrder(order);
+    // The row moved in the DOM and took the focus with it into nowhere.
+    await this.updateComplete;
+    const row = `[data-zone-id="${zoneId}"]`;
+    const again = this.renderRoot.querySelector<HTMLButtonElement>(`${row}[data-reorder="${control}"]`);
+    const target = again && !again.disabled
+      ? again
+      : this.renderRoot.querySelector<HTMLButtonElement>(`${row}[data-reorder="handle"]`);
+    target?.focus();
   }
 
-  private _dropZone(targetZoneId: string): void {
-    const moving = this._dragZoneId;
-    this._dragZoneId = undefined;
-    if (!moving || moving === targetZoneId || this._busy || this._filter !== "all") return;
-    const order = orderedZoneIds(this.installation);
-    const from = order.indexOf(moving);
-    const target = order.indexOf(targetZoneId);
-    if (from < 0 || target < 0) return;
-    order.splice(from, 1);
-    // Dropping downward places the dragged zone after the target; dropping
-    // upward places it before. This matches the direction the row travelled.
-    order.splice(target, 0, moving);
-    void this._saveZoneOrder(order);
+  private _onHandleKeydown(e: KeyboardEvent, zoneId: string): void {
+    if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+    e.preventDefault();
+    if (!this._drag) void this._moveZone(zoneId, e.key === "ArrowUp" ? -1 : 1, "handle");
+  }
+
+  private _onDragKeydown = (e: KeyboardEvent): void => {
+    if (e.key === "Escape") this._endDrag();
+  };
+
+  private _onHandlePointerDown(e: PointerEvent, zoneId: string): void {
+    if (e.button !== 0 || this._drag) return;
+    const handle = e.currentTarget as HTMLElement;
+    const rows = [...this.renderRoot.querySelectorAll<HTMLElement>(".compact-row")];
+    const from = this._zoneOrder().indexOf(zoneId);
+    if (from < 0 || rows.length !== this._zoneOrder().length) return;
+    // No text selection and no focus ring from the press that starts a drag.
+    e.preventDefault();
+    handle.setPointerCapture(e.pointerId);
+    const rects = rows.map((row) => row.getBoundingClientRect());
+    const scroller = scrollParent(this);
+    this._drag = {
+      zoneId,
+      pointerId: e.pointerId,
+      from,
+      to: from,
+      dy: 0,
+      clientY: e.clientY,
+      startY: e.clientY,
+      scroller,
+      startScroll: scroller.scrollTop,
+      tops: rects.map((r) => r.top),
+      heights: rects.map((r) => r.height),
+      gap: rects.length > 1 ? rects[1].top - rects[0].bottom : 0,
+    };
+    this._dragScrollFrame = requestAnimationFrame(() => this._dragAutoScroll());
+    window.addEventListener("keydown", this._onDragKeydown);
+  }
+
+  private _onHandlePointerMove(e: PointerEvent): void {
+    if (!this._drag || e.pointerId !== this._drag.pointerId) return;
+    this._trackDrag(e.clientY);
+  }
+
+  /** Where the dragged row is now, and which place in the list that makes. */
+  private _trackDrag(clientY: number): void {
+    const d = this._drag;
+    if (!d) return;
+    const { from, tops, heights } = d;
+    const last = tops.length - 1;
+    const travelled = clientY - d.startY + (d.scroller.scrollTop - d.startScroll);
+    const dy = Math.max(
+      tops[0] - tops[from],
+      Math.min(tops[last] + heights[last] - tops[from] - heights[from], travelled)
+    );
+    const centre = tops[from] + heights[from] / 2 + dy;
+    const middle = (i: number) => tops[i] + heights[i] / 2;
+    let to = from;
+    while (to < last && centre > middle(to + 1)) to++;
+    while (to > 0 && centre < middle(to - 1)) to--;
+    this._drag = { ...d, clientY, dy, to };
+  }
+
+  /** Scroll the list while the pointer rests near its top or bottom edge. */
+  private _dragAutoScroll(): void {
+    const d = this._drag;
+    if (!d) return;
+    const box = d.scroller.getBoundingClientRect();
+    const top = Math.max(box.top, 0);
+    const bottom = Math.min(box.bottom, window.innerHeight);
+    const before = d.scroller.scrollTop;
+    if (d.clientY < top + DRAG_SCROLL_EDGE_PX) d.scroller.scrollTop -= DRAG_SCROLL_STEP_PX;
+    else if (d.clientY > bottom - DRAG_SCROLL_EDGE_PX) d.scroller.scrollTop += DRAG_SCROLL_STEP_PX;
+    if (d.scroller.scrollTop !== before) this._trackDrag(d.clientY);
+    this._dragScrollFrame = requestAnimationFrame(() => this._dragAutoScroll());
+  }
+
+  private _onHandlePointerUp(e: PointerEvent): void {
+    const d = this._drag;
+    if (!d || e.pointerId !== d.pointerId) return;
+    this._endDrag();
+    if (d.to === d.from) return;
+    const order = [...this._zoneOrder()];
+    order.splice(d.to, 0, ...order.splice(d.from, 1));
+    void this._commitZoneOrder(order);
+  }
+
+  private _endDrag(): void {
+    if (this._dragScrollFrame !== undefined) cancelAnimationFrame(this._dragScrollFrame);
+    this._dragScrollFrame = undefined;
+    window.removeEventListener("keydown", this._onDragKeydown);
+    this._drag = undefined;
+  }
+
+  /** The offset that shows a row where it would land if the drag ended now. */
+  private _dragStyle(index: number): Record<string, string> {
+    const d = this._drag;
+    if (!d) return {};
+    if (index === d.from) return { transform: `translateY(${d.dy}px)` };
+    const step = d.heights[d.from] + d.gap;
+    if (index > d.from && index <= d.to) return { transform: `translateY(${-step}px)` };
+    if (index < d.from && index >= d.to) return { transform: `translateY(${step}px)` };
+    return {};
   }
 
   /** "~120 L" for one run of the zone in the active mode; "" without a rate. */
@@ -884,6 +1088,7 @@ export class ViewZones extends LitElement {
     const firstOut = outs[0] ?? "";
     const orderIndex = zoneOrder.indexOf(z.zone_id);
     const canReorder = this._filter === "all" && zoneOrder.length > 1;
+    const dragging = this._drag?.zoneId === z.zone_id;
 
     const runBtn = html`
       <button
@@ -924,66 +1129,47 @@ export class ViewZones extends LitElement {
         <ha-icon icon="mdi:pencil"></ha-icon>
       </button>
     `;
-    const reorderButtons = canReorder
-      ? html`<div class="icon-group reorder-actions" role="group">
-          <span
-            class="drag-marker hide-narrow"
-            title=${t(this.hass, "config_panel.zones_drag_to_reorder")}
-            aria-hidden="true"
-            .draggable=${!this._busy}
-            @dragstart=${(e: DragEvent) => {
-              if (this._busy) {
-                e.preventDefault();
-                return;
-              }
-              this._dragZoneId = z.zone_id;
-              if (e.dataTransfer) {
-                e.dataTransfer.effectAllowed = "move";
-                e.dataTransfer.setData("text/plain", z.zone_id);
-              }
-            }}
-            @dragend=${() => (this._dragZoneId = undefined)}
-          >
-            <ha-icon icon="mdi:drag-vertical"></ha-icon>
-          </span>
-          <button
-            type="button"
-            class="iconbtn"
-            title=${t(this.hass, "config_panel.zones_move_up")}
-            aria-label=${t(this.hass, "config_panel.zones_move_up")}
-            ?disabled=${this._busy || orderIndex <= 0}
-            @click=${() => this._moveZone(z.zone_id, -1)}
-          >
-            <ha-icon icon="mdi:arrow-up"></ha-icon>
-          </button>
-          <button
-            type="button"
-            class="iconbtn"
-            title=${t(this.hass, "config_panel.zones_move_down")}
-            aria-label=${t(this.hass, "config_panel.zones_move_down")}
-            ?disabled=${this._busy || orderIndex < 0 || orderIndex >= zoneOrder.length - 1}
-            @click=${() => this._moveZone(z.zone_id, 1)}
-          >
-            <ha-icon icon="mdi:arrow-down"></ha-icon>
-          </button>
-        </div>`
+    const dragLabel = t(this.hass, "config_panel.zones_drag_to_reorder");
+    const dragHandle = canReorder
+      ? html`<button
+          type="button"
+          class="drag-handle"
+          data-zone-id=${z.zone_id}
+          data-reorder="handle"
+          title=${dragLabel}
+          aria-label=${dragLabel}
+          @pointerdown=${(e: PointerEvent) => this._onHandlePointerDown(e, z.zone_id)}
+          @pointermove=${this._onHandlePointerMove}
+          @pointerup=${this._onHandlePointerUp}
+          @pointercancel=${this._endDrag}
+          @keydown=${(e: KeyboardEvent) => this._onHandleKeydown(e, z.zone_id)}
+        >
+          <ha-icon icon="mdi:drag-vertical"></ha-icon>
+        </button>`
       : nothing;
+    // Dragging needs a steady hand; the drawer offers the same move as two buttons.
+    const moveButton = (offset: -1 | 1) => {
+      const up = offset < 0;
+      return html`<button
+        type="button"
+        class="btn-outline"
+        data-zone-id=${z.zone_id}
+        data-reorder=${up ? "up" : "down"}
+        ?disabled=${up ? orderIndex <= 0 : orderIndex >= zoneOrder.length - 1}
+        @click=${() => this._moveZone(z.zone_id, offset, up ? "up" : "down")}
+      >
+        <ha-icon icon=${up ? "mdi:chevron-up" : "mdi:chevron-down"}></ha-icon>
+        ${t(this.hass, up ? "config_panel.zones_move_up" : "config_panel.zones_move_down")}
+      </button>`;
+    };
 
     return html`
       <div
-        class="compact-row ${accentClass} ${this._dragZoneId === z.zone_id ? "dragging" : ""}"
-        @dragover=${(e: DragEvent) => {
-          if (canReorder && this._dragZoneId && this._dragZoneId !== z.zone_id) {
-            e.preventDefault();
-            if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
-          }
-        }}
-        @drop=${(e: DragEvent) => {
-          e.preventDefault();
-          this._dropZone(z.zone_id);
-        }}
+        class="compact-row ${accentClass} ${dragging ? "dragging" : this._drag ? "shifting" : ""}"
+        style=${styleMap(this._dragStyle(orderIndex))}
       >
         <div class="compact-row-header">
+          ${dragHandle}
           <ha-switch
             .disabled=${this._busy}
             .checked=${z.enabled}
@@ -1069,7 +1255,6 @@ export class ViewZones extends LitElement {
                 : nothing}
             </div>
           </div>
-          ${reorderButtons}
           <div class="icon-group hide-narrow" role="group">
             ${primaryBtn}${editBtn}
           </div>
@@ -1104,6 +1289,9 @@ export class ViewZones extends LitElement {
                 >
                   ${t(this.hass, "config_panel.zones_edit")}
                 </button>
+                ${canReorder
+                  ? html`<div class="drawer-move">${moveButton(-1)}${moveButton(1)}</div>`
+                  : nothing}
               </div>
             </div>`
           : nothing}
@@ -1113,7 +1301,7 @@ export class ViewZones extends LitElement {
 
   protected render() {
     const all = this._zonesFromInstallation();
-    const zoneOrder = orderedZoneIds(this.installation);
+    const zoneOrder = all.map((z) => z.zone_id);
     const issuesCount = all.filter((z) => this._zoneIssue(z)).length;
     const filtered = all.filter((z) => {
       if (this._filter === "enabled") return z.enabled;
@@ -1185,7 +1373,11 @@ export class ViewZones extends LitElement {
                     ${t(this.hass, "config_panel.zones_filter_all")}
                   </button>
                 </div>`
-              : filtered.map((z) => this._renderRow(z, slotsPerZone, zoneOrder))}
+              : repeat(
+                  filtered,
+                  (z) => z.zone_id,
+                  (z) => this._renderRow(z, slotsPerZone, zoneOrder)
+                )}
 
           <details class="inline-help" style="margin-top:14px">
             <summary>

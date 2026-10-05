@@ -612,7 +612,7 @@ export class CycleWizard extends LitElement {
 
   private _renderStep3(): TemplateResult {
     const zones = this.installation?.zones as Record<string, Record<string, unknown>> | undefined;
-    const allIds = zones ? orderedZoneIds(this.installation) : [];
+    const allIds = orderedZoneIds(this.installation);
     const pmap = phaseIndexByZoneId(this._zoneIds, this._zonesPhaseInput(), this._maxParallel());
     const est = this._estimateMin();
     const slots = this._slots();

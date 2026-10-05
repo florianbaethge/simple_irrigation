@@ -106,7 +106,7 @@ You can add **multiple** config entries for separate gardens or seasonal plans (
 - **Runtimes:** three values per zone — Eco / Normal / Extra. The installation’s active **mode** picks which one is used.
 - **Exclusive:** the zone never runs in parallel with others (high-flow lines, shared supply, drip circuits).
 - **Issues filter:** zones whose output entity is missing or `unavailable` are flagged so you can spot broken wiring at a glance.
-- **Order:** on the **All** filter, drag zone rows or use their up/down buttons. The saved order is used throughout zone lists, the timetable and as the default for newly created schedules. A schedule that already has an explicit run order is not changed.
+- **Order:** on the **All** filter, drag a zone by its handle — with a mouse or a finger — or focus the handle and press the up or down arrow key. The order applies wherever zones are listed (Zones, Timetable, the dashboard card) and is the run order a new cycle starts with. Existing cycles keep their run order.
 
 #### Duration-aware start services
 

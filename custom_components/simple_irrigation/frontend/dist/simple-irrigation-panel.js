@@ -3,26 +3,26 @@
  * Copyright 2019 Google LLC
  * SPDX-License-Identifier: BSD-3-Clause
  */
-const t$2=globalThis,e$5=t$2.ShadowRoot&&(void 0===t$2.ShadyCSS||t$2.ShadyCSS.nativeShadow)&&"adoptedStyleSheets"in Document.prototype&&"replace"in CSSStyleSheet.prototype,s$2=Symbol(),o$4=new WeakMap;let n$3 = class n{constructor(t,e,o){if(this._$cssResult$=true,o!==s$2)throw Error("CSSResult is not constructable. Use `unsafeCSS` or `css` instead.");this.cssText=t,this.t=e;}get styleSheet(){let t=this.o;const s=this.t;if(e$5&&void 0===t){const e=void 0!==s&&1===s.length;e&&(t=o$4.get(s)),void 0===t&&((this.o=t=new CSSStyleSheet).replaceSync(this.cssText),e&&o$4.set(s,t));}return t}toString(){return this.cssText}};const r$4=t=>new n$3("string"==typeof t?t:t+"",void 0,s$2),i$5=(t,...e)=>{const o=1===t.length?t[0]:e.reduce((e,s,o)=>e+(t=>{if(true===t._$cssResult$)return t.cssText;if("number"==typeof t)return t;throw Error("Value passed to 'css' function must be a 'css' function result: "+t+". Use 'unsafeCSS' to pass non-literal values, but take care to ensure page security.")})(s)+t[o+1],t[0]);return new n$3(o,t,s$2)},S$1=(s,o)=>{if(e$5)s.adoptedStyleSheets=o.map(t=>t instanceof CSSStyleSheet?t:t.styleSheet);else for(const e of o){const o=document.createElement("style"),n=t$2.litNonce;void 0!==n&&o.setAttribute("nonce",n),o.textContent=e.cssText,s.appendChild(o);}},c$2=e$5?t=>t:t=>t instanceof CSSStyleSheet?(t=>{let e="";for(const s of t.cssRules)e+=s.cssText;return r$4(e)})(t):t;
+const t$4=globalThis,e$5=t$4.ShadowRoot&&(void 0===t$4.ShadyCSS||t$4.ShadyCSS.nativeShadow)&&"adoptedStyleSheets"in Document.prototype&&"replace"in CSSStyleSheet.prototype,s$3=Symbol(),o$5=new WeakMap;let n$4 = class n{constructor(t,e,o){if(this._$cssResult$=true,o!==s$3)throw Error("CSSResult is not constructable. Use `unsafeCSS` or `css` instead.");this.cssText=t,this.t=e;}get styleSheet(){let t=this.o;const s=this.t;if(e$5&&void 0===t){const e=void 0!==s&&1===s.length;e&&(t=o$5.get(s)),void 0===t&&((this.o=t=new CSSStyleSheet).replaceSync(this.cssText),e&&o$5.set(s,t));}return t}toString(){return this.cssText}};const r$4=t=>new n$4("string"==typeof t?t:t+"",void 0,s$3),i$7=(t,...e)=>{const o=1===t.length?t[0]:e.reduce((e,s,o)=>e+(t=>{if(true===t._$cssResult$)return t.cssText;if("number"==typeof t)return t;throw Error("Value passed to 'css' function must be a 'css' function result: "+t+". Use 'unsafeCSS' to pass non-literal values, but take care to ensure page security.")})(s)+t[o+1],t[0]);return new n$4(o,t,s$3)},S$1=(s,o)=>{if(e$5)s.adoptedStyleSheets=o.map(t=>t instanceof CSSStyleSheet?t:t.styleSheet);else for(const e of o){const o=document.createElement("style"),n=t$4.litNonce;void 0!==n&&o.setAttribute("nonce",n),o.textContent=e.cssText,s.appendChild(o);}},c$3=e$5?t=>t:t=>t instanceof CSSStyleSheet?(t=>{let e="";for(const s of t.cssRules)e+=s.cssText;return r$4(e)})(t):t;
 
 /**
  * @license
  * Copyright 2017 Google LLC
  * SPDX-License-Identifier: BSD-3-Clause
- */const{is:i$4,defineProperty:e$4,getOwnPropertyDescriptor:h$1,getOwnPropertyNames:r$3,getOwnPropertySymbols:o$3,getPrototypeOf:n$2}=Object,a$1=globalThis,c$1=a$1.trustedTypes,l$1=c$1?c$1.emptyScript:"",p$2=a$1.reactiveElementPolyfillSupport,d$1=(t,s)=>t,u$1={toAttribute(t,s){switch(s){case Boolean:t=t?l$1:null;break;case Object:case Array:t=null==t?t:JSON.stringify(t);}return t},fromAttribute(t,s){let i=t;switch(s){case Boolean:i=null!==t;break;case Number:i=null===t?null:Number(t);break;case Object:case Array:try{i=JSON.parse(t);}catch(t){i=null;}}return i}},f$1=(t,s)=>!i$4(t,s),b$1={attribute:true,type:String,converter:u$1,reflect:false,useDefault:false,hasChanged:f$1};Symbol.metadata??=Symbol("metadata"),a$1.litPropertyMetadata??=new WeakMap;let y$1 = class y extends HTMLElement{static addInitializer(t){this._$Ei(),(this.l??=[]).push(t);}static get observedAttributes(){return this.finalize(),this._$Eh&&[...this._$Eh.keys()]}static createProperty(t,s=b$1){if(s.state&&(s.attribute=false),this._$Ei(),this.prototype.hasOwnProperty(t)&&((s=Object.create(s)).wrapped=true),this.elementProperties.set(t,s),!s.noAccessor){const i=Symbol(),h=this.getPropertyDescriptor(t,i,s);void 0!==h&&e$4(this.prototype,t,h);}}static getPropertyDescriptor(t,s,i){const{get:e,set:r}=h$1(this.prototype,t)??{get(){return this[s]},set(t){this[s]=t;}};return {get:e,set(s){const h=e?.call(this);r?.call(this,s),this.requestUpdate(t,h,i);},configurable:true,enumerable:true}}static getPropertyOptions(t){return this.elementProperties.get(t)??b$1}static _$Ei(){if(this.hasOwnProperty(d$1("elementProperties")))return;const t=n$2(this);t.finalize(),void 0!==t.l&&(this.l=[...t.l]),this.elementProperties=new Map(t.elementProperties);}static finalize(){if(this.hasOwnProperty(d$1("finalized")))return;if(this.finalized=true,this._$Ei(),this.hasOwnProperty(d$1("properties"))){const t=this.properties,s=[...r$3(t),...o$3(t)];for(const i of s)this.createProperty(i,t[i]);}const t=this[Symbol.metadata];if(null!==t){const s=litPropertyMetadata.get(t);if(void 0!==s)for(const[t,i]of s)this.elementProperties.set(t,i);}this._$Eh=new Map;for(const[t,s]of this.elementProperties){const i=this._$Eu(t,s);void 0!==i&&this._$Eh.set(i,t);}this.elementStyles=this.finalizeStyles(this.styles);}static finalizeStyles(s){const i=[];if(Array.isArray(s)){const e=new Set(s.flat(1/0).reverse());for(const s of e)i.unshift(c$2(s));}else void 0!==s&&i.push(c$2(s));return i}static _$Eu(t,s){const i=s.attribute;return  false===i?void 0:"string"==typeof i?i:"string"==typeof t?t.toLowerCase():void 0}constructor(){super(),this._$Ep=void 0,this.isUpdatePending=false,this.hasUpdated=false,this._$Em=null,this._$Ev();}_$Ev(){this._$ES=new Promise(t=>this.enableUpdating=t),this._$AL=new Map,this._$E_(),this.requestUpdate(),this.constructor.l?.forEach(t=>t(this));}addController(t){(this._$EO??=new Set).add(t),void 0!==this.renderRoot&&this.isConnected&&t.hostConnected?.();}removeController(t){this._$EO?.delete(t);}_$E_(){const t=new Map,s=this.constructor.elementProperties;for(const i of s.keys())this.hasOwnProperty(i)&&(t.set(i,this[i]),delete this[i]);t.size>0&&(this._$Ep=t);}createRenderRoot(){const t=this.shadowRoot??this.attachShadow(this.constructor.shadowRootOptions);return S$1(t,this.constructor.elementStyles),t}connectedCallback(){this.renderRoot??=this.createRenderRoot(),this.enableUpdating(true),this._$EO?.forEach(t=>t.hostConnected?.());}enableUpdating(t){}disconnectedCallback(){this._$EO?.forEach(t=>t.hostDisconnected?.());}attributeChangedCallback(t,s,i){this._$AK(t,i);}_$ET(t,s){const i=this.constructor.elementProperties.get(t),e=this.constructor._$Eu(t,i);if(void 0!==e&&true===i.reflect){const h=(void 0!==i.converter?.toAttribute?i.converter:u$1).toAttribute(s,i.type);this._$Em=t,null==h?this.removeAttribute(e):this.setAttribute(e,h),this._$Em=null;}}_$AK(t,s){const i=this.constructor,e=i._$Eh.get(t);if(void 0!==e&&this._$Em!==e){const t=i.getPropertyOptions(e),h="function"==typeof t.converter?{fromAttribute:t.converter}:void 0!==t.converter?.fromAttribute?t.converter:u$1;this._$Em=e;const r=h.fromAttribute(s,t.type);this[e]=r??this._$Ej?.get(e)??r,this._$Em=null;}}requestUpdate(t,s,i,e=false,h){if(void 0!==t){const r=this.constructor;if(false===e&&(h=this[t]),i??=r.getPropertyOptions(t),!((i.hasChanged??f$1)(h,s)||i.useDefault&&i.reflect&&h===this._$Ej?.get(t)&&!this.hasAttribute(r._$Eu(t,i))))return;this.C(t,s,i);} false===this.isUpdatePending&&(this._$ES=this._$EP());}C(t,s,{useDefault:i,reflect:e,wrapped:h},r){i&&!(this._$Ej??=new Map).has(t)&&(this._$Ej.set(t,r??s??this[t]),true!==h||void 0!==r)||(this._$AL.has(t)||(this.hasUpdated||i||(s=void 0),this._$AL.set(t,s)),true===e&&this._$Em!==t&&(this._$Eq??=new Set).add(t));}async _$EP(){this.isUpdatePending=true;try{await this._$ES;}catch(t){Promise.reject(t);}const t=this.scheduleUpdate();return null!=t&&await t,!this.isUpdatePending}scheduleUpdate(){return this.performUpdate()}performUpdate(){if(!this.isUpdatePending)return;if(!this.hasUpdated){if(this.renderRoot??=this.createRenderRoot(),this._$Ep){for(const[t,s]of this._$Ep)this[t]=s;this._$Ep=void 0;}const t=this.constructor.elementProperties;if(t.size>0)for(const[s,i]of t){const{wrapped:t}=i,e=this[s];true!==t||this._$AL.has(s)||void 0===e||this.C(s,void 0,i,e);}}let t=false;const s=this._$AL;try{t=this.shouldUpdate(s),t?(this.willUpdate(s),this._$EO?.forEach(t=>t.hostUpdate?.()),this.update(s)):this._$EM();}catch(s){throw t=false,this._$EM(),s}t&&this._$AE(s);}willUpdate(t){}_$AE(t){this._$EO?.forEach(t=>t.hostUpdated?.()),this.hasUpdated||(this.hasUpdated=true,this.firstUpdated(t)),this.updated(t);}_$EM(){this._$AL=new Map,this.isUpdatePending=false;}get updateComplete(){return this.getUpdateComplete()}getUpdateComplete(){return this._$ES}shouldUpdate(t){return  true}update(t){this._$Eq&&=this._$Eq.forEach(t=>this._$ET(t,this[t])),this._$EM();}updated(t){}firstUpdated(t){}};y$1.elementStyles=[],y$1.shadowRootOptions={mode:"open"},y$1[d$1("elementProperties")]=new Map,y$1[d$1("finalized")]=new Map,p$2?.({ReactiveElement:y$1}),(a$1.reactiveElementVersions??=[]).push("2.1.2");
+ */const{is:i$6,defineProperty:e$4,getOwnPropertyDescriptor:h$2,getOwnPropertyNames:r$3,getOwnPropertySymbols:o$4,getPrototypeOf:n$3}=Object,a$1=globalThis,c$2=a$1.trustedTypes,l$1=c$2?c$2.emptyScript:"",p$2=a$1.reactiveElementPolyfillSupport,d$1=(t,s)=>t,u$3={toAttribute(t,s){switch(s){case Boolean:t=t?l$1:null;break;case Object:case Array:t=null==t?t:JSON.stringify(t);}return t},fromAttribute(t,s){let i=t;switch(s){case Boolean:i=null!==t;break;case Number:i=null===t?null:Number(t);break;case Object:case Array:try{i=JSON.parse(t);}catch(t){i=null;}}return i}},f$1=(t,s)=>!i$6(t,s),b$1={attribute:true,type:String,converter:u$3,reflect:false,useDefault:false,hasChanged:f$1};Symbol.metadata??=Symbol("metadata"),a$1.litPropertyMetadata??=new WeakMap;let y$1 = class y extends HTMLElement{static addInitializer(t){this._$Ei(),(this.l??=[]).push(t);}static get observedAttributes(){return this.finalize(),this._$Eh&&[...this._$Eh.keys()]}static createProperty(t,s=b$1){if(s.state&&(s.attribute=false),this._$Ei(),this.prototype.hasOwnProperty(t)&&((s=Object.create(s)).wrapped=true),this.elementProperties.set(t,s),!s.noAccessor){const i=Symbol(),h=this.getPropertyDescriptor(t,i,s);void 0!==h&&e$4(this.prototype,t,h);}}static getPropertyDescriptor(t,s,i){const{get:e,set:r}=h$2(this.prototype,t)??{get(){return this[s]},set(t){this[s]=t;}};return {get:e,set(s){const h=e?.call(this);r?.call(this,s),this.requestUpdate(t,h,i);},configurable:true,enumerable:true}}static getPropertyOptions(t){return this.elementProperties.get(t)??b$1}static _$Ei(){if(this.hasOwnProperty(d$1("elementProperties")))return;const t=n$3(this);t.finalize(),void 0!==t.l&&(this.l=[...t.l]),this.elementProperties=new Map(t.elementProperties);}static finalize(){if(this.hasOwnProperty(d$1("finalized")))return;if(this.finalized=true,this._$Ei(),this.hasOwnProperty(d$1("properties"))){const t=this.properties,s=[...r$3(t),...o$4(t)];for(const i of s)this.createProperty(i,t[i]);}const t=this[Symbol.metadata];if(null!==t){const s=litPropertyMetadata.get(t);if(void 0!==s)for(const[t,i]of s)this.elementProperties.set(t,i);}this._$Eh=new Map;for(const[t,s]of this.elementProperties){const i=this._$Eu(t,s);void 0!==i&&this._$Eh.set(i,t);}this.elementStyles=this.finalizeStyles(this.styles);}static finalizeStyles(s){const i=[];if(Array.isArray(s)){const e=new Set(s.flat(1/0).reverse());for(const s of e)i.unshift(c$3(s));}else void 0!==s&&i.push(c$3(s));return i}static _$Eu(t,s){const i=s.attribute;return  false===i?void 0:"string"==typeof i?i:"string"==typeof t?t.toLowerCase():void 0}constructor(){super(),this._$Ep=void 0,this.isUpdatePending=false,this.hasUpdated=false,this._$Em=null,this._$Ev();}_$Ev(){this._$ES=new Promise(t=>this.enableUpdating=t),this._$AL=new Map,this._$E_(),this.requestUpdate(),this.constructor.l?.forEach(t=>t(this));}addController(t){(this._$EO??=new Set).add(t),void 0!==this.renderRoot&&this.isConnected&&t.hostConnected?.();}removeController(t){this._$EO?.delete(t);}_$E_(){const t=new Map,s=this.constructor.elementProperties;for(const i of s.keys())this.hasOwnProperty(i)&&(t.set(i,this[i]),delete this[i]);t.size>0&&(this._$Ep=t);}createRenderRoot(){const t=this.shadowRoot??this.attachShadow(this.constructor.shadowRootOptions);return S$1(t,this.constructor.elementStyles),t}connectedCallback(){this.renderRoot??=this.createRenderRoot(),this.enableUpdating(true),this._$EO?.forEach(t=>t.hostConnected?.());}enableUpdating(t){}disconnectedCallback(){this._$EO?.forEach(t=>t.hostDisconnected?.());}attributeChangedCallback(t,s,i){this._$AK(t,i);}_$ET(t,s){const i=this.constructor.elementProperties.get(t),e=this.constructor._$Eu(t,i);if(void 0!==e&&true===i.reflect){const h=(void 0!==i.converter?.toAttribute?i.converter:u$3).toAttribute(s,i.type);this._$Em=t,null==h?this.removeAttribute(e):this.setAttribute(e,h),this._$Em=null;}}_$AK(t,s){const i=this.constructor,e=i._$Eh.get(t);if(void 0!==e&&this._$Em!==e){const t=i.getPropertyOptions(e),h="function"==typeof t.converter?{fromAttribute:t.converter}:void 0!==t.converter?.fromAttribute?t.converter:u$3;this._$Em=e;const r=h.fromAttribute(s,t.type);this[e]=r??this._$Ej?.get(e)??r,this._$Em=null;}}requestUpdate(t,s,i,e=false,h){if(void 0!==t){const r=this.constructor;if(false===e&&(h=this[t]),i??=r.getPropertyOptions(t),!((i.hasChanged??f$1)(h,s)||i.useDefault&&i.reflect&&h===this._$Ej?.get(t)&&!this.hasAttribute(r._$Eu(t,i))))return;this.C(t,s,i);} false===this.isUpdatePending&&(this._$ES=this._$EP());}C(t,s,{useDefault:i,reflect:e,wrapped:h},r){i&&!(this._$Ej??=new Map).has(t)&&(this._$Ej.set(t,r??s??this[t]),true!==h||void 0!==r)||(this._$AL.has(t)||(this.hasUpdated||i||(s=void 0),this._$AL.set(t,s)),true===e&&this._$Em!==t&&(this._$Eq??=new Set).add(t));}async _$EP(){this.isUpdatePending=true;try{await this._$ES;}catch(t){Promise.reject(t);}const t=this.scheduleUpdate();return null!=t&&await t,!this.isUpdatePending}scheduleUpdate(){return this.performUpdate()}performUpdate(){if(!this.isUpdatePending)return;if(!this.hasUpdated){if(this.renderRoot??=this.createRenderRoot(),this._$Ep){for(const[t,s]of this._$Ep)this[t]=s;this._$Ep=void 0;}const t=this.constructor.elementProperties;if(t.size>0)for(const[s,i]of t){const{wrapped:t}=i,e=this[s];true!==t||this._$AL.has(s)||void 0===e||this.C(s,void 0,i,e);}}let t=false;const s=this._$AL;try{t=this.shouldUpdate(s),t?(this.willUpdate(s),this._$EO?.forEach(t=>t.hostUpdate?.()),this.update(s)):this._$EM();}catch(s){throw t=false,this._$EM(),s}t&&this._$AE(s);}willUpdate(t){}_$AE(t){this._$EO?.forEach(t=>t.hostUpdated?.()),this.hasUpdated||(this.hasUpdated=true,this.firstUpdated(t)),this.updated(t);}_$EM(){this._$AL=new Map,this.isUpdatePending=false;}get updateComplete(){return this.getUpdateComplete()}getUpdateComplete(){return this._$ES}shouldUpdate(t){return  true}update(t){this._$Eq&&=this._$Eq.forEach(t=>this._$ET(t,this[t])),this._$EM();}updated(t){}firstUpdated(t){}};y$1.elementStyles=[],y$1.shadowRootOptions={mode:"open"},y$1[d$1("elementProperties")]=new Map,y$1[d$1("finalized")]=new Map,p$2?.({ReactiveElement:y$1}),(a$1.reactiveElementVersions??=[]).push("2.1.2");
 
 /**
  * @license
  * Copyright 2017 Google LLC
  * SPDX-License-Identifier: BSD-3-Clause
  */
-const t$1=globalThis,i$3=t=>t,s$1=t$1.trustedTypes,e$3=s$1?s$1.createPolicy("lit-html",{createHTML:t=>t}):void 0,h="$lit$",o$2=`lit$${Math.random().toFixed(9).slice(2)}$`,n$1="?"+o$2,r$2=`<${n$1}>`,l=document,c=()=>l.createComment(""),a=t=>null===t||"object"!=typeof t&&"function"!=typeof t,u=Array.isArray,d=t=>u(t)||"function"==typeof t?.[Symbol.iterator],f="[ \t\n\f\r]",v=/<(?:(!--|\/[^a-zA-Z])|(\/?[a-zA-Z][^>\s]*)|(\/?$))/g,_=/-->/g,m$1=/>/g,p$1=RegExp(`>|${f}(?:([^\\s"'>=/]+)(${f}*=${f}*(?:[^ \t\n\f\r"'\`<>=]|("|')|))|$)`,"g"),g=/'/g,$=/"/g,y=/^(?:script|style|textarea|title)$/i,x=t=>(i,...s)=>({_$litType$:t,strings:i,values:s}),b=x(1),E=Symbol.for("lit-noChange"),A=Symbol.for("lit-nothing"),C=new WeakMap,P=l.createTreeWalker(l,129);function V(t,i){if(!u(t)||!t.hasOwnProperty("raw"))throw Error("invalid template strings array");return void 0!==e$3?e$3.createHTML(i):i}const N=(t,i)=>{const s=t.length-1,e=[];let n,l=2===i?"<svg>":3===i?"<math>":"",c=v;for(let i=0;i<s;i++){const s=t[i];let a,u,d=-1,f=0;for(;f<s.length&&(c.lastIndex=f,u=c.exec(s),null!==u);)f=c.lastIndex,c===v?"!--"===u[1]?c=_:void 0!==u[1]?c=m$1:void 0!==u[2]?(y.test(u[2])&&(n=RegExp("</"+u[2],"g")),c=p$1):void 0!==u[3]&&(c=p$1):c===p$1?">"===u[0]?(c=n??v,d=-1):void 0===u[1]?d=-2:(d=c.lastIndex-u[2].length,a=u[1],c=void 0===u[3]?p$1:'"'===u[3]?$:g):c===$||c===g?c=p$1:c===_||c===m$1?c=v:(c=p$1,n=void 0);const x=c===p$1&&t[i+1].startsWith("/>")?" ":"";l+=c===v?s+r$2:d>=0?(e.push(a),s.slice(0,d)+h+s.slice(d)+o$2+x):s+o$2+(-2===d?i:x);}return [V(t,l+(t[s]||"<?>")+(2===i?"</svg>":3===i?"</math>":"")),e]};class S{constructor({strings:t,_$litType$:i},e){let r;this.parts=[];let l=0,a=0;const u=t.length-1,d=this.parts,[f,v]=N(t,i);if(this.el=S.createElement(f,e),P.currentNode=this.el.content,2===i||3===i){const t=this.el.content.firstChild;t.replaceWith(...t.childNodes);}for(;null!==(r=P.nextNode())&&d.length<u;){if(1===r.nodeType){if(r.hasAttributes())for(const t of r.getAttributeNames())if(t.endsWith(h)){const i=v[a++],s=r.getAttribute(t).split(o$2),e=/([.?@])?(.*)/.exec(i);d.push({type:1,index:l,name:e[2],strings:s,ctor:"."===e[1]?I:"?"===e[1]?L:"@"===e[1]?z:H}),r.removeAttribute(t);}else t.startsWith(o$2)&&(d.push({type:6,index:l}),r.removeAttribute(t));if(y.test(r.tagName)){const t=r.textContent.split(o$2),i=t.length-1;if(i>0){r.textContent=s$1?s$1.emptyScript:"";for(let s=0;s<i;s++)r.append(t[s],c()),P.nextNode(),d.push({type:2,index:++l});r.append(t[i],c());}}}else if(8===r.nodeType)if(r.data===n$1)d.push({type:2,index:l});else {let t=-1;for(;-1!==(t=r.data.indexOf(o$2,t+1));)d.push({type:7,index:l}),t+=o$2.length-1;}l++;}}static createElement(t,i){const s=l.createElement("template");return s.innerHTML=t,s}}function M(t,i,s=t,e){if(i===E)return i;let h=void 0!==e?s._$Co?.[e]:s._$Cl;const o=a(i)?void 0:i._$litDirective$;return h?.constructor!==o&&(h?._$AO?.(false),void 0===o?h=void 0:(h=new o(t),h._$AT(t,s,e)),void 0!==e?(s._$Co??=[])[e]=h:s._$Cl=h),void 0!==h&&(i=M(t,h._$AS(t,i.values),h,e)),i}class R{constructor(t,i){this._$AV=[],this._$AN=void 0,this._$AD=t,this._$AM=i;}get parentNode(){return this._$AM.parentNode}get _$AU(){return this._$AM._$AU}u(t){const{el:{content:i},parts:s}=this._$AD,e=(t?.creationScope??l).importNode(i,true);P.currentNode=e;let h=P.nextNode(),o=0,n=0,r=s[0];for(;void 0!==r;){if(o===r.index){let i;2===r.type?i=new k(h,h.nextSibling,this,t):1===r.type?i=new r.ctor(h,r.name,r.strings,this,t):6===r.type&&(i=new Z(h,this,t)),this._$AV.push(i),r=s[++n];}o!==r?.index&&(h=P.nextNode(),o++);}return P.currentNode=l,e}p(t){let i=0;for(const s of this._$AV) void 0!==s&&(void 0!==s.strings?(s._$AI(t,s,i),i+=s.strings.length-2):s._$AI(t[i])),i++;}}class k{get _$AU(){return this._$AM?._$AU??this._$Cv}constructor(t,i,s,e){this.type=2,this._$AH=A,this._$AN=void 0,this._$AA=t,this._$AB=i,this._$AM=s,this.options=e,this._$Cv=e?.isConnected??true;}get parentNode(){let t=this._$AA.parentNode;const i=this._$AM;return void 0!==i&&11===t?.nodeType&&(t=i.parentNode),t}get startNode(){return this._$AA}get endNode(){return this._$AB}_$AI(t,i=this){t=M(this,t,i),a(t)?t===A||null==t||""===t?(this._$AH!==A&&this._$AR(),this._$AH=A):t!==this._$AH&&t!==E&&this._(t):void 0!==t._$litType$?this.$(t):void 0!==t.nodeType?this.T(t):d(t)?this.k(t):this._(t);}O(t){return this._$AA.parentNode.insertBefore(t,this._$AB)}T(t){this._$AH!==t&&(this._$AR(),this._$AH=this.O(t));}_(t){this._$AH!==A&&a(this._$AH)?this._$AA.nextSibling.data=t:this.T(l.createTextNode(t)),this._$AH=t;}$(t){const{values:i,_$litType$:s}=t,e="number"==typeof s?this._$AC(t):(void 0===s.el&&(s.el=S.createElement(V(s.h,s.h[0]),this.options)),s);if(this._$AH?._$AD===e)this._$AH.p(i);else {const t=new R(e,this),s=t.u(this.options);t.p(i),this.T(s),this._$AH=t;}}_$AC(t){let i=C.get(t.strings);return void 0===i&&C.set(t.strings,i=new S(t)),i}k(t){u(this._$AH)||(this._$AH=[],this._$AR());const i=this._$AH;let s,e=0;for(const h of t)e===i.length?i.push(s=new k(this.O(c()),this.O(c()),this,this.options)):s=i[e],s._$AI(h),e++;e<i.length&&(this._$AR(s&&s._$AB.nextSibling,e),i.length=e);}_$AR(t=this._$AA.nextSibling,s){for(this._$AP?.(false,true,s);t!==this._$AB;){const s=i$3(t).nextSibling;i$3(t).remove(),t=s;}}setConnected(t){ void 0===this._$AM&&(this._$Cv=t,this._$AP?.(t));}}class H{get tagName(){return this.element.tagName}get _$AU(){return this._$AM._$AU}constructor(t,i,s,e,h){this.type=1,this._$AH=A,this._$AN=void 0,this.element=t,this.name=i,this._$AM=e,this.options=h,s.length>2||""!==s[0]||""!==s[1]?(this._$AH=Array(s.length-1).fill(new String),this.strings=s):this._$AH=A;}_$AI(t,i=this,s,e){const h=this.strings;let o=false;if(void 0===h)t=M(this,t,i,0),o=!a(t)||t!==this._$AH&&t!==E,o&&(this._$AH=t);else {const e=t;let n,r;for(t=h[0],n=0;n<h.length-1;n++)r=M(this,e[s+n],i,n),r===E&&(r=this._$AH[n]),o||=!a(r)||r!==this._$AH[n],r===A?t=A:t!==A&&(t+=(r??"")+h[n+1]),this._$AH[n]=r;}o&&!e&&this.j(t);}j(t){t===A?this.element.removeAttribute(this.name):this.element.setAttribute(this.name,t??"");}}class I extends H{constructor(){super(...arguments),this.type=3;}j(t){this.element[this.name]=t===A?void 0:t;}}class L extends H{constructor(){super(...arguments),this.type=4;}j(t){this.element.toggleAttribute(this.name,!!t&&t!==A);}}class z extends H{constructor(t,i,s,e,h){super(t,i,s,e,h),this.type=5;}_$AI(t,i=this){if((t=M(this,t,i,0)??A)===E)return;const s=this._$AH,e=t===A&&s!==A||t.capture!==s.capture||t.once!==s.once||t.passive!==s.passive,h=t!==A&&(s===A||e);e&&this.element.removeEventListener(this.name,this,s),h&&this.element.addEventListener(this.name,this,t),this._$AH=t;}handleEvent(t){"function"==typeof this._$AH?this._$AH.call(this.options?.host??this.element,t):this._$AH.handleEvent(t);}}class Z{constructor(t,i,s){this.element=t,this.type=6,this._$AN=void 0,this._$AM=i,this.options=s;}get _$AU(){return this._$AM._$AU}_$AI(t){M(this,t);}}const B=t$1.litHtmlPolyfillSupport;B?.(S,k),(t$1.litHtmlVersions??=[]).push("3.3.2");const D=(t,i,s)=>{const e=s?.renderBefore??i;let h=e._$litPart$;if(void 0===h){const t=s?.renderBefore??null;e._$litPart$=h=new k(i.insertBefore(c(),t),t,void 0,s??{});}return h._$AI(t),h};
+const t$3=globalThis,i$5=t=>t,s$2=t$3.trustedTypes,e$3=s$2?s$2.createPolicy("lit-html",{createHTML:t=>t}):void 0,h$1="$lit$",o$3=`lit$${Math.random().toFixed(9).slice(2)}$`,n$2="?"+o$3,r$2=`<${n$2}>`,l=document,c$1=()=>l.createComment(""),a=t=>null===t||"object"!=typeof t&&"function"!=typeof t,u$2=Array.isArray,d=t=>u$2(t)||"function"==typeof t?.[Symbol.iterator],f="[ \t\n\f\r]",v$1=/<(?:(!--|\/[^a-zA-Z])|(\/?[a-zA-Z][^>\s]*)|(\/?$))/g,_=/-->/g,m$1=/>/g,p$1=RegExp(`>|${f}(?:([^\\s"'>=/]+)(${f}*=${f}*(?:[^ \t\n\f\r"'\`<>=]|("|')|))|$)`,"g"),g=/'/g,$=/"/g,y=/^(?:script|style|textarea|title)$/i,x=t=>(i,...s)=>({_$litType$:t,strings:i,values:s}),b=x(1),E=Symbol.for("lit-noChange"),A=Symbol.for("lit-nothing"),C=new WeakMap,P=l.createTreeWalker(l,129);function V(t,i){if(!u$2(t)||!t.hasOwnProperty("raw"))throw Error("invalid template strings array");return void 0!==e$3?e$3.createHTML(i):i}const N=(t,i)=>{const s=t.length-1,e=[];let n,l=2===i?"<svg>":3===i?"<math>":"",c=v$1;for(let i=0;i<s;i++){const s=t[i];let a,u,d=-1,f=0;for(;f<s.length&&(c.lastIndex=f,u=c.exec(s),null!==u);)f=c.lastIndex,c===v$1?"!--"===u[1]?c=_:void 0!==u[1]?c=m$1:void 0!==u[2]?(y.test(u[2])&&(n=RegExp("</"+u[2],"g")),c=p$1):void 0!==u[3]&&(c=p$1):c===p$1?">"===u[0]?(c=n??v$1,d=-1):void 0===u[1]?d=-2:(d=c.lastIndex-u[2].length,a=u[1],c=void 0===u[3]?p$1:'"'===u[3]?$:g):c===$||c===g?c=p$1:c===_||c===m$1?c=v$1:(c=p$1,n=void 0);const x=c===p$1&&t[i+1].startsWith("/>")?" ":"";l+=c===v$1?s+r$2:d>=0?(e.push(a),s.slice(0,d)+h$1+s.slice(d)+o$3+x):s+o$3+(-2===d?i:x);}return [V(t,l+(t[s]||"<?>")+(2===i?"</svg>":3===i?"</math>":"")),e]};class S{constructor({strings:t,_$litType$:i},e){let r;this.parts=[];let l=0,a=0;const u=t.length-1,d=this.parts,[f,v]=N(t,i);if(this.el=S.createElement(f,e),P.currentNode=this.el.content,2===i||3===i){const t=this.el.content.firstChild;t.replaceWith(...t.childNodes);}for(;null!==(r=P.nextNode())&&d.length<u;){if(1===r.nodeType){if(r.hasAttributes())for(const t of r.getAttributeNames())if(t.endsWith(h$1)){const i=v[a++],s=r.getAttribute(t).split(o$3),e=/([.?@])?(.*)/.exec(i);d.push({type:1,index:l,name:e[2],strings:s,ctor:"."===e[1]?I:"?"===e[1]?L:"@"===e[1]?z:H}),r.removeAttribute(t);}else t.startsWith(o$3)&&(d.push({type:6,index:l}),r.removeAttribute(t));if(y.test(r.tagName)){const t=r.textContent.split(o$3),i=t.length-1;if(i>0){r.textContent=s$2?s$2.emptyScript:"";for(let s=0;s<i;s++)r.append(t[s],c$1()),P.nextNode(),d.push({type:2,index:++l});r.append(t[i],c$1());}}}else if(8===r.nodeType)if(r.data===n$2)d.push({type:2,index:l});else {let t=-1;for(;-1!==(t=r.data.indexOf(o$3,t+1));)d.push({type:7,index:l}),t+=o$3.length-1;}l++;}}static createElement(t,i){const s=l.createElement("template");return s.innerHTML=t,s}}function M$1(t,i,s=t,e){if(i===E)return i;let h=void 0!==e?s._$Co?.[e]:s._$Cl;const o=a(i)?void 0:i._$litDirective$;return h?.constructor!==o&&(h?._$AO?.(false),void 0===o?h=void 0:(h=new o(t),h._$AT(t,s,e)),void 0!==e?(s._$Co??=[])[e]=h:s._$Cl=h),void 0!==h&&(i=M$1(t,h._$AS(t,i.values),h,e)),i}class R{constructor(t,i){this._$AV=[],this._$AN=void 0,this._$AD=t,this._$AM=i;}get parentNode(){return this._$AM.parentNode}get _$AU(){return this._$AM._$AU}u(t){const{el:{content:i},parts:s}=this._$AD,e=(t?.creationScope??l).importNode(i,true);P.currentNode=e;let h=P.nextNode(),o=0,n=0,r=s[0];for(;void 0!==r;){if(o===r.index){let i;2===r.type?i=new k(h,h.nextSibling,this,t):1===r.type?i=new r.ctor(h,r.name,r.strings,this,t):6===r.type&&(i=new Z(h,this,t)),this._$AV.push(i),r=s[++n];}o!==r?.index&&(h=P.nextNode(),o++);}return P.currentNode=l,e}p(t){let i=0;for(const s of this._$AV) void 0!==s&&(void 0!==s.strings?(s._$AI(t,s,i),i+=s.strings.length-2):s._$AI(t[i])),i++;}}class k{get _$AU(){return this._$AM?._$AU??this._$Cv}constructor(t,i,s,e){this.type=2,this._$AH=A,this._$AN=void 0,this._$AA=t,this._$AB=i,this._$AM=s,this.options=e,this._$Cv=e?.isConnected??true;}get parentNode(){let t=this._$AA.parentNode;const i=this._$AM;return void 0!==i&&11===t?.nodeType&&(t=i.parentNode),t}get startNode(){return this._$AA}get endNode(){return this._$AB}_$AI(t,i=this){t=M$1(this,t,i),a(t)?t===A||null==t||""===t?(this._$AH!==A&&this._$AR(),this._$AH=A):t!==this._$AH&&t!==E&&this._(t):void 0!==t._$litType$?this.$(t):void 0!==t.nodeType?this.T(t):d(t)?this.k(t):this._(t);}O(t){return this._$AA.parentNode.insertBefore(t,this._$AB)}T(t){this._$AH!==t&&(this._$AR(),this._$AH=this.O(t));}_(t){this._$AH!==A&&a(this._$AH)?this._$AA.nextSibling.data=t:this.T(l.createTextNode(t)),this._$AH=t;}$(t){const{values:i,_$litType$:s}=t,e="number"==typeof s?this._$AC(t):(void 0===s.el&&(s.el=S.createElement(V(s.h,s.h[0]),this.options)),s);if(this._$AH?._$AD===e)this._$AH.p(i);else {const t=new R(e,this),s=t.u(this.options);t.p(i),this.T(s),this._$AH=t;}}_$AC(t){let i=C.get(t.strings);return void 0===i&&C.set(t.strings,i=new S(t)),i}k(t){u$2(this._$AH)||(this._$AH=[],this._$AR());const i=this._$AH;let s,e=0;for(const h of t)e===i.length?i.push(s=new k(this.O(c$1()),this.O(c$1()),this,this.options)):s=i[e],s._$AI(h),e++;e<i.length&&(this._$AR(s&&s._$AB.nextSibling,e),i.length=e);}_$AR(t=this._$AA.nextSibling,s){for(this._$AP?.(false,true,s);t!==this._$AB;){const s=i$5(t).nextSibling;i$5(t).remove(),t=s;}}setConnected(t){ void 0===this._$AM&&(this._$Cv=t,this._$AP?.(t));}}class H{get tagName(){return this.element.tagName}get _$AU(){return this._$AM._$AU}constructor(t,i,s,e,h){this.type=1,this._$AH=A,this._$AN=void 0,this.element=t,this.name=i,this._$AM=e,this.options=h,s.length>2||""!==s[0]||""!==s[1]?(this._$AH=Array(s.length-1).fill(new String),this.strings=s):this._$AH=A;}_$AI(t,i=this,s,e){const h=this.strings;let o=false;if(void 0===h)t=M$1(this,t,i,0),o=!a(t)||t!==this._$AH&&t!==E,o&&(this._$AH=t);else {const e=t;let n,r;for(t=h[0],n=0;n<h.length-1;n++)r=M$1(this,e[s+n],i,n),r===E&&(r=this._$AH[n]),o||=!a(r)||r!==this._$AH[n],r===A?t=A:t!==A&&(t+=(r??"")+h[n+1]),this._$AH[n]=r;}o&&!e&&this.j(t);}j(t){t===A?this.element.removeAttribute(this.name):this.element.setAttribute(this.name,t??"");}}class I extends H{constructor(){super(...arguments),this.type=3;}j(t){this.element[this.name]=t===A?void 0:t;}}class L extends H{constructor(){super(...arguments),this.type=4;}j(t){this.element.toggleAttribute(this.name,!!t&&t!==A);}}class z extends H{constructor(t,i,s,e,h){super(t,i,s,e,h),this.type=5;}_$AI(t,i=this){if((t=M$1(this,t,i,0)??A)===E)return;const s=this._$AH,e=t===A&&s!==A||t.capture!==s.capture||t.once!==s.once||t.passive!==s.passive,h=t!==A&&(s===A||e);e&&this.element.removeEventListener(this.name,this,s),h&&this.element.addEventListener(this.name,this,t),this._$AH=t;}handleEvent(t){"function"==typeof this._$AH?this._$AH.call(this.options?.host??this.element,t):this._$AH.handleEvent(t);}}class Z{constructor(t,i,s){this.element=t,this.type=6,this._$AN=void 0,this._$AM=i,this.options=s;}get _$AU(){return this._$AM._$AU}_$AI(t){M$1(this,t);}}const j={I:k},B=t$3.litHtmlPolyfillSupport;B?.(S,k),(t$3.litHtmlVersions??=[]).push("3.3.2");const D=(t,i,s)=>{const e=s?.renderBefore??i;let h=e._$litPart$;if(void 0===h){const t=s?.renderBefore??null;e._$litPart$=h=new k(i.insertBefore(c$1(),t),t,void 0,s??{});}return h._$AI(t),h};
 
 /**
  * @license
  * Copyright 2017 Google LLC
  * SPDX-License-Identifier: BSD-3-Clause
- */const s=globalThis;let i$2 = class i extends y$1{constructor(){super(...arguments),this.renderOptions={host:this},this._$Do=void 0;}createRenderRoot(){const t=super.createRenderRoot();return this.renderOptions.renderBefore??=t.firstChild,t}update(t){const r=this.render();this.hasUpdated||(this.renderOptions.isConnected=this.isConnected),super.update(t),this._$Do=D(r,this.renderRoot,this.renderOptions);}connectedCallback(){super.connectedCallback(),this._$Do?.setConnected(true);}disconnectedCallback(){super.disconnectedCallback(),this._$Do?.setConnected(false);}render(){return E}};i$2._$litElement$=true,i$2["finalized"]=true,s.litElementHydrateSupport?.({LitElement:i$2});const o$1=s.litElementPolyfillSupport;o$1?.({LitElement:i$2});(s.litElementVersions??=[]).push("4.2.2");
+ */const s$1=globalThis;let i$4 = class i extends y$1{constructor(){super(...arguments),this.renderOptions={host:this},this._$Do=void 0;}createRenderRoot(){const t=super.createRenderRoot();return this.renderOptions.renderBefore??=t.firstChild,t}update(t){const r=this.render();this.hasUpdated||(this.renderOptions.isConnected=this.isConnected),super.update(t),this._$Do=D(r,this.renderRoot,this.renderOptions);}connectedCallback(){super.connectedCallback(),this._$Do?.setConnected(true);}disconnectedCallback(){super.disconnectedCallback(),this._$Do?.setConnected(false);}render(){return E}};i$4._$litElement$=true,i$4["finalized"]=true,s$1.litElementHydrateSupport?.({LitElement:i$4});const o$2=s$1.litElementPolyfillSupport;o$2?.({LitElement:i$4});(s$1.litElementVersions??=[]).push("4.2.2");
 
 const fetchPanelState = (hass, entryId) => hass.callWS({
     type: "simple_irrigation/panel/state",
@@ -30,7 +30,7 @@ const fetchPanelState = (hass, entryId) => hass.callWS({
 });
 const saveGlobal = (hass, entryId, body) => hass.callApi("POST", "simple_irrigation/panel/global", { entry_id: entryId, ...body });
 const saveZone = (hass, entryId, body) => hass.callApi("POST", "simple_irrigation/panel/zone", { entry_id: entryId, ...body });
-/** Persist the complete display/default-selection order as one atomic update. */
+/** Save the order of all zones; the backend refuses a list that misses or adds one. */
 const saveZoneOrder = (hass, entryId, zoneOrder) => saveZone(hass, entryId, { action: "reorder", zone_order: zoneOrder });
 const saveSlot = (hass, entryId, body) => hass.callApi("POST", "simple_irrigation/panel/slot", { entry_id: entryId, ...body });
 const upsertCycle = (hass, entryId, body) => hass.callApi("POST", "simple_irrigation/panel/slot", {
@@ -79,7 +79,7 @@ function fireEvent(node, type, detail) {
 /** Must match `DOMAIN` in the Python integration. */
 const TRANSLATION_DOMAIN = "simple_irrigation";
 /** Flat key under `component.simple_irrigation.*` (e.g. `config_panel.tab_general`). */
-function t(hass, path, placeholders) {
+function t$2(hass, path, placeholders) {
     if (!hass?.localize) {
         return path;
     }
@@ -141,13 +141,13 @@ function translateErrorCode(value, hass) {
         return value;
     }
     const path = `config_panel.errors_${value}`;
-    const translated = t(hass, path);
+    const translated = t$2(hass, path);
     return translated === path ? value : translated;
 }
 /** Home Assistant callApi may put a string or structured object in `error`. */
 function formatApiError(value, hass) {
     const fallback = hass?.localize != null
-        ? t(hass, "config_panel.errors_request_failed")
+        ? t$2(hass, "config_panel.errors_request_failed")
         : "Request failed";
     if (value == null || value === "") {
         return fallback;
@@ -263,7 +263,7 @@ function stripEditSlotQueryFromUrl() {
     }
 }
 
-const panelStyles = i$5 `
+const panelStyles = i$7 `
   :host {
     display: block;
     color: var(--primary-text-color);
@@ -473,13 +473,13 @@ typeof SuppressedError === "function" ? SuppressedError : function (error, suppr
  * @license
  * Copyright 2017 Google LLC
  * SPDX-License-Identifier: BSD-3-Clause
- */const o={attribute:true,type:String,converter:u$1,reflect:false,hasChanged:f$1},r$1=(t=o,e,r)=>{const{kind:n,metadata:i}=r;let s=globalThis.litPropertyMetadata.get(i);if(void 0===s&&globalThis.litPropertyMetadata.set(i,s=new Map),"setter"===n&&((t=Object.create(t)).wrapped=true),s.set(r.name,t),"accessor"===n){const{name:o}=r;return {set(r){const n=e.get.call(this);e.set.call(this,r),this.requestUpdate(o,n,t,true,r);},init(e){return void 0!==e&&this.C(o,void 0,t,e),e}}}if("setter"===n){const{name:o}=r;return function(r){const n=this[o];e.call(this,r),this.requestUpdate(o,n,t,true,r);}}throw Error("Unsupported decorator location: "+n)};function n(t){return (e,o)=>"object"==typeof o?r$1(t,e,o):((t,e,o)=>{const r=e.hasOwnProperty(o);return e.constructor.createProperty(o,t),r?Object.getOwnPropertyDescriptor(e,o):void 0})(t,e,o)}
+ */const o$1={attribute:true,type:String,converter:u$3,reflect:false,hasChanged:f$1},r$1=(t=o$1,e,r)=>{const{kind:n,metadata:i}=r;let s=globalThis.litPropertyMetadata.get(i);if(void 0===s&&globalThis.litPropertyMetadata.set(i,s=new Map),"setter"===n&&((t=Object.create(t)).wrapped=true),s.set(r.name,t),"accessor"===n){const{name:o}=r;return {set(r){const n=e.get.call(this);e.set.call(this,r),this.requestUpdate(o,n,t,true,r);},init(e){return void 0!==e&&this.C(o,void 0,t,e),e}}}if("setter"===n){const{name:o}=r;return function(r){const n=this[o];e.call(this,r),this.requestUpdate(o,n,t,true,r);}}throw Error("Unsupported decorator location: "+n)};function n$1(t){return (e,o)=>"object"==typeof o?r$1(t,e,o):((t,e,o)=>{const r=e.hasOwnProperty(o);return e.constructor.createProperty(o,t),r?Object.getOwnPropertyDescriptor(e,o):void 0})(t,e,o)}
 
 /**
  * @license
  * Copyright 2017 Google LLC
  * SPDX-License-Identifier: BSD-3-Clause
- */function r(r){return n({...r,state:true,attribute:false})}
+ */function r(r){return n$1({...r,state:true,attribute:false})}
 
 /**
  * @license
@@ -502,7 +502,7 @@ const e$2=(e,t,c)=>(c.configurable=true,c.enumerable=true,Reflect.decorate&&"obj
  * `.compass`). Every view imports `[sharedStyles, formLayoutStyles, css` …local… `]`
  * so cards, rows, buttons, chips, badges and dialogs stay identical across tabs.
  */
-const sharedStyles = i$5 `
+const sharedStyles = i$7 `
   ha-card {
     margin-bottom: 20px;
     border-radius: 14px;
@@ -1417,12 +1417,12 @@ function weekdaysSummary(hass, weekdays) {
     if (wds.length === 0)
         return "";
     if (wds.length === 7)
-        return t(hass, "config_panel.weekdays_summary_daily");
+        return t$2(hass, "config_panel.weekdays_summary_daily");
     const key = wds.join(",");
     if (key === "0,1,2,3,4")
-        return t(hass, "config_panel.weekdays_summary_workdays");
+        return t$2(hass, "config_panel.weekdays_summary_workdays");
     if (key === "5,6")
-        return t(hass, "config_panel.weekdays_summary_weekend");
+        return t$2(hass, "config_panel.weekdays_summary_weekend");
     return wds.map((i) => weekdayShort(hass, i)).join(", ");
 }
 /**
@@ -1540,39 +1540,13 @@ function programMinutes(phases, cs, zoneMinutes) {
     return total;
 }
 
-/**
- * Resolve the installation's preferred zone order without trusting it to be
- * complete.  Old installations have no `zone_order`; interrupted or hand-edited
- * storage may contain stale/duplicate ids.  Valid saved ids stay first and every
- * current zone is appended in the object's stable creation order.
- */
+/** Zone ids in the installation's saved order; the backend always sends it complete. */
 function orderedZoneIds(installation) {
     const zones = installation?.zones;
     if (!zones)
         return [];
-    const raw = Array.isArray(installation?.zone_order)
-        ? installation.zone_order
-        : [];
-    const ordered = [];
-    const seen = new Set();
-    for (const item of raw) {
-        const id = String(item);
-        if (Object.prototype.hasOwnProperty.call(zones, id) && !seen.has(id)) {
-            ordered.push(id);
-            seen.add(id);
-        }
-    }
-    for (const id of Object.keys(zones)) {
-        if (!seen.has(id))
-            ordered.push(id);
-    }
-    return ordered;
-}
-function orderedZoneEntries(installation) {
-    const zones = installation?.zones;
-    if (!zones)
-        return [];
-    return orderedZoneIds(installation).map((id) => [id, zones[id]]);
+    const order = installation?.zone_order;
+    return Array.isArray(order) ? order.map(String) : Object.keys(zones);
 }
 
 /** Weekly timetable entries from schedule slots (local wall clock, Mon=0 … Sun=6). */
@@ -2058,7 +2032,7 @@ function firstRunDate(slots, start, days = 28) {
 }
 
 const MODES = ["eco", "normal", "extra"];
-class ViewOverview extends i$2 {
+class ViewOverview extends i$4 {
     constructor() {
         super(...arguments);
         this._busy = false;
@@ -2074,7 +2048,7 @@ class ViewOverview extends i$2 {
     }; }
     static { this.styles = [
         sharedStyles,
-        i$5 `
+        i$7 `
       .overview-grid {
         display: grid;
         grid-template-columns: 1fr;
@@ -2355,17 +2329,17 @@ class ViewOverview extends i$2 {
         const meta = slot.cycle_meta ?? null;
         switch (kind) {
             case "daily":
-                return t(this.hass, "config_panel.cycle_kind_daily");
+                return t$2(this.hass, "config_panel.cycle_kind_daily");
             case "weekly":
-                return t(this.hass, "config_panel.cycle_kind_weekly");
+                return t$2(this.hass, "config_panel.cycle_kind_weekly");
             case "biweekly":
-                return t(this.hass, "config_panel.cycle_kind_biweekly");
+                return t$2(this.hass, "config_panel.cycle_kind_biweekly");
             case "n_per_week":
-                return t(this.hass, "config_panel.cycle_kind_n_per_week");
+                return t$2(this.hass, "config_panel.cycle_kind_n_per_week");
             case "every_n_days":
                 return meta?.n === 3
-                    ? t(this.hass, "config_panel.cycle_kind_every_3_days")
-                    : t(this.hass, "config_panel.cycle_kind_every_2_days");
+                    ? t$2(this.hass, "config_panel.cycle_kind_every_3_days")
+                    : t$2(this.hass, "config_panel.cycle_kind_every_2_days");
             default: {
                 const wds = Array.isArray(slot.weekdays)
                     ? slot.weekdays
@@ -2426,26 +2400,26 @@ class ViewOverview extends i$2 {
         const startD = new Date(d.getFullYear(), d.getMonth(), d.getDate());
         const diff = Math.round((startD.getTime() - startToday.getTime()) / 86400000);
         if (diff === 0)
-            return t(this.hass, "config_panel.overview_today");
+            return t$2(this.hass, "config_panel.overview_today");
         if (diff === 1)
-            return t(this.hass, "config_panel.overview_tomorrow");
+            return t$2(this.hass, "config_panel.overview_tomorrow");
         return weekdayLong(this.hass, mondayBasedWeekday(d));
     }
     _fmtCountdown(ms) {
         const diff = ms - Date.now();
         if (diff <= 0)
-            return t(this.hass, "config_panel.overview_countdown_soon");
+            return t$2(this.hass, "config_panel.overview_countdown_soon");
         const totalMin = Math.round(diff / 60000);
         const d = Math.floor(totalMin / 1440);
         const h = Math.floor((totalMin % 1440) / 60);
         const m = totalMin % 60;
         if (d > 0)
-            return t(this.hass, "config_panel.overview_countdown_days", { d, h });
+            return t$2(this.hass, "config_panel.overview_countdown_days", { d, h });
         if (h > 0)
-            return t(this.hass, "config_panel.overview_countdown_hours", { h, m });
+            return t$2(this.hass, "config_panel.overview_countdown_hours", { h, m });
         if (m > 0)
-            return t(this.hass, "config_panel.overview_countdown_minutes", { m });
-        return t(this.hass, "config_panel.overview_countdown_soon");
+            return t$2(this.hass, "config_panel.overview_countdown_minutes", { m });
+        return t$2(this.hass, "config_panel.overview_countdown_soon");
     }
     /** Planned end of a watering zone, as pushed by the runtime. */
     _zoneEndsAt(zoneId) {
@@ -2461,7 +2435,7 @@ class ViewOverview extends i$2 {
     _fmtRemaining(endsAtMs) {
         const diff = endsAtMs - Date.now();
         if (diff <= 0)
-            return t(this.hass, "config_panel.general_remaining_finishing");
+            return t$2(this.hass, "config_panel.general_remaining_finishing");
         const totalSec = Math.round(diff / 1000);
         const h = Math.floor(totalSec / 3600);
         const m = Math.floor((totalSec % 3600) / 60);
@@ -2498,7 +2472,7 @@ class ViewOverview extends i$2 {
     /** "~120 L" / "250 gal" in the user's unit system. */
     _fmtWater(litres, estimated) {
         const unit = volumeUnit(this.hass);
-        return t(this.hass, estimated ? "config_panel.water_approx" : "config_panel.water_exact", {
+        return t$2(this.hass, estimated ? "config_panel.water_approx" : "config_panel.water_exact", {
             v: formatVolumeNumber(litresToUnit(litres, unit)),
             u: unit,
         });
@@ -2571,22 +2545,22 @@ class ViewOverview extends i$2 {
         const badgeClass = runBusy ? "running" : runState === "error" ? "error" : "";
         const stateWord = runBusy
             ? runState === "preparing"
-                ? t(this.hass, "config_panel.general_state_preparing")
+                ? t$2(this.hass, "config_panel.general_state_preparing")
                 : runState === "stopping"
-                    ? t(this.hass, "config_panel.general_state_stopping")
+                    ? t$2(this.hass, "config_panel.general_state_stopping")
                     : soaking
-                        ? t(this.hass, "config_panel.general_state_soaking")
-                        : t(this.hass, "config_panel.general_state_running")
+                        ? t$2(this.hass, "config_panel.general_state_soaking")
+                        : t$2(this.hass, "config_panel.general_state_running")
             : runState === "error"
-                ? t(this.hass, "config_panel.general_state_error_idle")
-                : t(this.hass, "config_panel.general_state_idle");
+                ? t$2(this.hass, "config_panel.general_state_error_idle")
+                : t$2(this.hass, "config_panel.general_state_idle");
         const showSkip = runBusy && runState !== "stopping" && (runState === "preparing" || upcoming.length > 0);
         const runWater = this._liveWater(activeIds);
         const lastWater = typeof rs.last_run_water_l === "number" ? rs.last_run_water_l : null;
         // A blocking script is why "Preparing" can sit there for minutes — name it.
         const activeScript = rs.active_script ? String(rs.active_script) : "";
         const scriptLine = activeScript
-            ? t(this.hass, runState === "stopping"
+            ? t$2(this.hass, runState === "stopping"
                 ? "config_panel.general_state_post_run_script"
                 : "config_panel.general_state_pre_start_script", { name: this._entityName(activeScript) })
             : "";
@@ -2594,7 +2568,7 @@ class ViewOverview extends i$2 {
       <ha-card>
         <div class="card-header">
           <ha-icon icon="mdi:sprinkler-variant"></ha-icon>
-          ${t(this.hass, "config_panel.general_card_current_run")}
+          ${t$2(this.hass, "config_panel.general_card_current_run")}
           <span class="header-actions">
             <span class="state-badge ${badgeClass}">${stateWord}</span>
           </span>
@@ -2616,11 +2590,11 @@ class ViewOverview extends i$2 {
                     ><ha-icon icon="mdi:clock-outline"></ha-icon>${this._fmtCountdown(next.when.getTime())}</span
                   >
                   <span class="meta"
-                    ><ha-icon icon="mdi:water-percent"></ha-icon>${t(this.hass, `config_panel.general_mode_${mode}`)}</span
+                    ><ha-icon icon="mdi:water-percent"></ha-icon>${t$2(this.hass, `config_panel.general_mode_${mode}`)}</span
                   >
                   ${next.zoneNames.length
                 ? b `<span class="meta"
-                        ><ha-icon icon="mdi:format-list-numbered"></ha-icon>${t(this.hass, "config_panel.overview_zones_queued", { n: next.zoneNames.length })}</span
+                        ><ha-icon icon="mdi:format-list-numbered"></ha-icon>${t$2(this.hass, "config_panel.overview_zones_queued", { n: next.zoneNames.length })}</span
                       >`
                 : A}
                   ${next.est > 0
@@ -2636,7 +2610,7 @@ class ViewOverview extends i$2 {
                 : A}
                   ${lastWater !== null
                 ? b `<span class="meta"
-                        ><ha-icon icon="mdi:water-check-outline"></ha-icon>${t(this.hass, "config_panel.general_water_last_run")}
+                        ><ha-icon icon="mdi:water-check-outline"></ha-icon>${t$2(this.hass, "config_panel.general_water_last_run")}
                         ${this._fmtWater(lastWater, rs.last_run_water_source !== "measured")}</span
                       >`
                 : A}
@@ -2650,21 +2624,21 @@ class ViewOverview extends i$2 {
                   ${soaking
                 ? b `<li class="pill">
                         <ha-icon icon="mdi:timer-sand"></ha-icon>
-                        <span><strong>${t(this.hass, "config_panel.general_soak_remaining")}</strong>
+                        <span><strong>${t$2(this.hass, "config_panel.general_soak_remaining")}</strong>
                           <span class="num">${this._fmtRemaining(soakUntil)}</span></span>
                       </li>`
                 : A}
                   ${activeIds.length
                 ? b `<li class="pill">
                         <ha-icon icon="mdi:water"></ha-icon>
-                        <span><strong>${t(this.hass, "config_panel.general_active_zones")}</strong>
+                        <span><strong>${t$2(this.hass, "config_panel.general_active_zones")}</strong>
                           ${activeIds.map((id) => this._zoneName(id)).join(", ")}</span>
                       </li>`
                 : A}
                   ${remainingRows.length
                 ? b `<li class="pill">
                         <ha-icon icon="mdi:timer-sand"></ha-icon>
-                        <span><strong>${t(this.hass, "config_panel.general_remaining")}</strong>
+                        <span><strong>${t$2(this.hass, "config_panel.general_remaining")}</strong>
                           ${remainingRows.map((r, i) => b `${i > 0 ? ", " : ""}${r.name}
                                 <span class="num">${this._fmtRemaining(r.endsAt)}</span>`)}</span>
                       </li>`
@@ -2672,21 +2646,21 @@ class ViewOverview extends i$2 {
                   ${runBusy && runWater !== null
                 ? b `<li class="pill">
                         <ha-icon icon="mdi:water-outline"></ha-icon>
-                        <span><strong>${t(this.hass, "config_panel.general_water_so_far")}</strong>
+                        <span><strong>${t$2(this.hass, "config_panel.general_water_so_far")}</strong>
                           ${this._fmtWater(runWater, rs.run_water_source !== "measured" || activeIds.length > 0)}</span>
                       </li>`
                 : A}
                   ${nextZones
                 ? b `<li class="pill">
                         <ha-icon icon="mdi:playlist-play"></ha-icon>
-                        <span><strong>${t(this.hass, "config_panel.general_next_zones")}</strong>
+                        <span><strong>${t$2(this.hass, "config_panel.general_next_zones")}</strong>
                           ${nextZones}</span>
                       </li>`
                 : A}
                   ${lastErr
                 ? b `<li class="pill">
                         <ha-icon icon="mdi:alert-circle-outline"></ha-icon>
-                        <span><strong>${t(this.hass, "config_panel.general_last_error")}</strong>
+                        <span><strong>${t$2(this.hass, "config_panel.general_last_error")}</strong>
                           ${lastErr}</span>
                       </li>`
                 : A}
@@ -2703,12 +2677,12 @@ class ViewOverview extends i$2 {
                   <button type="button" class="btn-danger"
                     ?disabled=${this._busy || runState === "stopping"}
                     @click=${() => this._call(() => panelControl(this.hass, this.entryId, "stop"))}>
-                    ${t(this.hass, "config_panel.general_stop_irrigation")}
+                    ${t$2(this.hass, "config_panel.general_stop_irrigation")}
                   </button>
                   ${showSkip
                 ? b `<button type="button" class="btn-outline" ?disabled=${this._busy}
                         @click=${() => this._call(() => panelControl(this.hass, this.entryId, "skip_phase"))}>
-                        ${t(this.hass, "config_panel.general_skip_phase")}
+                        ${t$2(this.hass, "config_panel.general_skip_phase")}
                       </button>`
                 : A}
                 `
@@ -2716,23 +2690,23 @@ class ViewOverview extends i$2 {
                   <button type="button" class="btn"
                     ?disabled=${this._busy || !this._planEnabled() || !next}
                     @click=${() => this._runNextSlot(runs)}>
-                    ${t(this.hass, "config_panel.overview_run_next_now")}
+                    ${t$2(this.hass, "config_panel.overview_run_next_now")}
                   </button>
                   <button type="button" class="btn-outline"
                     ?disabled=${this._busy || !this._planEnabled()}
                     @click=${() => this._call(() => skipIrrigationToday(this.hass, this.entryId))}>
-                    ${t(this.hass, "config_panel.general_skip_today")}
+                    ${t$2(this.hass, "config_panel.general_skip_today")}
                   </button>
                   <button type="button" class="btn-outline"
                     ?disabled=${this._busy || !this._planEnabled()}
                     @click=${() => this._pause48h()}>
-                    ${t(this.hass, "config_panel.overview_pause_48h")}
+                    ${t$2(this.hass, "config_panel.overview_pause_48h")}
                   </button>
                 `}
             ${lastErr
             ? b `<button type="button" class="btn-outline" ?disabled=${this._busy}
                   @click=${() => this._call(() => panelControl(this.hass, this.entryId, "clear_error"))}>
-                  ${t(this.hass, "config_panel.general_clear_error")}
+                  ${t$2(this.hass, "config_panel.general_clear_error")}
                 </button>`
             : A}
           </div>
@@ -2745,16 +2719,16 @@ class ViewOverview extends i$2 {
       <ha-card>
         <div class="card-header">
           <ha-icon icon="mdi:calendar-clock"></ha-icon>
-          ${t(this.hass, "config_panel.overview_next_runs")}
+          ${t$2(this.hass, "config_panel.overview_next_runs")}
           <span class="header-actions">
             <button type="button" class="btn-icon" @click=${() => this._goSchedule()}>
-              ${t(this.hass, "config_panel.tab_schedule")} →
+              ${t$2(this.hass, "config_panel.tab_schedule")} →
             </button>
           </span>
         </div>
         <div class="card-content">
           ${!this._planEnabled()
-            ? b `<p class="hint">${t(this.hass, "config_panel.general_plan_off_hint")}</p>`
+            ? b `<p class="hint">${t$2(this.hass, "config_panel.general_plan_off_hint")}</p>`
             : A}
           ${runs.length
             ? runs.map((r, i) => {
@@ -2789,9 +2763,9 @@ class ViewOverview extends i$2 {
             })
             : b `<div class="empty-state">
                 <ha-icon icon="mdi:calendar-blank-outline"></ha-icon>
-                <p>${t(this.hass, "config_panel.general_no_slots")}</p>
+                <p>${t$2(this.hass, "config_panel.general_no_slots")}</p>
                 <button type="button" class="btn-outline" @click=${() => this._goSchedule()}>
-                  ${t(this.hass, "config_panel.tab_schedule")}
+                  ${t$2(this.hass, "config_panel.tab_schedule")}
                 </button>
               </div>`}
         </div>
@@ -2809,10 +2783,10 @@ class ViewOverview extends i$2 {
       <ha-card>
         <div class="card-header">
           <ha-icon icon="mdi:water-percent"></ha-icon>
-          ${t(this.hass, "config_panel.general_watering_mode")}
+          ${t$2(this.hass, "config_panel.general_watering_mode")}
         </div>
         <div class="card-content">
-          <div class="segmented" role="group" aria-label=${t(this.hass, "config_panel.general_watering_mode")}>
+          <div class="segmented" role="group" aria-label=${t$2(this.hass, "config_panel.general_watering_mode")}>
             ${MODES.map((m) => b `<button
                 type="button"
                 class=${m === mode ? "selected" : ""}
@@ -2820,24 +2794,24 @@ class ViewOverview extends i$2 {
                 ?disabled=${this._busy}
                 @click=${() => this._setMode(m)}
               >
-                ${t(this.hass, `config_panel.general_mode_${m}`)}
+                ${t$2(this.hass, `config_panel.general_mode_${m}`)}
               </button>`)}
           </div>
           ${next
             ? b `<p class="mode-total">
-                ${t(this.hass, "config_panel.overview_mode_total", { n: cur })} ·
-                ${t(this.hass, "config_panel.general_mode_eco")}
+                ${t$2(this.hass, "config_panel.overview_mode_total", { n: cur })} ·
+                ${t$2(this.hass, "config_panel.general_mode_eco")}
                 <span class="num">${eco}</span> min ·
-                ${t(this.hass, "config_panel.general_mode_extra")}
+                ${t$2(this.hass, "config_panel.general_mode_extra")}
                 <span class="num">${extra}</span> min
               </p>`
             : A}
           <details class="inline-help">
             <summary>
               <ha-icon class="inline-help-icon" icon="mdi:information-outline"></ha-icon>
-              ${t(this.hass, "config_panel.general_watering_mode")}
+              ${t$2(this.hass, "config_panel.general_watering_mode")}
             </summary>
-            <p>${t(this.hass, "config_panel.general_watering_mode_desc")}</p>
+            <p>${t$2(this.hass, "config_panel.general_watering_mode_desc")}</p>
           </details>
         </div>
       </ha-card>
@@ -2850,12 +2824,12 @@ class ViewOverview extends i$2 {
       ${pauseMs !== null
             ? b `<div class="pause-banner">
             <ha-icon icon="mdi:pause-circle-outline"></ha-icon>
-            <span>${t(this.hass, "config_panel.general_pause_active_hint", {
+            <span>${t$2(this.hass, "config_panel.general_pause_active_hint", {
                 when: new Date(pauseMs).toLocaleString(),
             })}</span>
             <button type="button" class="btn-outline" ?disabled=${this._busy}
               @click=${() => this._call(() => saveGlobal(this.hass, this.entryId, { pause_until: null }))}>
-              ${t(this.hass, "config_panel.general_clear_pause")}
+              ${t$2(this.hass, "config_panel.general_clear_pause")}
             </button>
           </div>`
             : A}
@@ -2890,7 +2864,7 @@ function renderNativeEntityField(hass, domains, label, value, onValue, { placeho
       .label=${label}
       .value=${value || undefined}
       .includeDomains=${domains}
-      .placeholder=${t(hass, placeholderKey)}
+      .placeholder=${t$2(hass, placeholderKey)}
       .allowCustomEntity=${allowCustom}
       .required=${false}
       @value-changed=${(e) => onValue(e.detail.value ?? "")}
@@ -2982,12 +2956,12 @@ function currentState(hass, entityId) {
 }
 /** Human-readable single guard, e.g. "Tank level is above 20". */
 function guardLabel(hass, g) {
-    const op = t(hass, `config_panel.guard_op_${g.operator}`);
+    const op = t$2(hass, `config_panel.guard_op_${g.operator}`);
     const entity = entityName(hass, g.entity_id);
     if (!needsValue(g.operator)) {
-        return t(hass, "config_panel.guard_label_boolean", { entity, op });
+        return t$2(hass, "config_panel.guard_label_boolean", { entity, op });
     }
-    return t(hass, "config_panel.guard_label_numeric", {
+    return t$2(hass, "config_panel.guard_label_numeric", {
         entity,
         op,
         value: String(g.value ?? ""),
@@ -2996,10 +2970,10 @@ function guardLabel(hass, g) {
 /** One guard spelled out; several collapsed to a count. */
 function guardsSummary(hass, guards) {
     if (guards.length === 0)
-        return t(hass, "config_panel.guards_none");
+        return t$2(hass, "config_panel.guards_none");
     if (guards.length === 1)
         return guardLabel(hass, guards[0]);
-    return t(hass, "config_panel.guards_count", { n: String(guards.length) });
+    return t$2(hass, "config_panel.guards_count", { n: String(guards.length) });
 }
 function renderValueField(hass, guard, onValue) {
     if (!needsValue(guard.operator))
@@ -3012,10 +2986,10 @@ function renderValueField(hass, guard, onValue) {
       class="guard-value"
       .hass=${hass}
       .selector=${{ state: { entity_id: guard.entity_id } }}
-      .label=${t(hass, "config_panel.guards_value_label")}
+      .label=${t$2(hass, "config_panel.guards_value_label")}
       .value=${String(guard.value ?? "")}
       .disabled=${noEntity}
-      .helper=${noEntity ? t(hass, "config_panel.guards_value_needs_entity") : undefined}
+      .helper=${noEntity ? t$2(hass, "config_panel.guards_value_needs_entity") : undefined}
       @value-changed=${(e) => onValue(e.detail.value ?? "")}
     ></ha-selector>`;
     }
@@ -3023,7 +2997,7 @@ function renderValueField(hass, guard, onValue) {
     class="guard-value"
     type="number"
     step="any"
-    .label=${t(hass, "config_panel.guards_value_label")}
+    .label=${t$2(hass, "config_panel.guards_value_label")}
     .value=${guard.value === null || guard.value === undefined ? "" : String(guard.value)}
     @input=${(e) => {
         const raw = e.target.value;
@@ -3046,7 +3020,7 @@ function renderGuardList(hass, domains, guards, onChange) {
         const reading = currentState(hass, g.entity_id);
         return b `
           <div class="guard-row">
-            ${renderNativeEntityField(hass, domains, t(hass, "config_panel.guards_entity_label"), g.entity_id, (v) => replaceAt(i, {
+            ${renderNativeEntityField(hass, domains, t$2(hass, "config_panel.guards_entity_label"), g.entity_id, (v) => replaceAt(i, {
             entity_id: v,
             // A state value belongs to the selected entity; do not keep
             // a potentially invalid option when the entity changes.
@@ -3057,7 +3031,7 @@ function renderGuardList(hass, domains, guards, onChange) {
         })}
             <div class="stacked-field guard-operator">
               <label class="stacked-field-label"
-                >${t(hass, "config_panel.guards_operator_label")}</label
+                >${t$2(hass, "config_panel.guards_operator_label")}</label
               >
               <select
                 class="field-select"
@@ -3070,7 +3044,7 @@ function renderGuardList(hass, domains, guards, onChange) {
         }}
               >
                 ${GUARD_OPERATORS.map((op) => b `<option value=${op} ?selected=${op === g.operator}>
-                    ${t(hass, `config_panel.guard_op_${op}`)}
+                    ${t$2(hass, `config_panel.guard_op_${op}`)}
                   </option>`)}
               </select>
             </div>
@@ -3080,16 +3054,16 @@ function renderGuardList(hass, domains, guards, onChange) {
               class="row-remove"
               @click=${() => onChange(guards.filter((_, idx) => idx !== i))}
             >
-              ${t(hass, "config_panel.guards_remove")}
+              ${t$2(hass, "config_panel.guards_remove")}
             </button>
             ${reading !== ""
             ? b `<p class="hint guard-reading">
-                  ${t(hass, "config_panel.guards_current_value", { v: reading })}
+                  ${t$2(hass, "config_panel.guards_current_value", { v: reading })}
                 </p>`
             : A}
             ${g.operator === "equals"
             ? b `<p class="hint guard-reading">
-                  ${t(hass, "config_panel.guards_equals_hint")}
+                  ${t$2(hass, "config_panel.guards_equals_hint")}
                 </p>`
             : A}
           </div>
@@ -3100,7 +3074,7 @@ function renderGuardList(hass, domains, guards, onChange) {
         class="btn-outline"
         @click=${() => onChange([...guards, { entity_id: "", operator: "above", value: null }])}
       >
-        ${t(hass, "config_panel.guards_add")}
+        ${t$2(hass, "config_panel.guards_add")}
       </button>
     </div>
   `;
@@ -3142,7 +3116,7 @@ globalScript, globalTimeoutSec, busy, onChange) {
     const patch = (p) => onChange({ ...value, ...p });
     return b `
     <div class="field-block">
-      <span class="field-title">${t(hass, `config_panel.schedule_${phase}_script_title`)}</span>
+      <span class="field-title">${t$2(hass, `config_panel.schedule_${phase}_script_title`)}</span>
       <div class="switch-row">
         <ha-switch
           .disabled=${busy}
@@ -3152,21 +3126,21 @@ globalScript, globalTimeoutSec, busy, onChange) {
     })}
         ></ha-switch>
         <span class="switch-row-label"
-          >${t(hass, `config_panel.schedule_override_${phase}_script`)}</span
+          >${t$2(hass, `config_panel.schedule_override_${phase}_script`)}</span
         >
       </div>
       ${value.override
         ? b `
             <div class="field-row">
-              ${renderNativeEntityField(hass, domains, t(hass, "config_panel.schedule_script_field"), value.entity_id, (v) => patch({ entity_id: v }), { placeholderKey: "config_panel.entity_placeholder_script" })}
+              ${renderNativeEntityField(hass, domains, t$2(hass, "config_panel.schedule_script_field"), value.entity_id, (v) => patch({ entity_id: v }), { placeholderKey: "config_panel.entity_placeholder_script" })}
             </div>
-            <p class="hint">${t(hass, "config_panel.schedule_script_override_hint")}</p>
+            <p class="hint">${t$2(hass, "config_panel.schedule_script_override_hint")}</p>
             ${value.entity_id.trim()
             ? b `
                   <div class="field-row">
                     <ha-input
                       type="number"
-                      .label=${t(hass, "config_panel.schedule_script_timeout_field")}
+                      .label=${t$2(hass, "config_panel.schedule_script_timeout_field")}
                       .value=${value.timeout_sec === null ? "" : String(value.timeout_sec)}
                       min="1"
                       max=${MAX_SCRIPT_TIMEOUT_SEC}
@@ -3186,7 +3160,7 @@ globalScript, globalTimeoutSec, busy, onChange) {
                     ></ha-input>
                   </div>
                   <p class="hint">
-                    ${t(hass, "config_panel.schedule_script_timeout_hint", {
+                    ${t$2(hass, "config_panel.schedule_script_timeout_hint", {
                 n: String(globalTimeoutSec),
             })}
                   </p>
@@ -3195,15 +3169,15 @@ globalScript, globalTimeoutSec, busy, onChange) {
           `
         : b `<p class="hint">
             ${globalScript
-            ? t(hass, "config_panel.schedule_script_inherited", { script: globalScript })
-            : t(hass, "config_panel.schedule_script_inherited_none")}
+            ? t$2(hass, "config_panel.schedule_script_inherited", { script: globalScript })
+            : t$2(hass, "config_panel.schedule_script_inherited_none")}
           </p>`}
     </div>
   `;
 }
 
 /** Shared stacked form layout: titles, helper text, full-width controls. */
-const formLayoutStyles = i$5 `
+const formLayoutStyles = i$7 `
   .field-block {
     margin-bottom: 20px;
   }
@@ -3444,9 +3418,9 @@ function renderInlineHelp(hass, summaryKey, paragraphKeys, icon = "mdi:help-circ
     <details class="inline-help">
       <summary>
         <ha-icon class="inline-help-icon" icon=${icon}></ha-icon>
-        ${t(hass, summaryKey)}
+        ${t$2(hass, summaryKey)}
       </summary>
-      ${paragraphKeys.map((key) => b `<p>${t(hass, key, values)}</p>`)}
+      ${paragraphKeys.map((key) => b `<p>${t$2(hass, key, values)}</p>`)}
     </details>
   `;
 }
@@ -3462,7 +3436,7 @@ function renderCycleSoakEditor(hass, cs, busy, onChange) {
     const num = (key, labelKey, min, max) => b `
     <ha-input
       type="number"
-      .label=${t(hass, labelKey)}
+      .label=${t$2(hass, labelKey)}
       .value=${String(cs[key])}
       .disabled=${busy}
       min=${String(min)}
@@ -3476,7 +3450,7 @@ function renderCycleSoakEditor(hass, cs, busy, onChange) {
   `;
     return b `
     <div class="field-block">
-      <span class="field-title">${t(hass, "config_panel.cycle_soak_section_title")}</span>
+      <span class="field-title">${t$2(hass, "config_panel.cycle_soak_section_title")}</span>
       <div class="duration-row cycle-soak-row">
         ${num("repetitions", "config_panel.cycle_soak_repetitions", 1, MAX_REPETITIONS)}
         ${num("soakBetweenPhasesMin", "config_panel.cycle_soak_pause_phases", 0, MAX_SOAK_MIN)}
@@ -3502,7 +3476,7 @@ const TIME_PRESETS = [
     { key: "config_panel.cycle_time_preset_evening", time: "19:00" },
     { key: "config_panel.cycle_time_preset_late", time: "21:00" },
 ];
-class CycleWizard extends i$2 {
+class CycleWizard extends i$4 {
     constructor() {
         super(...arguments);
         this.open = false;
@@ -3534,7 +3508,7 @@ class CycleWizard extends i$2 {
     static { this.styles = [
         sharedStyles,
         formLayoutStyles,
-        i$5 `
+        i$7 `
       .progress {
         display: flex;
         gap: 6px;
@@ -3840,7 +3814,7 @@ class CycleWizard extends i$2 {
         this.requestUpdate();
         try {
             if (guardsIncomplete(this._guards)) {
-                this._msg = t(this.hass, "config_panel.schedule_err_guards_incomplete");
+                this._msg = t$2(this.hass, "config_panel.schedule_err_guards_incomplete");
                 return;
             }
             const opt = this._option();
@@ -3877,7 +3851,7 @@ class CycleWizard extends i$2 {
     }
     _renderStep1() {
         return b `
-      <div class="section-title">${t(this.hass, "config_panel.cycle_step_how_often")}</div>
+      <div class="section-title">${t$2(this.hass, "config_panel.cycle_step_how_often")}</div>
       <div class="kind-grid">
         ${KIND_OPTIONS.map((opt) => {
             const meta = opt.n ? { n: opt.n } : {};
@@ -3892,14 +3866,14 @@ class CycleWizard extends i$2 {
             }}
             >
               <span class="kind-card-title">
-                ${t(this.hass, `config_panel.cycle_kind_${opt.id}`)}
+                ${t$2(this.hass, `config_panel.cycle_kind_${opt.id}`)}
                 <span class="badge ${exact ? "badge-primary" : "badge-warn"}"
                   >${exact
-                ? t(this.hass, "config_panel.cycle_badge_exact")
-                : t(this.hass, "config_panel.cycle_badge_approx")}</span
+                ? t$2(this.hass, "config_panel.cycle_badge_exact")
+                : t$2(this.hass, "config_panel.cycle_badge_approx")}</span
                 >
               </span>
-              <span class="kind-card-desc">${t(this.hass, `config_panel.cycle_kind_${opt.id}_desc`)}</span>
+              <span class="kind-card-desc">${t$2(this.hass, `config_panel.cycle_kind_${opt.id}_desc`)}</span>
             </button>
           `;
         })}
@@ -3945,8 +3919,8 @@ class CycleWizard extends i$2 {
         const first = firstRunDate(slots, start);
         const exact = cycleIsExact(opt.kind, this._meta());
         return b `
-      <div class="section-title">${t(this.hass, "config_panel.cycle_step_when")}</div>
-      <span class="field-title">${t(this.hass, "config_panel.cycle_time_title")}</span>
+      <div class="section-title">${t$2(this.hass, "config_panel.cycle_step_when")}</div>
+      <span class="field-title">${t$2(this.hass, "config_panel.cycle_time_title")}</span>
       <div class="chips" style="margin:6px 0">
         ${TIME_PRESETS.map((p) => b `
             <button
@@ -3957,7 +3931,7 @@ class CycleWizard extends i$2 {
             this.requestUpdate();
         }}
             >
-              ${t(this.hass, p.key)} ${formatTimeLocalForDisplay(this.hass, p.time)}
+              ${t$2(this.hass, p.key)} ${formatTimeLocalForDisplay(this.hass, p.time)}
             </button>
           `)}
       </div>
@@ -3985,12 +3959,12 @@ class CycleWizard extends i$2 {
       ${opt.kind === "daily" || opt.kind === "twice_daily"
             ? A
             : b `
-            <div class="section-title">${t(this.hass, "config_panel.cycle_anchor_title")}</div>
-            <p class="hint">${t(this.hass, "config_panel.cycle_anchor_desc")}</p>
+            <div class="section-title">${t$2(this.hass, "config_panel.cycle_anchor_title")}</div>
+            <p class="hint">${t$2(this.hass, "config_panel.cycle_anchor_desc")}</p>
             ${this._renderWeekdayPicker(opt.multiAnchor)}
           `}
 
-      <div class="section-title">${t(this.hass, "config_panel.cycle_preview_title")}</div>
+      <div class="section-title">${t$2(this.hass, "config_panel.cycle_preview_title")}</div>
       <div class="day-strip">
         ${strip.map((d) => b `
             <div class="day-cell ${d.run ? "run" : ""} ${d.isToday ? "today" : ""}">
@@ -4000,12 +3974,12 @@ class CycleWizard extends i$2 {
           `)}
       </div>
       <p class="preview-line">
-        ${t(this.hass, "config_panel.cycle_preview_gaps", { gaps: uniqueGaps.join(", ") })}
-        ${!exact ? " · " + t(this.hass, "config_panel.cycle_badge_approx") : ""}
+        ${t$2(this.hass, "config_panel.cycle_preview_gaps", { gaps: uniqueGaps.join(", ") })}
+        ${!exact ? " · " + t$2(this.hass, "config_panel.cycle_badge_approx") : ""}
       </p>
       ${first
             ? b `<p class="preview-line">
-            ${t(this.hass, "config_panel.cycle_preview_first_run", {
+            ${t$2(this.hass, "config_panel.cycle_preview_first_run", {
                 when: formatDateTimeForDisplay(this.hass, new Date(first.getFullYear(), first.getMonth(), first.getDate(), ...this._times[0].split(":").map(Number))),
             })}
           </p>`
@@ -4014,7 +3988,7 @@ class CycleWizard extends i$2 {
     }
     _renderStep3() {
         const zones = this.installation?.zones;
-        const allIds = zones ? orderedZoneIds(this.installation) : [];
+        const allIds = orderedZoneIds(this.installation);
         const pmap = phaseIndexByZoneId(this._zoneIds, this._zonesPhaseInput(), this._maxParallel());
         const est = this._estimateMin();
         const slots = this._slots();
@@ -4022,7 +3996,7 @@ class CycleWizard extends i$2 {
         const conflict = this._conflicts();
         return b `
       <div class="section-title">
-        ${t(this.hass, "config_panel.cycle_step_zones")}
+        ${t$2(this.hass, "config_panel.cycle_step_zones")}
         <button
           type="button"
           class="btn-outline"
@@ -4032,7 +4006,7 @@ class CycleWizard extends i$2 {
             this.requestUpdate();
         }}
         >
-          ${t(this.hass, "config_panel.cycle_select_all")}
+          ${t$2(this.hass, "config_panel.cycle_select_all")}
         </button>
       </div>
       ${allIds.map((id) => {
@@ -4057,13 +4031,13 @@ class CycleWizard extends i$2 {
               <div class="zone-pick-name">${this._zoneName(id)}</div>
               <div class="meta-line">
                 <span class="meta"
-                  ><ha-icon icon="mdi:timer-outline"></ha-icon>${t(this.hass, "config_panel.timetable_duration_min", { n: this._zoneDuration(id) })}</span
+                  ><ha-icon icon="mdi:timer-outline"></ha-icon>${t$2(this.hass, "config_panel.timetable_duration_min", { n: this._zoneDuration(id) })}</span
                 >
                 ${checked && phase
                 ? b `<span class="meta"
                       ><ha-icon icon="mdi:layers-triple-outline"></ha-icon>${excl
-                    ? t(this.hass, "config_panel.cycle_phase_alone", { n: phase })
-                    : t(this.hass, "config_panel.schedule_phase_n", { n: phase })}</span
+                    ? t$2(this.hass, "config_panel.cycle_phase_alone", { n: phase })
+                    : t$2(this.hass, "config_panel.schedule_phase_n", { n: phase })}</span
                     >`
                 : A}
               </div>
@@ -4073,7 +4047,7 @@ class CycleWizard extends i$2 {
                   <button
                     type="button"
                     class="iconbtn"
-                    aria-label=${t(this.hass, "config_panel.schedule_up")}
+                    aria-label=${t$2(this.hass, "config_panel.schedule_up")}
                     ?disabled=${pos <= 0}
                     @click=${() => {
                     const a = [...this._zoneIds];
@@ -4087,7 +4061,7 @@ class CycleWizard extends i$2 {
                   <button
                     type="button"
                     class="iconbtn"
-                    aria-label=${t(this.hass, "config_panel.schedule_down")}
+                    aria-label=${t$2(this.hass, "config_panel.schedule_down")}
                     ?disabled=${pos < 0 || pos >= this._zoneIds.length - 1}
                     @click=${() => {
                     const a = [...this._zoneIds];
@@ -4105,7 +4079,7 @@ class CycleWizard extends i$2 {
         })}
 
       <div class="field-block" style="margin-top:14px">
-        <span class="field-title">${t(this.hass, "config_panel.schedule_slot_name")}</span>
+        <span class="field-title">${t$2(this.hass, "config_panel.schedule_slot_name")}</span>
         <div class="field-row">
           <ha-input
             .value=${this._label}
@@ -4121,8 +4095,8 @@ class CycleWizard extends i$2 {
         })}
 
       <div class="field-block">
-        <span class="field-title">${t(this.hass, "config_panel.guards_section_title")}</span>
-        <p class="field-desc">${t(this.hass, "config_panel.guards_section_desc")}</p>
+        <span class="field-title">${t$2(this.hass, "config_panel.guards_section_title")}</span>
+        <p class="field-desc">${t$2(this.hass, "config_panel.guards_section_desc")}</p>
         ${renderGuardList(this.hass, GUARD_ENTITY_DOMAINS, this._guards, (next) => {
             this._guards = next;
             this.requestUpdate();
@@ -4136,15 +4110,15 @@ class CycleWizard extends i$2 {
         }}
           ></ha-switch>
           <span class="switch-row-label"
-            >${t(this.hass, "config_panel.schedule_ignore_global_guards")}</span
+            >${t$2(this.hass, "config_panel.schedule_ignore_global_guards")}</span
           >
         </div>
-        <p class="hint">${t(this.hass, "config_panel.schedule_ignore_global_guards_hint")}</p>
+        <p class="hint">${t$2(this.hass, "config_panel.schedule_ignore_global_guards_hint")}</p>
       </div>
 
       <div class="field-block">
-        <span class="field-title">${t(this.hass, "config_panel.schedule_scripts_section_title")}</span>
-        <p class="field-desc">${t(this.hass, "config_panel.schedule_scripts_section_desc")}</p>
+        <span class="field-title">${t$2(this.hass, "config_panel.schedule_scripts_section_title")}</span>
+        <p class="field-desc">${t$2(this.hass, "config_panel.schedule_scripts_section_desc")}</p>
       </div>
       ${renderScriptOverride(this.hass, SCRIPT_ENTITY_DOMAINS, "pre_start", this._preStartScript, this._globalScript("pre_start"), this._globalScriptTimeout("pre_start"), this._busy, (next) => {
             this._preStartScript = next;
@@ -4154,14 +4128,14 @@ class CycleWizard extends i$2 {
         })}
 
       <div class="summary-card">
-        <strong>${t(this.hass, "config_panel.cycle_creates_title")}</strong>
+        <strong>${t$2(this.hass, "config_panel.cycle_creates_title")}</strong>
         <ul style="margin:8px 0 0;padding-left:1.1rem">
           ${slots.map((s) => b `<li>
               ${s.weekdays.map((d) => weekdayShort(this.hass, d)).join(", ")}
               · ${formatTimeLocalForDisplay(this.hass, s.time_local)}
               ${s.week_parity !== "every"
             ? " · " +
-                t(this.hass, s.week_parity === "odd"
+                t$2(this.hass, s.week_parity === "odd"
                     ? "config_panel.week_parity_odd"
                     : "config_panel.week_parity_even")
             : ""}
@@ -4172,12 +4146,12 @@ class CycleWizard extends i$2 {
         </ul>
         ${est > 0
             ? b `<p class="preview-line" style="margin-bottom:0">
-              ${t(this.hass, "config_panel.overview_mode_total", { n: est })}
+              ${t$2(this.hass, "config_panel.overview_mode_total", { n: est })}
             </p>`
             : A}
         ${first
             ? b `<p class="preview-line" style="margin-bottom:0">
-              ${t(this.hass, "config_panel.cycle_preview_first_run", {
+              ${t$2(this.hass, "config_panel.cycle_preview_first_run", {
                 when: formatDateTimeForDisplay(this.hass, new Date(first.getFullYear(), first.getMonth(), first.getDate(), ...this._times[0].split(":").map(Number))),
             })}
             </p>`
@@ -4186,9 +4160,9 @@ class CycleWizard extends i$2 {
 
       ${conflict
             ? b `<div class="warning" style="display:flex;align-items:center;gap:10px;margin-top:10px">
-            <span>${t(this.hass, "config_panel.cycle_conflict_warning")}</span>
+            <span>${t$2(this.hass, "config_panel.cycle_conflict_warning")}</span>
             <button type="button" class="btn-outline" style="margin-top:0" @click=${() => this._shiftLater()}>
-              ${t(this.hass, "config_panel.cycle_conflict_shift")}
+              ${t$2(this.hass, "config_panel.cycle_conflict_shift")}
             </button>
           </div>`
             : A}
@@ -4203,7 +4177,7 @@ class CycleWizard extends i$2 {
         return b `
       <ha-dialog
         .open=${this.open}
-        header-title=${t(this.hass, titleKey)}
+        header-title=${t$2(this.hass, titleKey)}
         @closed=${() => this._close()}
       >
         <div class="progress" aria-hidden="true">
@@ -4220,16 +4194,16 @@ class CycleWizard extends i$2 {
             <div class="dialog-footer-lead">
               ${this._step > 1
             ? b `<button type="button" class="btn-outline" ?disabled=${this._busy} @click=${() => (this._step -= 1)}>
-                    ${t(this.hass, "config_panel.cycle_back")}
+                    ${t$2(this.hass, "config_panel.cycle_back")}
                   </button>`
             : b `<button type="button" class="btn-outline" ?disabled=${this._busy} @click=${() => this._close()}>
-                    ${t(this.hass, "config_panel.zones_cancel")}
+                    ${t$2(this.hass, "config_panel.zones_cancel")}
                   </button>`}
             </div>
             <div class="dialog-footer-actions">
               ${this._step < 3
             ? b `<button type="button" class="btn" ?disabled=${this._busy || !this._canNext()} @click=${() => (this._step += 1)}>
-                    ${t(this.hass, "config_panel.cycle_next")}
+                    ${t$2(this.hass, "config_panel.cycle_next")}
                   </button>`
             : b `
                     <button
@@ -4239,8 +4213,8 @@ class CycleWizard extends i$2 {
                       @click=${() => this._create()}
                     >
                       ${this._cycleId
-                ? t(this.hass, "config_panel.cycle_save")
-                : t(this.hass, "config_panel.cycle_create")}
+                ? t$2(this.hass, "config_panel.cycle_save")
+                : t$2(this.hass, "config_panel.cycle_create")}
                     </button>
                   `}
             </div>
@@ -4302,7 +4276,7 @@ defineCustomElementOnce("si-cycle-wizard", CycleWizard);
 
 const WEEK_PARITIES = ["every", "odd", "even"];
 const WEEKDAY_ORDER = [0, 1, 2, 3, 4, 5, 6];
-class ViewSchedule extends i$2 {
+class ViewSchedule extends i$4 {
     constructor() {
         super(...arguments);
         this._busy = false;
@@ -4322,7 +4296,7 @@ class ViewSchedule extends i$2 {
     static { this.styles = [
         sharedStyles,
         formLayoutStyles,
-        i$5 `
+        i$7 `
       .card-header .header-actions .btn,
       .card-header .header-actions .btn-outline {
         margin-top: 0;
@@ -4519,7 +4493,7 @@ class ViewSchedule extends i$2 {
         if (!hasScriptOverride(s.pre_start_script, s.post_run_script))
             return A;
         return b `<span class="meta"
-      ><ha-icon icon="mdi:script-text-outline"></ha-icon>${t(this.hass, "config_panel.schedule_scripts_own")}</span
+      ><ha-icon icon="mdi:script-text-outline"></ha-icon>${t$2(this.hass, "config_panel.schedule_scripts_own")}</span
     >`;
     }
     /** "~120 L" for one run of the slot, from the zones' flow rates. */
@@ -4529,7 +4503,7 @@ class ViewSchedule extends i$2 {
             return A;
         const unit = volumeUnit(this.hass);
         return b `<span class="meta"
-      ><ha-icon icon="mdi:water-outline"></ha-icon>${t(this.hass, "config_panel.water_approx", {
+      ><ha-icon icon="mdi:water-outline"></ha-icon>${t$2(this.hass, "config_panel.water_approx", {
             v: formatVolumeNumber(litresToUnit(litres, unit)),
             u: unit,
         })}</span
@@ -4540,7 +4514,7 @@ class ViewSchedule extends i$2 {
         if (!isCycleSoak(s.cycle_soak))
             return A;
         return b `<span class="meta"
-      ><ha-icon icon="mdi:repeat"></ha-icon>${t(this.hass, "config_panel.cycle_soak_badge", {
+      ><ha-icon icon="mdi:repeat"></ha-icon>${t$2(this.hass, "config_panel.cycle_soak_badge", {
             r: s.cycle_soak.repetitions,
         })}</span
     >`;
@@ -4553,7 +4527,7 @@ class ViewSchedule extends i$2 {
     _guardBadge(guards) {
         return guards.length === 1
             ? guardLabel(this.hass, guards[0])
-            : t(this.hass, "config_panel.guards_count", { n: String(guards.length) });
+            : t$2(this.hass, "config_panel.guards_count", { n: String(guards.length) });
     }
     /** Read-only chips shown on a slot/cycle row. */
     _renderGuardMeta(guards, ignoreGlobal) {
@@ -4565,7 +4539,7 @@ class ViewSchedule extends i$2 {
             : A}
       ${ignoreGlobal
             ? b `<span class="meta"
-            ><ha-icon icon="mdi:shield-off-outline"></ha-icon>${t(this.hass, "config_panel.schedule_guards_global_off")}</span
+            ><ha-icon icon="mdi:shield-off-outline"></ha-icon>${t$2(this.hass, "config_panel.schedule_guards_global_off")}</span
           >`
             : A}
     `;
@@ -4669,7 +4643,7 @@ class ViewSchedule extends i$2 {
             no_runnable_zones: "config_panel.schedule_err_no_runnable",
             unknown_slot: "config_panel.schedule_err_unknown_slot",
         };
-        const message = (code, raw) => code && map[code] ? t(this.hass, map[code]) : formatApiError(raw, this.hass);
+        const message = (code, raw) => code && map[code] ? t$2(this.hass, map[code]) : formatApiError(raw, this.hass);
         try {
             const res = (await runSlotNow(this.hass, this.entryId, slotId));
             if (!res.success) {
@@ -4722,7 +4696,7 @@ class ViewSchedule extends i$2 {
         await this._call({ action: "update", slot_id: slot.slot_id, enabled });
     }
     async _detachCycle(g) {
-        if (!confirm(t(this.hass, "config_panel.cycle_detach_confirm")))
+        if (!confirm(t$2(this.hass, "config_panel.cycle_detach_confirm")))
             return;
         this._busy = true;
         this._msg = undefined;
@@ -4750,7 +4724,7 @@ class ViewSchedule extends i$2 {
         }
     }
     async _deleteCycle(g) {
-        if (!confirm(t(this.hass, "config_panel.cycle_delete_confirm")))
+        if (!confirm(t$2(this.hass, "config_panel.cycle_delete_confirm")))
             return;
         this._busy = true;
         this._msg = undefined;
@@ -4869,29 +4843,29 @@ class ViewSchedule extends i$2 {
     // ---- single-slot editor (custom slots & cycle members) -----------------
     _parityLabel(parity) {
         if (parity === "odd")
-            return t(this.hass, "config_panel.week_parity_odd");
+            return t$2(this.hass, "config_panel.week_parity_odd");
         if (parity === "even")
-            return t(this.hass, "config_panel.week_parity_even");
-        return t(this.hass, "config_panel.week_parity_every");
+            return t$2(this.hass, "config_panel.week_parity_even");
+        return t$2(this.hass, "config_panel.week_parity_every");
     }
     _cycleBadge(kind, meta) {
         switch (kind) {
             case "daily":
-                return t(this.hass, "config_panel.cycle_kind_daily");
+                return t$2(this.hass, "config_panel.cycle_kind_daily");
             case "twice_daily":
-                return t(this.hass, "config_panel.cycle_kind_twice_daily");
+                return t$2(this.hass, "config_panel.cycle_kind_twice_daily");
             case "weekly":
-                return t(this.hass, "config_panel.cycle_kind_weekly");
+                return t$2(this.hass, "config_panel.cycle_kind_weekly");
             case "biweekly":
-                return t(this.hass, "config_panel.cycle_kind_biweekly");
+                return t$2(this.hass, "config_panel.cycle_kind_biweekly");
             case "n_per_week":
-                return t(this.hass, "config_panel.cycle_kind_n_per_week");
+                return t$2(this.hass, "config_panel.cycle_kind_n_per_week");
             case "every_n_days":
                 return meta?.n === 3
-                    ? t(this.hass, "config_panel.cycle_kind_every_3_days")
-                    : t(this.hass, "config_panel.cycle_kind_every_2_days");
+                    ? t$2(this.hass, "config_panel.cycle_kind_every_3_days")
+                    : t$2(this.hass, "config_panel.cycle_kind_every_2_days");
             default:
-                return t(this.hass, "config_panel.cycle_badge_custom");
+                return t$2(this.hass, "config_panel.cycle_badge_custom");
         }
     }
     _toggleWeekday(current, day) {
@@ -4901,9 +4875,9 @@ class ViewSchedule extends i$2 {
     }
     _renderWeekdayPicker(selected, onChange) {
         const presets = [
-            { label: t(this.hass, "config_panel.schedule_preset_daily"), days: [0, 1, 2, 3, 4, 5, 6] },
-            { label: t(this.hass, "config_panel.schedule_preset_workdays"), days: [0, 1, 2, 3, 4] },
-            { label: t(this.hass, "config_panel.schedule_preset_weekend"), days: [5, 6] },
+            { label: t$2(this.hass, "config_panel.schedule_preset_daily"), days: [0, 1, 2, 3, 4, 5, 6] },
+            { label: t$2(this.hass, "config_panel.schedule_preset_workdays"), days: [0, 1, 2, 3, 4] },
+            { label: t$2(this.hass, "config_panel.schedule_preset_weekend"), days: [5, 6] },
         ];
         const same = (a, b) => a.length === b.length && a.every((v, i) => v === b[i]);
         return b `
@@ -4939,11 +4913,11 @@ class ViewSchedule extends i$2 {
         if (!d)
             return;
         if (d.weekdays.length === 0) {
-            this._msg = t(this.hass, "config_panel.schedule_err_no_weekdays");
+            this._msg = t$2(this.hass, "config_panel.schedule_err_no_weekdays");
             return;
         }
         if (guardsIncomplete(d.guards)) {
-            this._msg = t(this.hass, "config_panel.schedule_err_guards_incomplete");
+            this._msg = t$2(this.hass, "config_panel.schedule_err_guards_incomplete");
             return;
         }
         const ok = await this._call({
@@ -4970,7 +4944,7 @@ class ViewSchedule extends i$2 {
         const d = this._slotEditDraft;
         if (!d)
             return;
-        if (!confirm(t(this.hass, "config_panel.schedule_confirm_delete_slot")))
+        if (!confirm(t$2(this.hass, "config_panel.schedule_confirm_delete_slot")))
             return;
         if (await this._call({ action: "delete", slot_id: d.slot_id }))
             this._closeEditDialog();
@@ -4979,7 +4953,7 @@ class ViewSchedule extends i$2 {
         const d = this._slotEditDraft;
         if (!d || d.weekdays.length <= 1)
             return;
-        if (!confirm(t(this.hass, "config_panel.schedule_confirm_split")))
+        if (!confirm(t$2(this.hass, "config_panel.schedule_confirm_split")))
             return;
         if (await this._call({ action: "split", slot_id: d.slot_id }))
             this._closeEditDialog();
@@ -5041,18 +5015,18 @@ class ViewSchedule extends i$2 {
             : A}
         ${m.ignore_global_guards
             ? b `<span class="muted"
-              ><ha-icon icon="mdi:shield-off-outline"></ha-icon>${t(this.hass, "config_panel.schedule_guards_global_off")}</span
+              ><ha-icon icon="mdi:shield-off-outline"></ha-icon>${t$2(this.hass, "config_panel.schedule_guards_global_off")}</span
             >`
             : A}
         ${hasScriptOverride(m.pre_start_script, m.post_run_script)
             ? b `<span class="muted"
-              ><ha-icon icon="mdi:script-text-outline"></ha-icon>${t(this.hass, "config_panel.schedule_scripts_own")}</span
+              ><ha-icon icon="mdi:script-text-outline"></ha-icon>${t$2(this.hass, "config_panel.schedule_scripts_own")}</span
             >`
             : A}
         <span class="muted"
           >${m.zone_ids_ordered.length === 1
-            ? t(this.hass, "config_panel.schedule_zones_in_order_one")
-            : t(this.hass, "config_panel.schedule_zones_in_order_many", {
+            ? t$2(this.hass, "config_panel.schedule_zones_in_order_one")
+            : t$2(this.hass, "config_panel.schedule_zones_in_order_many", {
                 n: m.zone_ids_ordered.length,
             })}</span
         >
@@ -5060,7 +5034,7 @@ class ViewSchedule extends i$2 {
           type="button"
           class="iconbtn"
           style="margin-left:auto;width:34px;height:34px"
-          aria-label=${t(this.hass, "config_panel.schedule_edit")}
+          aria-label=${t$2(this.hass, "config_panel.schedule_edit")}
           @click=${() => {
             this._addZonePick = "";
             this._slotEditDraft = this._cloneSlot(m);
@@ -5103,11 +5077,11 @@ class ViewSchedule extends i$2 {
               <span class="ellipsis">${label}</span>
               <span class="badge badge-primary">${this._cycleBadge(g.kind, g.meta)}</span>
               ${!anyEnabled
-            ? b `<span class="badge">${t(this.hass, "config_panel.cycle_paused_n", {
+            ? b `<span class="badge">${t$2(this.hass, "config_panel.cycle_paused_n", {
                 n: g.members.length,
             })}</span>`
             : !allEnabled
-                ? b `<span class="badge badge-warn badge-dot">${t(this.hass, "config_panel.cycle_partly_enabled")}</span>`
+                ? b `<span class="badge badge-warn badge-dot">${t$2(this.hass, "config_panel.cycle_partly_enabled")}</span>`
                 : A}
             </div>
             <div class="meta-line">
@@ -5117,7 +5091,7 @@ class ViewSchedule extends i$2 {
             .join(", ")}</span
               >
               <span class="meta"
-                ><ha-icon icon="mdi:vector-square"></ha-icon>${t(this.hass, "config_panel.cycle_meta_zones", { z: zoneIds.length, p: phases, m: est })}</span
+                ><ha-icon icon="mdi:vector-square"></ha-icon>${t$2(this.hass, "config_panel.cycle_meta_zones", { z: zoneIds.length, p: phases, m: est })}</span
               >
               ${g.members[0]
             ? b `${this._renderGuardMeta(g.members[0].guards, g.members[0].ignore_global_guards)}${this._renderScriptMeta(g.members[0])}${this._renderCycleSoakMeta(g.members[0])}${this._renderWaterMeta(g.members[0])}`
@@ -5129,15 +5103,15 @@ class ViewSchedule extends i$2 {
                   >`
             : A}
               <span class="meta"
-                ><ha-icon icon="mdi:format-list-bulleted"></ha-icon>${t(this.hass, "config_panel.cycle_slots_n", { n: g.members.length })}</span
+                ><ha-icon icon="mdi:format-list-bulleted"></ha-icon>${t$2(this.hass, "config_panel.cycle_slots_n", { n: g.members.length })}</span
               >
             </div>
           </div>
           <div class="icon-group" role="group">
             <button
               type="button"
-              title=${t(this.hass, "config_panel.schedule_run_slot_now")}
-              aria-label=${t(this.hass, "config_panel.schedule_run_slot_now")}
+              title=${t$2(this.hass, "config_panel.schedule_run_slot_now")}
+              aria-label=${t$2(this.hass, "config_panel.schedule_run_slot_now")}
               ?disabled=${this._busy || this._runtimeBusy() || !anyEnabled || zoneIds.length === 0}
               @click=${() => {
             const m = g.members.find((x) => x.enabled) ?? g.members[0];
@@ -5148,8 +5122,8 @@ class ViewSchedule extends i$2 {
             </button>
             <button
               type="button"
-              title=${t(this.hass, "config_panel.cycle_edit_title")}
-              aria-label=${t(this.hass, "config_panel.cycle_edit_title")}
+              title=${t$2(this.hass, "config_panel.cycle_edit_title")}
+              aria-label=${t$2(this.hass, "config_panel.cycle_edit_title")}
               @click=${() => this._openWizardEdit(g)}
             >
               <ha-icon icon="mdi:pencil"></ha-icon>
@@ -5158,7 +5132,7 @@ class ViewSchedule extends i$2 {
               type="button"
               class=${expanded ? "selected" : ""}
               aria-expanded=${expanded ? "true" : "false"}
-              aria-label=${t(this.hass, "config_panel.cycle_expand")}
+              aria-label=${t$2(this.hass, "config_panel.cycle_expand")}
               @click=${() => this._toggleExpand(g.cycle_id)}
             >
               <ha-icon icon=${expanded ? "mdi:chevron-up" : "mdi:chevron-down"}></ha-icon>
@@ -5175,12 +5149,12 @@ class ViewSchedule extends i$2 {
               </div>
               ${g.members.map((m) => this._renderMemberLine(m))}
               <div class="detach-line">
-                <span>${t(this.hass, "config_panel.cycle_detach_hint")}</span>
+                <span>${t$2(this.hass, "config_panel.cycle_detach_hint")}</span>
                 <button type="button" class="btn-outline" style="margin-top:0" ?disabled=${this._busy} @click=${() => this._detachCycle(g)}>
-                  ${t(this.hass, "config_panel.cycle_detach")}
+                  ${t$2(this.hass, "config_panel.cycle_detach")}
                 </button>
                 <button type="button" class="btn-danger" style="margin-top:0" ?disabled=${this._busy} @click=${() => this._deleteCycle(g)}>
-                  ${t(this.hass, "config_panel.cycle_delete")}
+                  ${t$2(this.hass, "config_panel.cycle_delete")}
                 </button>
               </div>
             </div>`
@@ -5216,7 +5190,7 @@ class ViewSchedule extends i$2 {
             </div>
             <div class="meta-line">
               <span class="meta"
-                ><ha-icon icon="mdi:vector-square"></ha-icon>${t(this.hass, "config_panel.cycle_meta_zones", { z: s.zone_ids_ordered.length, p: phases, m: est })}</span
+                ><ha-icon icon="mdi:vector-square"></ha-icon>${t$2(this.hass, "config_panel.cycle_meta_zones", { z: s.zone_ids_ordered.length, p: phases, m: est })}</span
               >
               ${this._renderGuardMeta(s.guards, s.ignore_global_guards)}
               ${this._renderScriptMeta(s)}
@@ -5233,8 +5207,8 @@ class ViewSchedule extends i$2 {
           <div class="icon-group" role="group">
             <button
               type="button"
-              title=${t(this.hass, "config_panel.schedule_run_slot_now")}
-              aria-label=${t(this.hass, "config_panel.schedule_run_slot_now")}
+              title=${t$2(this.hass, "config_panel.schedule_run_slot_now")}
+              aria-label=${t$2(this.hass, "config_panel.schedule_run_slot_now")}
               ?disabled=${this._busy || this._runtimeBusy() || !s.enabled || s.zone_ids_ordered.length === 0}
               @click=${() => this._runSlotNow(s.slot_id)}
             >
@@ -5242,8 +5216,8 @@ class ViewSchedule extends i$2 {
             </button>
             <button
               type="button"
-              title=${t(this.hass, "config_panel.schedule_edit")}
-              aria-label=${t(this.hass, "config_panel.schedule_edit")}
+              title=${t$2(this.hass, "config_panel.schedule_edit")}
+              aria-label=${t$2(this.hass, "config_panel.schedule_edit")}
               @click=${() => {
             this._addZonePick = "";
             this._slotEditDraft = this._cloneSlot(s);
@@ -5255,7 +5229,7 @@ class ViewSchedule extends i$2 {
               type="button"
               class=${expanded ? "selected" : ""}
               aria-expanded=${expanded ? "true" : "false"}
-              aria-label=${t(this.hass, "config_panel.cycle_expand")}
+              aria-label=${t$2(this.hass, "config_panel.cycle_expand")}
               @click=${() => this._toggleExpand(s.slot_id)}
             >
               <ha-icon icon=${expanded ? "mdi:chevron-up" : "mdi:chevron-down"}></ha-icon>
@@ -5290,8 +5264,8 @@ class ViewSchedule extends i$2 {
         const globals = this._globalGuards();
         return b `
       <div class="field-block">
-        <span class="field-title">${t(this.hass, "config_panel.guards_section_title")}</span>
-        <p class="field-desc">${t(this.hass, "config_panel.guards_section_desc")}</p>
+        <span class="field-title">${t$2(this.hass, "config_panel.guards_section_title")}</span>
+        <p class="field-desc">${t$2(this.hass, "config_panel.guards_section_desc")}</p>
         ${renderGuardList(this.hass, GUARD_ENTITY_DOMAINS, draft.guards, (next) => {
             draft.guards = next;
             this.requestUpdate();
@@ -5306,13 +5280,13 @@ class ViewSchedule extends i$2 {
         }}
           ></ha-switch>
           <span class="switch-row-label"
-            >${t(this.hass, "config_panel.schedule_ignore_global_guards")}</span
+            >${t$2(this.hass, "config_panel.schedule_ignore_global_guards")}</span
           >
         </div>
-        <p class="hint">${t(this.hass, "config_panel.schedule_ignore_global_guards_hint")}</p>
+        <p class="hint">${t$2(this.hass, "config_panel.schedule_ignore_global_guards_hint")}</p>
         ${globals.length && !draft.ignore_global_guards
             ? b `<p class="hint">
-              ${t(this.hass, "config_panel.schedule_guards_inherited", {
+              ${t$2(this.hass, "config_panel.schedule_guards_inherited", {
                 list: globals.map((g) => guardLabel(this.hass, g)).join(", "),
             })}
             </p>`
@@ -5328,8 +5302,8 @@ class ViewSchedule extends i$2 {
     _renderScriptSection(draft) {
         return b `
       <div class="field-block">
-        <span class="field-title">${t(this.hass, "config_panel.schedule_scripts_section_title")}</span>
-        <p class="field-desc">${t(this.hass, "config_panel.schedule_scripts_section_desc")}</p>
+        <span class="field-title">${t$2(this.hass, "config_panel.schedule_scripts_section_title")}</span>
+        <p class="field-desc">${t$2(this.hass, "config_panel.schedule_scripts_section_desc")}</p>
       </div>
       ${renderScriptOverride(this.hass, SCRIPT_ENTITY_DOMAINS, "pre_start", draft.pre_start_script, this._globalScript("pre_start"), this._globalScriptTimeout("pre_start"), this._busy, (next) => {
             draft.pre_start_script = next;
@@ -5346,7 +5320,7 @@ class ViewSchedule extends i$2 {
         const addZoneOpts = this._addZoneOptionsForDraft(draft);
         return b `
       <div class="field-block">
-        <span class="field-title">${t(this.hass, "config_panel.schedule_name_optional_title")}</span>
+        <span class="field-title">${t$2(this.hass, "config_panel.schedule_name_optional_title")}</span>
         <div class="field-row">
           <ha-input
             .value=${draft.name}
@@ -5357,14 +5331,14 @@ class ViewSchedule extends i$2 {
         </div>
       </div>
       <div class="field-block">
-        <span class="field-title">${t(this.hass, "config_panel.schedule_weekdays_title")}</span>
+        <span class="field-title">${t$2(this.hass, "config_panel.schedule_weekdays_title")}</span>
         ${this._renderWeekdayPicker(draft.weekdays, (n) => {
             draft.weekdays = n;
             this.requestUpdate();
         })}
       </div>
       <div class="field-block">
-        <span class="field-title">${t(this.hass, "config_panel.schedule_week_parity_title")}</span>
+        <span class="field-title">${t$2(this.hass, "config_panel.schedule_week_parity_title")}</span>
         <select
           class="field-select"
           @change=${(e) => {
@@ -5376,7 +5350,7 @@ class ViewSchedule extends i$2 {
         </select>
       </div>
       <div class="field-block">
-        <span class="field-title">${t(this.hass, "config_panel.schedule_start_time_title")}</span>
+        <span class="field-title">${t$2(this.hass, "config_panel.schedule_start_time_title")}</span>
         <div class="field-row">
           <input
             type="time"
@@ -5399,11 +5373,11 @@ class ViewSchedule extends i$2 {
             this.requestUpdate();
         }}
           ></ha-switch>
-          <span class="switch-row-label">${t(this.hass, "config_panel.schedule_slot_enabled")}</span>
+          <span class="switch-row-label">${t$2(this.hass, "config_panel.schedule_slot_enabled")}</span>
         </div>
       </div>
       <div class="field-block">
-        <span class="field-title">${t(this.hass, "config_panel.schedule_run_order_title")}</span>
+        <span class="field-title">${t$2(this.hass, "config_panel.schedule_run_order_title")}</span>
         <ul class="zones">
           ${(() => {
             const pmap = phaseIndexByZoneId(draft.zone_ids_ordered, this._zonesPhaseInput(), this._maxParallel());
@@ -5413,7 +5387,7 @@ class ViewSchedule extends i$2 {
                 const showPhase = pnum !== undefined && pnum !== prevP;
                 return b `
                 ${showPhase
-                    ? b `<li class="phase-sep"><span>${t(this.hass, "config_panel.schedule_phase_n", { n: pnum ?? 0 })}</span></li>`
+                    ? b `<li class="phase-sep"><span>${t$2(this.hass, "config_panel.schedule_phase_n", { n: pnum ?? 0 })}</span></li>`
                     : A}
                 <li>
                   <span>${idx + 1}. ${this._zoneName(zid)}</span>
@@ -5424,18 +5398,18 @@ class ViewSchedule extends i$2 {
                         [a[idx - 1], a[idx]] = [a[idx], a[idx - 1]];
                         this.requestUpdate();
                     }
-                }}>${t(this.hass, "config_panel.schedule_up")}</button>
+                }}>${t$2(this.hass, "config_panel.schedule_up")}</button>
                     <button type="button" class="btn-outline" @click=${() => {
                     const a = draft.zone_ids_ordered;
                     if (idx < a.length - 1) {
                         [a[idx + 1], a[idx]] = [a[idx], a[idx + 1]];
                         this.requestUpdate();
                     }
-                }}>${t(this.hass, "config_panel.schedule_down")}</button>
+                }}>${t$2(this.hass, "config_panel.schedule_down")}</button>
                     <button type="button" class="btn-outline" @click=${() => {
                     draft.zone_ids_ordered = draft.zone_ids_ordered.filter((x) => x !== zid);
                     this.requestUpdate();
-                }}>${t(this.hass, "config_panel.schedule_remove")}</button>
+                }}>${t$2(this.hass, "config_panel.schedule_remove")}</button>
                   </span>
                 </li>
               `;
@@ -5447,7 +5421,7 @@ class ViewSchedule extends i$2 {
               <select class="field-select" .value=${this._addZonePick} @change=${(e) => {
                 this._addZonePick = e.target.value;
             }}>
-                <option value="">${t(this.hass, "config_panel.schedule_choose_zone")}</option>
+                <option value="">${t$2(this.hass, "config_panel.schedule_choose_zone")}</option>
                 ${addZoneOpts.map((id) => b `<option value=${id}>${this._zoneName(id)}</option>`)}
               </select>
               <button type="button" class="btn-outline" ?disabled=${!this._addZonePick} @click=${() => {
@@ -5456,11 +5430,11 @@ class ViewSchedule extends i$2 {
                     this._addZonePick = "";
                     this.requestUpdate();
                 }
-            }}>${t(this.hass, "config_panel.schedule_add_to_list")}</button>
+            }}>${t$2(this.hass, "config_panel.schedule_add_to_list")}</button>
             </div>`
             : zones && Object.keys(zones).length > 0
-                ? b `<p class="hint">${t(this.hass, "config_panel.schedule_all_zones_in_slot")}</p>`
-                : b `<p class="hint">${t(this.hass, "config_panel.schedule_create_zones_first")}</p>`}
+                ? b `<p class="hint">${t$2(this.hass, "config_panel.schedule_all_zones_in_slot")}</p>`
+                : b `<p class="hint">${t$2(this.hass, "config_panel.schedule_create_zones_first")}</p>`}
       </div>
       ${renderCycleSoakEditor(this.hass, draft.cycle_soak, this._busy, (next) => {
             draft.cycle_soak = next;
@@ -5477,15 +5451,15 @@ class ViewSchedule extends i$2 {
       <ha-card>
         <div class="card-header">
           <ha-icon icon="mdi:format-list-bulleted-type"></ha-icon>
-          ${t(this.hass, "config_panel.cycle_card_title")}
+          ${t$2(this.hass, "config_panel.cycle_card_title")}
           <div class="header-actions">
             ${cleanupCandidates > 0
             ? b `<button type="button" class="btn-outline hide-narrow" @click=${() => this._openCleanup()}>
-                  ${t(this.hass, "config_panel.cycle_cleanup")}
+                  ${t$2(this.hass, "config_panel.cycle_cleanup")}
                 </button>`
             : A}
             <button type="button" class="btn hide-narrow" @click=${() => this._openWizardNew()}>
-              ${t(this.hass, "config_panel.cycle_new")}
+              ${t$2(this.hass, "config_panel.cycle_new")}
             </button>
           </div>
         </div>
@@ -5495,9 +5469,9 @@ class ViewSchedule extends i$2 {
           ${!hasAny
             ? b `<div class="empty-state">
                 <ha-icon icon="mdi:calendar-clock"></ha-icon>
-                <p>${t(this.hass, "config_panel.schedule_empty")}</p>
+                <p>${t$2(this.hass, "config_panel.schedule_empty")}</p>
                 <button type="button" class="btn" @click=${() => this._openWizardNew()}>
-                  ${t(this.hass, "config_panel.cycle_new")}
+                  ${t$2(this.hass, "config_panel.cycle_new")}
                 </button>
               </div>`
             : b `
@@ -5510,8 +5484,8 @@ class ViewSchedule extends i$2 {
       <button
         type="button"
         class="fab"
-        aria-label=${t(this.hass, "config_panel.cycle_new")}
-        title=${t(this.hass, "config_panel.cycle_new")}
+        aria-label=${t$2(this.hass, "config_panel.cycle_new")}
+        title=${t$2(this.hass, "config_panel.cycle_new")}
         @click=${() => this._openWizardNew()}
       >
         <ha-icon icon="mdi:plus"></ha-icon>
@@ -5530,7 +5504,7 @@ class ViewSchedule extends i$2 {
 
       <ha-dialog
         .open=${draft !== null}
-        header-title=${draft ? t(this.hass, "config_panel.schedule_edit") : ""}
+        header-title=${draft ? t$2(this.hass, "config_panel.schedule_edit") : ""}
         @closed=${() => this._closeEditDialog()}
       >
         ${draft ? this._renderEditDialog(draft) : A}
@@ -5540,11 +5514,11 @@ class ViewSchedule extends i$2 {
               ${draft
             ? b `
                     <button type="button" class="btn-danger" ?disabled=${this._busy} @click=${() => this._deleteSlotDraft()}>
-                      ${t(this.hass, "config_panel.schedule_delete_slot")}
+                      ${t$2(this.hass, "config_panel.schedule_delete_slot")}
                     </button>
                     ${draft.weekdays.length > 1
                 ? b `<button type="button" class="btn-outline" ?disabled=${this._busy} @click=${() => this._splitSlotDraft()}>
-                          ${t(this.hass, "config_panel.schedule_split_slot")}
+                          ${t$2(this.hass, "config_panel.schedule_split_slot")}
                         </button>`
                 : A}
                   `
@@ -5552,10 +5526,10 @@ class ViewSchedule extends i$2 {
             </div>
             <div class="dialog-footer-actions">
               <button type="button" class="btn-outline" @click=${() => this._closeEditDialog()} ?disabled=${this._busy}>
-                ${t(this.hass, "config_panel.zones_cancel")}
+                ${t$2(this.hass, "config_panel.zones_cancel")}
               </button>
               <button type="button" class="btn" ?disabled=${this._busy || !draft} @click=${() => this._saveSlotDraft()}>
-                ${this._busy ? t(this.hass, "config_panel.schedule_saving") : t(this.hass, "config_panel.schedule_save_slot")}
+                ${this._busy ? t$2(this.hass, "config_panel.schedule_saving") : t$2(this.hass, "config_panel.schedule_save_slot")}
               </button>
             </div>
           </div>
@@ -5564,16 +5538,16 @@ class ViewSchedule extends i$2 {
 
       <ha-dialog
         .open=${this._cleanupProposals !== null}
-        header-title=${t(this.hass, "config_panel.cycle_cleanup")}
+        header-title=${t$2(this.hass, "config_panel.cycle_cleanup")}
         @closed=${() => (this._cleanupProposals = null)}
       >
-        <p class="hint">${t(this.hass, "config_panel.cycle_cleanup_desc")}</p>
+        <p class="hint">${t$2(this.hass, "config_panel.cycle_cleanup_desc")}</p>
         ${(this._cleanupProposals ?? []).map((p) => b `<div class="compact-row" style="margin-top:8px">
             <div class="compact-row-header">
               <div class="compact-row-main">
                 <div class="compact-row-title">
                   <span>${p.label || this._cycleBadge(p.optionId === "every_2_days" ? "every_n_days" : p.optionId, p.meta)}</span>
-                  <span class="badge badge-primary">${t(this.hass, "config_panel.cycle_cleanup_merge_n", {
+                  <span class="badge badge-primary">${t$2(this.hass, "config_panel.cycle_cleanup_merge_n", {
             n: p.memberIds.length,
         })}</span>
                 </div>
@@ -5581,14 +5555,14 @@ class ViewSchedule extends i$2 {
             </div>
           </div>`)}
         ${(this._cleanupProposals ?? []).length === 0
-            ? b `<p class="muted">${t(this.hass, "config_panel.cycle_cleanup_none")}</p>`
+            ? b `<p class="muted">${t$2(this.hass, "config_panel.cycle_cleanup_none")}</p>`
             : A}
         <div slot="footer" class="dialog-footer">
           <div class="dialog-footer-row">
             <div class="dialog-footer-lead"></div>
             <div class="dialog-footer-actions">
               <button type="button" class="btn-outline" @click=${() => (this._cleanupProposals = null)} ?disabled=${this._busy}>
-                ${t(this.hass, "config_panel.zones_cancel")}
+                ${t$2(this.hass, "config_panel.zones_cancel")}
               </button>
               <button
                 type="button"
@@ -5596,7 +5570,7 @@ class ViewSchedule extends i$2 {
                 ?disabled=${this._busy || (this._cleanupProposals ?? []).length === 0}
                 @click=${() => this._applyCleanup()}
               >
-                ${t(this.hass, "config_panel.cycle_cleanup_confirm")}
+                ${t$2(this.hass, "config_panel.cycle_cleanup_confirm")}
               </button>
             </div>
           </div>
@@ -5628,7 +5602,7 @@ __decorate([
 ], ViewSchedule.prototype, "_wizard", void 0);
 defineCustomElementOnce("si-view-schedule", ViewSchedule);
 
-class ViewSettings extends i$2 {
+class ViewSettings extends i$4 {
     constructor() {
         super(...arguments);
         this._busy = false;
@@ -5666,7 +5640,7 @@ class ViewSettings extends i$2 {
     static { this.styles = [
         sharedStyles,
         formLayoutStyles,
-        i$5 `
+        i$7 `
       .save-bar {
         position: sticky;
         bottom: 0;
@@ -5746,7 +5720,7 @@ class ViewSettings extends i$2 {
     }
     async _save() {
         if (guardsIncomplete(this._guards)) {
-            this._msg = t(this.hass, "config_panel.schedule_err_guards_incomplete");
+            this._msg = t$2(this.hass, "config_panel.schedule_err_guards_incomplete");
             this.requestUpdate();
             return;
         }
@@ -5823,17 +5797,17 @@ class ViewSettings extends i$2 {
       <ha-card>
         <div class="card-header">
           <ha-icon icon="mdi:cog-outline"></ha-icon>
-          ${t(this.hass, "config_panel.general_card_settings")}
+          ${t$2(this.hass, "config_panel.general_card_settings")}
         </div>
         <div class="card-content">
           ${this._msg ? b `<div class="error">${this._msg}</div>` : A}
 
-          <div class="section-title">${t(this.hass, "config_panel.settings_section_general")}</div>
+          <div class="section-title">${t$2(this.hass, "config_panel.settings_section_general")}</div>
           <div class="field-block">
-            <span class="field-title">${t(this.hass, "config_panel.general_installation_name")}</span>
+            <span class="field-title">${t$2(this.hass, "config_panel.general_installation_name")}</span>
             <div class="field-row">
               <ha-input
-                .label=${t(this.hass, "config_panel.general_field_name")}
+                .label=${t$2(this.hass, "config_panel.general_field_name")}
                 .value=${this._name}
                 @input=${(e) => {
             this._name = e.target.value;
@@ -5841,14 +5815,14 @@ class ViewSettings extends i$2 {
         }}
               ></ha-input>
             </div>
-            <p class="hint">${t(this.hass, "config_panel.settings_name_hint")}</p>
+            <p class="hint">${t$2(this.hass, "config_panel.settings_name_hint")}</p>
           </div>
 
-          <div class="section-title">${t(this.hass, "config_panel.settings_section_pump")}</div>
+          <div class="section-title">${t$2(this.hass, "config_panel.settings_section_pump")}</div>
           <div class="field-block">
-            <span class="field-title">${t(this.hass, "config_panel.general_pre_start_script_title")}</span>
+            <span class="field-title">${t$2(this.hass, "config_panel.general_pre_start_script_title")}</span>
             <div class="field-row">
-              ${renderNativeEntityField(this.hass, ["script"], t(this.hass, "config_panel.general_pre_start_script_field"), this._preStartScript, (v) => {
+              ${renderNativeEntityField(this.hass, ["script"], t$2(this.hass, "config_panel.general_pre_start_script_field"), this._preStartScript, (v) => {
             this._preStartScript = v;
             this._markDirty();
             this.requestUpdate();
@@ -5857,20 +5831,20 @@ class ViewSettings extends i$2 {
             <details class="inline-help">
               <summary>
                 <ha-icon class="inline-help-icon" icon="mdi:information-outline"></ha-icon>
-                ${t(this.hass, "config_panel.general_pre_start_script_title")}
+                ${t$2(this.hass, "config_panel.general_pre_start_script_title")}
               </summary>
-              <p>${t(this.hass, "config_panel.general_pre_start_script_desc")}</p>
+              <p>${t$2(this.hass, "config_panel.general_pre_start_script_desc")}</p>
             </details>
           </div>
           ${this._preStartScript.trim()
             ? b `<div class="field-block">
                 <span class="field-title">
-                  ${t(this.hass, "config_panel.general_pre_start_script_timeout_title")}
+                  ${t$2(this.hass, "config_panel.general_pre_start_script_timeout_title")}
                 </span>
                 <div class="field-row">
                   <ha-input
                     type="number"
-                    .label=${t(this.hass, "config_panel.general_pre_start_script_timeout_field")}
+                    .label=${t$2(this.hass, "config_panel.general_pre_start_script_timeout_field")}
                     .value=${String(this._preStartScriptTimeoutSec)}
                     min="1"
                     max="3600"
@@ -5881,19 +5855,19 @@ class ViewSettings extends i$2 {
                   ></ha-input>
                 </div>
                 <p class="hint">
-                  ${t(this.hass, "config_panel.settings_pre_start_script_timeout_hint")}
+                  ${t$2(this.hass, "config_panel.settings_pre_start_script_timeout_hint")}
                 </p>
               </div>`
             : A}
           <div class="field-block">
-            <span class="field-title">${t(this.hass, "config_panel.general_pre_start_title")}</span>
+            <span class="field-title">${t$2(this.hass, "config_panel.general_pre_start_title")}</span>
             <div class="field-row">
               <div class="entity-picker-rows">
                 ${this._preStart.map((eid, i) => b `
                     <div class="entity-picker-row">
                       ${renderNativeEntityField(this.hass, domains, i === 0
-            ? t(this.hass, "config_panel.general_pre_start_output_n")
-            : t(this.hass, "config_panel.general_pre_start_output_i", { n: i + 1 }), eid, (v) => {
+            ? t$2(this.hass, "config_panel.general_pre_start_output_n")
+            : t$2(this.hass, "config_panel.general_pre_start_output_i", { n: i + 1 }), eid, (v) => {
             const next = [...this._preStart];
             next[i] = v;
             this._preStart = next;
@@ -5912,7 +5886,7 @@ class ViewSettings extends i$2 {
                 this.requestUpdate();
             }}
                           >
-                            ${t(this.hass, "config_panel.general_remove")}
+                            ${t$2(this.hass, "config_panel.general_remove")}
                           </button>`
             : A}
                     </div>
@@ -5925,24 +5899,24 @@ class ViewSettings extends i$2 {
             this.requestUpdate();
         }}
                 >
-                  ${t(this.hass, "config_panel.general_add_pre_start")}
+                  ${t$2(this.hass, "config_panel.general_add_pre_start")}
                 </button>
               </div>
             </div>
             <details class="inline-help">
               <summary>
                 <ha-icon class="inline-help-icon" icon="mdi:information-outline"></ha-icon>
-                ${t(this.hass, "config_panel.general_pre_start_title")}
+                ${t$2(this.hass, "config_panel.general_pre_start_title")}
               </summary>
-              <p>${t(this.hass, "config_panel.general_pre_start_desc")}</p>
+              <p>${t$2(this.hass, "config_panel.general_pre_start_desc")}</p>
             </details>
           </div>
           <div class="field-block">
-            <span class="field-title">${t(this.hass, "config_panel.general_pre_start_delay_title")}</span>
+            <span class="field-title">${t$2(this.hass, "config_panel.general_pre_start_delay_title")}</span>
             <div class="field-row">
               <ha-input
                 type="number"
-                .label=${t(this.hass, "config_panel.general_pre_start_delay_field")}
+                .label=${t$2(this.hass, "config_panel.general_pre_start_delay_field")}
                 .value=${String(this._preStartDelaySec)}
                 min="0"
                 max="3600"
@@ -5957,12 +5931,12 @@ class ViewSettings extends i$2 {
         }}
               ></ha-input>
             </div>
-            <p class="hint">${t(this.hass, "config_panel.settings_pre_start_delay_hint")}</p>
+            <p class="hint">${t$2(this.hass, "config_panel.settings_pre_start_delay_hint")}</p>
           </div>
           <div class="field-block">
-            <span class="field-title">${t(this.hass, "config_panel.general_post_run_script_title")}</span>
+            <span class="field-title">${t$2(this.hass, "config_panel.general_post_run_script_title")}</span>
             <div class="field-row">
-              ${renderNativeEntityField(this.hass, ["script"], t(this.hass, "config_panel.general_post_run_script_field"), this._postRunScript, (v) => {
+              ${renderNativeEntityField(this.hass, ["script"], t$2(this.hass, "config_panel.general_post_run_script_field"), this._postRunScript, (v) => {
             this._postRunScript = v;
             this._markDirty();
             this.requestUpdate();
@@ -5971,20 +5945,20 @@ class ViewSettings extends i$2 {
             <details class="inline-help">
               <summary>
                 <ha-icon class="inline-help-icon" icon="mdi:information-outline"></ha-icon>
-                ${t(this.hass, "config_panel.general_post_run_script_title")}
+                ${t$2(this.hass, "config_panel.general_post_run_script_title")}
               </summary>
-              <p>${t(this.hass, "config_panel.general_post_run_script_desc")}</p>
+              <p>${t$2(this.hass, "config_panel.general_post_run_script_desc")}</p>
             </details>
           </div>
           ${this._postRunScript.trim()
             ? b `<div class="field-block">
                 <span class="field-title">
-                  ${t(this.hass, "config_panel.general_post_run_script_timeout_title")}
+                  ${t$2(this.hass, "config_panel.general_post_run_script_timeout_title")}
                 </span>
                 <div class="field-row">
                   <ha-input
                     type="number"
-                    .label=${t(this.hass, "config_panel.general_post_run_script_timeout_field")}
+                    .label=${t$2(this.hass, "config_panel.general_post_run_script_timeout_field")}
                     .value=${String(this._postRunScriptTimeoutSec)}
                     min="1"
                     max="3600"
@@ -5995,14 +5969,14 @@ class ViewSettings extends i$2 {
                   ></ha-input>
                 </div>
                 <p class="hint">
-                  ${t(this.hass, "config_panel.settings_post_run_script_timeout_hint")}
+                  ${t$2(this.hass, "config_panel.settings_post_run_script_timeout_hint")}
                 </p>
               </div>`
             : A}
 
-          <div class="section-title">${t(this.hass, "config_panel.settings_section_watering")}</div>
+          <div class="section-title">${t$2(this.hass, "config_panel.settings_section_watering")}</div>
           <div class="field-block">
-            <span class="field-title">${t(this.hass, "config_panel.general_watering_mode")}</span>
+            <span class="field-title">${t$2(this.hass, "config_panel.general_watering_mode")}</span>
             <div class="field-row">
               <select
                 class="field-select"
@@ -6012,17 +5986,17 @@ class ViewSettings extends i$2 {
         }}
               >
                 ${["eco", "normal", "extra"].map((m) => b `<option value=${m} ?selected=${this._mode === m}>
-                      ${t(this.hass, `config_panel.general_mode_${m}`)}
+                      ${t$2(this.hass, `config_panel.general_mode_${m}`)}
                     </option>`)}
               </select>
             </div>
           </div>
           <div class="field-block">
-            <span class="field-title">${t(this.hass, "config_panel.general_max_parallel")}</span>
+            <span class="field-title">${t$2(this.hass, "config_panel.general_max_parallel")}</span>
             <div class="field-row">
               <ha-input
                 type="number"
-                .label=${t(this.hass, "config_panel.general_max_parallel_field")}
+                .label=${t$2(this.hass, "config_panel.general_max_parallel_field")}
                 .value=${String(this._maxParallel)}
                 min="1"
                 max="16"
@@ -6032,13 +6006,13 @@ class ViewSettings extends i$2 {
         }}
               ></ha-input>
             </div>
-            <p class="hint">${t(this.hass, "config_panel.settings_max_parallel_hint")}</p>
+            <p class="hint">${t$2(this.hass, "config_panel.settings_max_parallel_hint")}</p>
           </div>
 
-          <div class="section-title">${t(this.hass, "config_panel.settings_section_water")}</div>
+          <div class="section-title">${t$2(this.hass, "config_panel.settings_section_water")}</div>
           <div class="field-block">
             <div class="field-row">
-              ${renderNativeEntityField(this.hass, ["sensor"], t(this.hass, "config_panel.settings_water_meter_label"), this._waterMeter, (v) => {
+              ${renderNativeEntityField(this.hass, ["sensor"], t$2(this.hass, "config_panel.settings_water_meter_label"), this._waterMeter, (v) => {
             this._waterMeter = v;
             this._markDirty();
             this.requestUpdate();
@@ -6047,18 +6021,18 @@ class ViewSettings extends i$2 {
             ${renderInlineHelp(this.hass, "config_panel.settings_water_help_summary", ["config_panel.settings_water_meter_hint"], "mdi:water-outline")}
           </div>
 
-          <div class="section-title">${t(this.hass, "config_panel.settings_section_guards")}</div>
+          <div class="section-title">${t$2(this.hass, "config_panel.settings_section_guards")}</div>
           <div class="field-block">
-            <span class="field-title">${t(this.hass, "config_panel.guards_section_title")}</span>
-            <p class="field-desc">${t(this.hass, "config_panel.guards_section_desc")}</p>
+            <span class="field-title">${t$2(this.hass, "config_panel.guards_section_title")}</span>
+            <p class="field-desc">${t$2(this.hass, "config_panel.guards_section_desc")}</p>
             ${renderGuardList(this.hass, GUARD_ENTITY_DOMAINS, this._guards, (next) => {
             this._guards = next;
             this._markDirty();
         })}
-            <p class="hint">${t(this.hass, "config_panel.settings_guards_hint")}</p>
+            <p class="hint">${t$2(this.hass, "config_panel.settings_guards_hint")}</p>
           </div>
 
-          <div class="section-title">${t(this.hass, "config_panel.general_default_section")}</div>
+          <div class="section-title">${t$2(this.hass, "config_panel.general_default_section")}</div>
           <div class="field-block">
             <div class="switch-row">
               <ha-switch
@@ -6069,20 +6043,20 @@ class ViewSettings extends i$2 {
             void this._onDefaultToggle(Boolean(tgt.checked));
         }}
               ></ha-switch>
-              <span class="switch-row-label">${t(this.hass, "config_panel.general_default_toggle_label")}</span>
+              <span class="switch-row-label">${t$2(this.hass, "config_panel.general_default_toggle_label")}</span>
             </div>
-            <p class="hint">${t(this.hass, "config_panel.settings_default_hint")}</p>
+            <p class="hint">${t$2(this.hass, "config_panel.settings_default_hint")}</p>
           </div>
 
-          <div class="section-title">${t(this.hass, "config_panel.settings_section_automations")}</div>
+          <div class="section-title">${t$2(this.hass, "config_panel.settings_section_automations")}</div>
           <details class="inline-help">
             <summary>
               <ha-icon class="inline-help-icon" icon="mdi:robot-outline"></ha-icon>
-              ${t(this.hass, "config_panel.settings_automations_summary")}
+              ${t$2(this.hass, "config_panel.settings_automations_summary")}
             </summary>
             <div class="help-body">
               <p style="border:0;padding:0;margin:0 0 8px;background:none">
-                ${t(this.hass, "config_panel.settings_automations_body")}
+                ${t$2(this.hass, "config_panel.settings_automations_body")}
               </p>
               <div><code>config_entry_id</code>: <code>${this.entryId}</code></div>
             </div>
@@ -6092,37 +6066,37 @@ class ViewSettings extends i$2 {
         }}>
             <summary>
               <ha-icon class="inline-help-icon" icon="mdi:code-json"></ha-icon>
-              ${t(this.hass, "config_panel.settings_diagnostics_summary")}
+              ${t$2(this.hass, "config_panel.settings_diagnostics_summary")}
             </summary>
             ${this._showRaw
             ? b `<pre class="raw">${JSON.stringify(this.runState ?? {}, null, 2)}</pre>`
             : A}
           </details>
 
-          <div class="section-title">${t(this.hass, "config_panel.settings_manage_title")}</div>
-          <p class="hint">${t(this.hass, "config_panel.settings_manage_desc")}</p>
+          <div class="section-title">${t$2(this.hass, "config_panel.settings_manage_title")}</div>
+          <p class="hint">${t$2(this.hass, "config_panel.settings_manage_desc")}</p>
           <button type="button" class="btn-outline" @click=${() => this._openIntegrationPage()}>
-            ${t(this.hass, "config_panel.settings_open_integration")}
+            ${t$2(this.hass, "config_panel.settings_open_integration")}
           </button>
         </div>
 
         <div class="save-bar">
           ${this._dirty
-            ? b `<span class="dirty-note">${t(this.hass, "config_panel.settings_unsaved")}</span>`
-            : b `<span class="muted">${t(this.hass, "config_panel.settings_all_saved")}</span>`}
+            ? b `<span class="dirty-note">${t$2(this.hass, "config_panel.settings_unsaved")}</span>`
+            : b `<span class="muted">${t$2(this.hass, "config_panel.settings_all_saved")}</span>`}
           <button type="button" class="btn" ?disabled=${this._busy || !this._dirty} @click=${() => this._save()}>
-            ${this._busy ? t(this.hass, "config_panel.general_saving") : t(this.hass, "config_panel.general_save")}
+            ${this._busy ? t$2(this.hass, "config_panel.general_saving") : t$2(this.hass, "config_panel.general_save")}
           </button>
         </div>
       </ha-card>
 
       <ha-dialog
         .open=${this._defaultConfirmOpen}
-        header-title=${t(this.hass, "config_panel.general_default_confirm_title")}
+        header-title=${t$2(this.hass, "config_panel.general_default_confirm_title")}
         @closed=${() => this._closeDefaultConfirm()}
       >
         <p>
-          ${t(this.hass, "config_panel.general_default_confirm_body", {
+          ${t$2(this.hass, "config_panel.general_default_confirm_body", {
             name: this._name || this.entryId,
             other: this._defaultConfirmOtherName,
         })}
@@ -6132,7 +6106,7 @@ class ViewSettings extends i$2 {
             <div class="dialog-footer-lead"></div>
             <div class="dialog-footer-actions">
               <button type="button" class="btn-outline" @click=${() => this._closeDefaultConfirm()}>
-                ${t(this.hass, "config_panel.general_default_confirm_cancel")}
+                ${t$2(this.hass, "config_panel.general_default_confirm_cancel")}
               </button>
               <button
                 type="button"
@@ -6143,7 +6117,7 @@ class ViewSettings extends i$2 {
             this._closeDefaultConfirm();
         }}
               >
-                ${t(this.hass, "config_panel.general_default_confirm_ok")}
+                ${t$2(this.hass, "config_panel.general_default_confirm_ok")}
               </button>
             </div>
           </div>
@@ -6175,7 +6149,7 @@ __decorate([
 ], ViewSettings.prototype, "_guards", void 0);
 defineCustomElementOnce("si-view-settings", ViewSettings);
 
-class ViewTimetable extends i$2 {
+class ViewTimetable extends i$4 {
     constructor() {
         super(...arguments);
         /** Selected week view; null = follow the current calendar week. */
@@ -6190,7 +6164,7 @@ class ViewTimetable extends i$2 {
     }; }
     static { this.styles = [
         sharedStyles,
-        i$5 `
+        i$7 `
     .table-wrap {
       overflow-x: auto;
       -webkit-overflow-scrolling: touch;
@@ -6609,15 +6583,15 @@ class ViewTimetable extends i$2 {
     ]; }
     _parityLabel(parity) {
         if (parity === "odd")
-            return t(this.hass, "config_panel.week_parity_odd");
+            return t$2(this.hass, "config_panel.week_parity_odd");
         if (parity === "even")
-            return t(this.hass, "config_panel.week_parity_even");
-        return t(this.hass, "config_panel.week_parity_every");
+            return t$2(this.hass, "config_panel.week_parity_even");
+        return t$2(this.hass, "config_panel.week_parity_every");
     }
     _parityBadge(parity) {
         return parity === "odd"
-            ? t(this.hass, "config_panel.timetable_parity_badge_odd")
-            : t(this.hass, "config_panel.timetable_parity_badge_even");
+            ? t$2(this.hass, "config_panel.timetable_parity_badge_odd")
+            : t$2(this.hass, "config_panel.timetable_parity_badge_even");
     }
     _bucketIcon(bucket) {
         if (bucket === 0)
@@ -6628,17 +6602,17 @@ class ViewTimetable extends i$2 {
     }
     _bucketAriaLabel(bucket) {
         if (bucket === 0)
-            return t(this.hass, "config_panel.timetable_bucket_aria_morning");
+            return t$2(this.hass, "config_panel.timetable_bucket_aria_morning");
         if (bucket === 1)
-            return t(this.hass, "config_panel.timetable_bucket_aria_day");
-        return t(this.hass, "config_panel.timetable_bucket_aria_evening");
+            return t$2(this.hass, "config_panel.timetable_bucket_aria_day");
+        return t$2(this.hass, "config_panel.timetable_bucket_aria_evening");
     }
     _bucketLegendCaption(bucket) {
         if (bucket === 0)
-            return t(this.hass, "config_panel.timetable_legend_bucket_morning");
+            return t$2(this.hass, "config_panel.timetable_legend_bucket_morning");
         if (bucket === 1)
-            return t(this.hass, "config_panel.timetable_legend_bucket_day");
-        return t(this.hass, "config_panel.timetable_legend_bucket_evening");
+            return t$2(this.hass, "config_panel.timetable_legend_bucket_day");
+        return t$2(this.hass, "config_panel.timetable_legend_bucket_evening");
     }
     _entryTooltip(e) {
         const start = formatSlotTimeForProfile(this.hass, minutesToTimeLocal(e.startMin));
@@ -6648,8 +6622,8 @@ class ViewTimetable extends i$2 {
             : e.mode === "extra"
                 ? "config_panel.timetable_mode_extra"
                 : "config_panel.timetable_mode_normal";
-        const modeLabel = t(this.hass, modeKey);
-        const base = t(this.hass, "config_panel.timetable_bar_tooltip", {
+        const modeLabel = t$2(this.hass, modeKey);
+        const base = t$2(this.hass, "config_panel.timetable_bar_tooltip", {
             start,
             end,
             mode: modeLabel,
@@ -6693,12 +6667,12 @@ class ViewTimetable extends i$2 {
         <ha-card>
           <div class="card-header">
             <ha-icon icon="mdi:calendar-week"></ha-icon>
-            ${t(this.hass, "config_panel.timetable_card_title")}
+            ${t$2(this.hass, "config_panel.timetable_card_title")}
           </div>
           <div class="card-content">
             <div class="empty-state">
               <ha-icon icon="mdi:calendar-week"></ha-icon>
-              <p>${t(this.hass, "config_panel.timetable_empty_no_zones")}</p>
+              <p>${t$2(this.hass, "config_panel.timetable_empty_no_zones")}</p>
             </div>
           </div>
         </ha-card>
@@ -6709,12 +6683,12 @@ class ViewTimetable extends i$2 {
         <ha-card>
           <div class="card-header">
             <ha-icon icon="mdi:calendar-week"></ha-icon>
-            ${t(this.hass, "config_panel.timetable_card_title")}
+            ${t$2(this.hass, "config_panel.timetable_card_title")}
           </div>
           <div class="card-content">
             <div class="empty-state">
               <ha-icon icon="mdi:calendar-blank-outline"></ha-icon>
-              <p>${t(this.hass, "config_panel.timetable_empty_no_slots")}</p>
+              <p>${t$2(this.hass, "config_panel.timetable_empty_no_slots")}</p>
             </div>
           </div>
         </ha-card>
@@ -6743,22 +6717,22 @@ class ViewTimetable extends i$2 {
       <ha-card>
         <div class="card-header">
           <ha-icon icon="mdi:calendar-week"></ha-icon>
-          ${t(this.hass, "config_panel.timetable_card_title")}
+          ${t$2(this.hass, "config_panel.timetable_card_title")}
         </div>
         <div class="card-content">
           <details class="inline-help">
             <summary>
               <ha-icon class="inline-help-icon" icon="mdi:information-outline"></ha-icon>
-              ${t(this.hass, "config_panel.timetable_help_summary")}
+              ${t$2(this.hass, "config_panel.timetable_help_summary")}
             </summary>
-            <p>${t(this.hass, "config_panel.timetable_intro")}</p>
+            <p>${t$2(this.hass, "config_panel.timetable_intro")}</p>
           </details>
           ${viewParity
             ? b `
                 <div
                   class="week-toggle"
                   role="group"
-                  aria-label=${t(this.hass, "config_panel.timetable_week_toggle_label")}
+                  aria-label=${t$2(this.hass, "config_panel.timetable_week_toggle_label")}
                 >
                   <span class="week-toggle-seg">
                     ${["odd", "even"].map((p) => b `
@@ -6773,7 +6747,7 @@ class ViewTimetable extends i$2 {
                           <span>${this._parityLabel(p)}</span>
                           ${nowParity === p
                 ? b `<span class="week-toggle-now"
-                                >${t(this.hass, "config_panel.timetable_week_current_hint", {
+                                >${t$2(this.hass, "config_panel.timetable_week_current_hint", {
                     n: nowWeek,
                 })}</span
                               >`
@@ -6785,7 +6759,7 @@ class ViewTimetable extends i$2 {
               `
             : A}
           <div class="only-narrow">
-            <div class="day-pills" role="group" aria-label=${t(this.hass, "config_panel.timetable_col_zone")}>
+            <div class="day-pills" role="group" aria-label=${t$2(this.hass, "config_panel.timetable_col_zone")}>
               ${colOrder.map((wd) => {
             const has = (dayTotals.get(wd) ?? 0) > 0;
             return b `<button
@@ -6817,7 +6791,7 @@ class ViewTimetable extends i$2 {
                           <span class="day-run-time">${start} – ${end}</span>
                           <div class="meta-line">
                             <span class="meta ellipsis">${zoneDisplayName(inst, e.zoneId)}</span>
-                            <span class="meta">${t(this.hass, "config_panel.timetable_duration_min", {
+                            <span class="meta">${t$2(this.hass, "config_panel.timetable_duration_min", {
                     n: entryDurationMinutesRounded(e),
                 })}</span>
                           </div>
@@ -6825,15 +6799,15 @@ class ViewTimetable extends i$2 {
                       </div>
                     `;
             })}
-                  <p class="day-total">${t(this.hass, "config_panel.timetable_day_total", { n: dayTotal })}</p>
+                  <p class="day-total">${t$2(this.hass, "config_panel.timetable_day_total", { n: dayTotal })}</p>
                 `
-            : b `<p class="muted" style="padding:8px 0">${t(this.hass, "config_panel.timetable_day_empty")}</p>`}
+            : b `<p class="muted" style="padding:8px 0">${t$2(this.hass, "config_panel.timetable_day_empty")}</p>`}
           </div>
           <div class="table-wrap hide-narrow">
             <table class="tt-table">
               <thead>
                 <tr>
-                  <th class="tt-th-zone" scope="col">${t(this.hass, "config_panel.timetable_col_zone")}</th>
+                  <th class="tt-th-zone" scope="col">${t$2(this.hass, "config_panel.timetable_col_zone")}</th>
                   <th class="tt-th-bucket" scope="col" aria-hidden="true"></th>
                   ${colOrder.map((wd) => b `<th class="tt-th-day" scope="col">${weekdayLong(this.hass, wd)}</th>`)}
                 </tr>
@@ -6869,7 +6843,7 @@ class ViewTimetable extends i$2 {
                             const start = formatSlotTimeForProfile(this.hass, minutesToTimeLocal(e.startMin));
                             const end = formatSlotTimeForProfile(this.hass, minutesToTimeLocal(e.endMin));
                             const dur = entryDurationMinutesRounded(e);
-                            const durLabel = t(this.hass, "config_panel.timetable_duration_min", {
+                            const durLabel = t$2(this.hass, "config_panel.timetable_duration_min", {
                                 n: dur,
                             });
                             const biweekly = e.weekParity !== "every";
@@ -6911,12 +6885,12 @@ class ViewTimetable extends i$2 {
               <tfoot>
                 <tr>
                   <th class="tt-foot-label" scope="row" colspan="2">
-                    ${t(this.hass, "config_panel.timetable_totals_label")}
+                    ${t$2(this.hass, "config_panel.timetable_totals_label")}
                   </th>
                   ${colOrder.map((wd) => {
             const total = Math.round(dayTotals.get(wd) ?? 0);
             return b `<td class="tt-foot-total">
-                      ${total > 0 ? t(this.hass, "config_panel.timetable_duration_min", { n: total }) : "—"}
+                      ${total > 0 ? t$2(this.hass, "config_panel.timetable_duration_min", { n: total }) : "—"}
                     </td>`;
         })}
                 </tr>
@@ -6924,20 +6898,20 @@ class ViewTimetable extends i$2 {
             </table>
           </div>
           <div class="foot">
-            <div class="legend" role="group" aria-label=${t(this.hass, "config_panel.timetable_legend_label")}>
+            <div class="legend" role="group" aria-label=${t$2(this.hass, "config_panel.timetable_legend_label")}>
               <span class="legend-item">
                 <span class="swatch swatch--active" aria-hidden="true"></span>
-                ${t(this.hass, "config_panel.timetable_legend_active")}
+                ${t$2(this.hass, "config_panel.timetable_legend_active")}
               </span>
               <span class="legend-item">
                 <span class="swatch swatch--disabled" aria-hidden="true"></span>
-                ${t(this.hass, "config_panel.timetable_legend_disabled")}
+                ${t$2(this.hass, "config_panel.timetable_legend_disabled")}
               </span>
               ${hasBiweekly
             ? b `
                     <span class="legend-item">
                       <span class="swatch swatch--biweekly" aria-hidden="true"></span>
-                      ${t(this.hass, "config_panel.timetable_legend_biweekly")}
+                      ${t$2(this.hass, "config_panel.timetable_legend_biweekly")}
                     </span>
                   `
             : A}
@@ -6968,19 +6942,32 @@ defineCustomElementOnce("si-view-timetable", ViewTimetable);
  * Copyright 2017 Google LLC
  * SPDX-License-Identifier: BSD-3-Clause
  */
-const e=t=>(...e)=>({_$litDirective$:t,values:e});let i$1 = class i{constructor(t){}get _$AU(){return this._$AM._$AU}_$AT(t,e,i){this._$Ct=t,this._$AM=e,this._$Ci=i;}_$AS(t,e){return this.update(t,e)}update(t,e){return this.render(...e)}};
+const t$1={ATTRIBUTE:1,CHILD:2},e=t=>(...e)=>({_$litDirective$:t,values:e});let i$3 = class i{constructor(t){}get _$AU(){return this._$AM._$AU}_$AT(t,e,i){this._$Ct=t,this._$AM=e,this._$Ci=i;}_$AS(t,e){return this.update(t,e)}update(t,e){return this.render(...e)}};
 
 /**
  * @license
  * Copyright 2020 Google LLC
  * SPDX-License-Identifier: BSD-3-Clause
- */const m={},p=(o,t=m)=>o._$AH=t;
+ */const {I:t}=j,i$2=o=>o,s=()=>document.createComment(""),v=(o,n,e)=>{const l=o._$AA.parentNode,d=void 0===n?o._$AB:n._$AA;if(void 0===e){const i=l.insertBefore(s(),d),n=l.insertBefore(s(),d);e=new t(i,n,o,o.options);}else {const t=e._$AB.nextSibling,n=e._$AM,c=n!==o;if(c){let t;e._$AQ?.(o),e._$AM=o,void 0!==e._$AP&&(t=o._$AU)!==n._$AU&&e._$AP(t);}if(t!==d||c){let o=e._$AA;for(;o!==t;){const t=i$2(o).nextSibling;i$2(l).insertBefore(o,d),o=t;}}}return e},u$1=(o,t,i=o)=>(o._$AI(t,i),o),m={},p=(o,t=m)=>o._$AH=t,M=o=>o._$AH,h=o=>{o._$AR(),o._$AA.remove();};
 
 /**
  * @license
  * Copyright 2021 Google LLC
  * SPDX-License-Identifier: BSD-3-Clause
- */const i=e(class extends i$1{constructor(){super(...arguments),this.key=A;}render(r,t){return this.key=r,t}update(r,[t,e]){return t!==this.key&&(p(r),this.key=t),e}});
+ */const i$1=e(class extends i$3{constructor(){super(...arguments),this.key=A;}render(r,t){return this.key=r,t}update(r,[t,e]){return t!==this.key&&(p(r),this.key=t),e}});
+
+/**
+ * @license
+ * Copyright 2017 Google LLC
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+const u=(e,s,t)=>{const r=new Map;for(let l=s;l<=t;l++)r.set(e[l],l);return r},c=e(class extends i$3{constructor(e){if(super(e),e.type!==t$1.CHILD)throw Error("repeat() can only be used in text expressions")}dt(e,s,t){let r;void 0===t?t=s:void 0!==s&&(r=s);const l=[],o=[];let i=0;for(const s of e)l[i]=r?r(s,i):i,o[i]=t(s,i),i++;return {values:o,keys:l}}render(e,s,t){return this.dt(e,s,t).values}update(s,[t,r,c]){const d=M(s),{values:p$1,keys:a}=this.dt(t,r,c);if(!Array.isArray(d))return this.ut=a,p$1;const h$1=this.ut??=[],v$1=[];let m,y,x=0,j=d.length-1,k=0,w=p$1.length-1;for(;x<=j&&k<=w;)if(null===d[x])x++;else if(null===d[j])j--;else if(h$1[x]===a[k])v$1[k]=u$1(d[x],p$1[k]),x++,k++;else if(h$1[j]===a[w])v$1[w]=u$1(d[j],p$1[w]),j--,w--;else if(h$1[x]===a[w])v$1[w]=u$1(d[x],p$1[w]),v(s,v$1[w+1],d[x]),x++,w--;else if(h$1[j]===a[k])v$1[k]=u$1(d[j],p$1[k]),v(s,d[x],d[j]),j--,k++;else if(void 0===m&&(m=u(a,k,w),y=u(h$1,x,j)),m.has(h$1[x]))if(m.has(h$1[j])){const e=y.get(a[k]),t=void 0!==e?d[e]:null;if(null===t){const e=v(s,d[x]);u$1(e,p$1[k]),v$1[k]=e;}else v$1[k]=u$1(t,p$1[k]),v(s,d[x],t),d[e]=null;k++;}else h(d[j]),j--;else h(d[x]),x++;for(;k<=w;){const e=v(s,v$1[w+1]);u$1(e,p$1[k]),v$1[k++]=e;}for(;x<=j;){const e=d[x++];null!==e&&h(e);}return this.ut=a,p(s,v$1),E}});
+
+/**
+ * @license
+ * Copyright 2018 Google LLC
+ * SPDX-License-Identifier: BSD-3-Clause
+ */const n="important",i=" !"+n,o=e(class extends i$3{constructor(t){if(super(t),t.type!==t$1.ATTRIBUTE||"style"!==t.name||t.strings?.length>2)throw Error("The `styleMap` directive must be used in the `style` attribute and must be the only part in the attribute.")}render(t){return Object.keys(t).reduce((e,r)=>{const s=t[r];return null==s?e:e+`${r=r.includes("-")?r:r.replace(/(?:^(webkit|moz|ms|o)|)(?=[A-Z])/g,"-$&").toLowerCase()}:${s};`},"")}update(e,[r]){const{style:s}=e.element;if(void 0===this.ft)return this.ft=new Set(Object.keys(r)),this.render(r);for(const t of this.ft)null==r[t]&&(this.ft.delete(t),t.includes("-")?s.removeProperty(t):s[t]=null);for(const t in r){const e=r[t];if(null!=e){this.ft.add(t);const r="string"==typeof e&&e.endsWith(i);t.includes("-")||r?s.setProperty(t,r?e.slice(0,-11):e,r?n:""):s[t]=e;}}return E}});
 
 const defaultDomains = ["switch", "input_boolean", "group", "valve"];
 /** Entity domains the start target usually lives in — the start service does not
@@ -7022,7 +7009,27 @@ const zoneStartPresets = {
         hintKey: "config_panel.zones_start_hint_output_is_target",
     },
 };
-class ViewZones extends i$2 {
+/** Distance from the top or bottom edge at which a drag starts scrolling the list. */
+const DRAG_SCROLL_EDGE_PX = 56;
+const DRAG_SCROLL_STEP_PX = 10;
+/** The element that scrolls `el`, found across shadow roots and slots. */
+function scrollParent(el) {
+    let node = el;
+    while (node) {
+        if (node instanceof Element) {
+            const overflow = getComputedStyle(node).overflowY;
+            if ((overflow === "auto" || overflow === "scroll") && node.scrollHeight > node.clientHeight) {
+                return node;
+            }
+            node = node.assignedSlot ?? node.parentNode;
+        }
+        else {
+            node = node instanceof ShadowRoot ? node.host : node.parentNode;
+        }
+    }
+    return document.scrollingElement ?? document.documentElement;
+}
+class ViewZones extends i$4 {
     constructor() {
         super(...arguments);
         this._busy = false;
@@ -7030,7 +7037,12 @@ class ViewZones extends i$2 {
         this._editDraft = null;
         this._filter = "all";
         this._expanded = new Set();
+        this._orderSaving = false;
         this._new = this._blankZone();
+        this._onDragKeydown = (e) => {
+            if (e.key === "Escape")
+                this._endDrag();
+        };
     }
     static { this.properties = {
         hass: { attribute: false },
@@ -7043,7 +7055,7 @@ class ViewZones extends i$2 {
     static { this.styles = [
         sharedStyles,
         formLayoutStyles,
-        i$5 `
+        i$7 `
       .drawer-actions {
         display: flex;
         flex-direction: column;
@@ -7059,20 +7071,59 @@ class ViewZones extends i$2 {
         border-left-color: var(--primary-color);
         background: color-mix(in srgb, var(--primary-color) 6%, var(--card-background-color));
       }
-      .compact-row.dragging {
-        opacity: 0.55;
-      }
-      .reorder-actions {
+      /* Tucked into the row's left padding so the name keeps its width on phones. */
+      .drag-handle {
         flex: 0 0 auto;
-      }
-      .drag-marker {
-        color: var(--secondary-text-color);
         display: inline-flex;
         align-items: center;
+        justify-content: center;
+        width: 28px;
+        height: 40px;
+        margin: 0 -6px 0 -8px;
+        padding: 0;
+        border: none;
+        border-radius: 8px;
+        background: transparent;
+        color: var(--secondary-text-color);
         cursor: grab;
+        /* The handle is the one place a touch moves a row instead of the page. */
+        touch-action: none;
+        user-select: none;
+        -webkit-user-select: none;
+        -webkit-touch-callout: none;
       }
-      .drag-marker ha-icon {
+      .drag-handle:hover {
+        color: var(--primary-text-color);
+      }
+      .drag-handle:focus-visible {
+        outline: 2px solid var(--primary-color);
+        outline-offset: -2px;
+      }
+      .drag-handle ha-icon {
         --mdc-icon-size: 20px;
+        pointer-events: none;
+      }
+      .compact-row.dragging {
+        position: relative;
+        z-index: 2;
+        transition: none;
+        box-shadow: 0 6px 18px rgba(0, 0, 0, 0.28);
+      }
+      .compact-row.dragging .drag-handle {
+        cursor: grabbing;
+      }
+      .compact-row.shifting {
+        transition: transform 0.15s ease;
+      }
+      .drawer-move {
+        display: flex;
+        gap: 8px;
+      }
+      .drawer-move .btn-outline {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
       }
       .out-line {
         margin: 8px 0 0;
@@ -7094,6 +7145,7 @@ class ViewZones extends i$2 {
     disconnectedCallback() {
         super.disconnectedCallback();
         this._clearTick();
+        this._endDrag();
     }
     updated() {
         this._syncTick();
@@ -7137,7 +7189,13 @@ class ViewZones extends i$2 {
         return { ...z, switch_entity_ids: [...z.switch_entity_ids] };
     }
     _zonesFromInstallation() {
-        return orderedZoneEntries(this.installation).map(([zone_id, o]) => {
+        const zones = this.installation?.zones;
+        if (!zones)
+            return [];
+        // A draft outlives a reload for a moment; skip a zone deleted in the meantime.
+        const ids = this._zoneOrder().filter((id) => id in zones);
+        return ids.map((zone_id) => {
+            const o = zones[zone_id];
             const raw = o.switch_entity_ids;
             let ids = [];
             if (Array.isArray(raw))
@@ -7166,52 +7224,168 @@ class ViewZones extends i$2 {
             };
         });
     }
-    /** Save a complete order so the backend can reject stale concurrent edits. */
-    async _saveZoneOrder(order) {
-        if (this._busy)
+    _zoneOrder() {
+        return this._orderDraft ?? orderedZoneIds(this.installation);
+    }
+    /**
+     * Show `order` at once and save it. A move made while a save is under way is
+     * not lost: the draft holds the latest order, and the loop sends it as soon
+     * as the request before it has returned.
+     */
+    async _commitZoneOrder(order) {
+        this._orderDraft = order;
+        if (this._orderSaving)
             return;
-        this._busy = true;
+        this._orderSaving = true;
         this._msg = undefined;
-        this.requestUpdate();
+        let sent;
         try {
-            const res = await saveZoneOrder(this.hass, this.entryId, order);
-            if (!res.success)
-                this._msg = formatApiError(res.error, this.hass);
-            else
-                this.onSaved?.();
+            while (this._orderDraft !== sent) {
+                sent = this._orderDraft;
+                const res = await saveZoneOrder(this.hass, this.entryId, sent);
+                if (!res.success)
+                    throw res.error;
+                // Reload before dropping the draft, so the list never shows the old order.
+                if (this._orderDraft === sent)
+                    await this.onSaved?.();
+            }
         }
         catch (e) {
             this._msg = formatApiError(e, this.hass);
+            // The zones changed under the drag: show what is really there.
+            void this.onSaved?.();
         }
         finally {
-            this._busy = false;
-            this.requestUpdate();
+            this._orderSaving = false;
+            this._orderDraft = undefined;
         }
     }
-    _moveZone(zoneId, offset) {
-        const order = orderedZoneIds(this.installation);
+    /** One step up or down, from a key on the handle or a button in the drawer. */
+    async _moveZone(zoneId, offset, control) {
+        const order = [...this._zoneOrder()];
         const from = order.indexOf(zoneId);
         const to = from + offset;
         if (from < 0 || to < 0 || to >= order.length)
             return;
         [order[from], order[to]] = [order[to], order[from]];
-        void this._saveZoneOrder(order);
+        void this._commitZoneOrder(order);
+        // The row moved in the DOM and took the focus with it into nowhere.
+        await this.updateComplete;
+        const row = `[data-zone-id="${zoneId}"]`;
+        const again = this.renderRoot.querySelector(`${row}[data-reorder="${control}"]`);
+        const target = again && !again.disabled
+            ? again
+            : this.renderRoot.querySelector(`${row}[data-reorder="handle"]`);
+        target?.focus();
     }
-    _dropZone(targetZoneId) {
-        const moving = this._dragZoneId;
-        this._dragZoneId = undefined;
-        if (!moving || moving === targetZoneId || this._busy || this._filter !== "all")
+    _onHandleKeydown(e, zoneId) {
+        if (e.key !== "ArrowUp" && e.key !== "ArrowDown")
             return;
-        const order = orderedZoneIds(this.installation);
-        const from = order.indexOf(moving);
-        const target = order.indexOf(targetZoneId);
-        if (from < 0 || target < 0)
+        e.preventDefault();
+        if (!this._drag)
+            void this._moveZone(zoneId, e.key === "ArrowUp" ? -1 : 1, "handle");
+    }
+    _onHandlePointerDown(e, zoneId) {
+        if (e.button !== 0 || this._drag)
             return;
-        order.splice(from, 1);
-        // Dropping downward places the dragged zone after the target; dropping
-        // upward places it before. This matches the direction the row travelled.
-        order.splice(target, 0, moving);
-        void this._saveZoneOrder(order);
+        const handle = e.currentTarget;
+        const rows = [...this.renderRoot.querySelectorAll(".compact-row")];
+        const from = this._zoneOrder().indexOf(zoneId);
+        if (from < 0 || rows.length !== this._zoneOrder().length)
+            return;
+        // No text selection and no focus ring from the press that starts a drag.
+        e.preventDefault();
+        handle.setPointerCapture(e.pointerId);
+        const rects = rows.map((row) => row.getBoundingClientRect());
+        const scroller = scrollParent(this);
+        this._drag = {
+            zoneId,
+            pointerId: e.pointerId,
+            from,
+            to: from,
+            dy: 0,
+            clientY: e.clientY,
+            startY: e.clientY,
+            scroller,
+            startScroll: scroller.scrollTop,
+            tops: rects.map((r) => r.top),
+            heights: rects.map((r) => r.height),
+            gap: rects.length > 1 ? rects[1].top - rects[0].bottom : 0,
+        };
+        this._dragScrollFrame = requestAnimationFrame(() => this._dragAutoScroll());
+        window.addEventListener("keydown", this._onDragKeydown);
+    }
+    _onHandlePointerMove(e) {
+        if (!this._drag || e.pointerId !== this._drag.pointerId)
+            return;
+        this._trackDrag(e.clientY);
+    }
+    /** Where the dragged row is now, and which place in the list that makes. */
+    _trackDrag(clientY) {
+        const d = this._drag;
+        if (!d)
+            return;
+        const { from, tops, heights } = d;
+        const last = tops.length - 1;
+        const travelled = clientY - d.startY + (d.scroller.scrollTop - d.startScroll);
+        const dy = Math.max(tops[0] - tops[from], Math.min(tops[last] + heights[last] - tops[from] - heights[from], travelled));
+        const centre = tops[from] + heights[from] / 2 + dy;
+        const middle = (i) => tops[i] + heights[i] / 2;
+        let to = from;
+        while (to < last && centre > middle(to + 1))
+            to++;
+        while (to > 0 && centre < middle(to - 1))
+            to--;
+        this._drag = { ...d, clientY, dy, to };
+    }
+    /** Scroll the list while the pointer rests near its top or bottom edge. */
+    _dragAutoScroll() {
+        const d = this._drag;
+        if (!d)
+            return;
+        const box = d.scroller.getBoundingClientRect();
+        const top = Math.max(box.top, 0);
+        const bottom = Math.min(box.bottom, window.innerHeight);
+        const before = d.scroller.scrollTop;
+        if (d.clientY < top + DRAG_SCROLL_EDGE_PX)
+            d.scroller.scrollTop -= DRAG_SCROLL_STEP_PX;
+        else if (d.clientY > bottom - DRAG_SCROLL_EDGE_PX)
+            d.scroller.scrollTop += DRAG_SCROLL_STEP_PX;
+        if (d.scroller.scrollTop !== before)
+            this._trackDrag(d.clientY);
+        this._dragScrollFrame = requestAnimationFrame(() => this._dragAutoScroll());
+    }
+    _onHandlePointerUp(e) {
+        const d = this._drag;
+        if (!d || e.pointerId !== d.pointerId)
+            return;
+        this._endDrag();
+        if (d.to === d.from)
+            return;
+        const order = [...this._zoneOrder()];
+        order.splice(d.to, 0, ...order.splice(d.from, 1));
+        void this._commitZoneOrder(order);
+    }
+    _endDrag() {
+        if (this._dragScrollFrame !== undefined)
+            cancelAnimationFrame(this._dragScrollFrame);
+        this._dragScrollFrame = undefined;
+        window.removeEventListener("keydown", this._onDragKeydown);
+        this._drag = undefined;
+    }
+    /** The offset that shows a row where it would land if the drag ended now. */
+    _dragStyle(index) {
+        const d = this._drag;
+        if (!d)
+            return {};
+        if (index === d.from)
+            return { transform: `translateY(${d.dy}px)` };
+        const step = d.heights[d.from] + d.gap;
+        if (index > d.from && index <= d.to)
+            return { transform: `translateY(${-step}px)` };
+        if (index < d.from && index >= d.to)
+            return { transform: `translateY(${step}px)` };
+        return {};
     }
     /** "~120 L" for one run of the zone in the active mode; "" without a rate. */
     _waterPerRun(z) {
@@ -7219,7 +7393,7 @@ class ViewZones extends i$2 {
             return "";
         const minutes = durationForMode({ duration_eco_min: z.duration_eco_min, duration_normal_min: z.duration_normal_min, duration_extra_min: z.duration_extra_min }, this._mode());
         const unit = volumeUnit(this.hass);
-        return t(this.hass, "config_panel.water_approx", {
+        return t$2(this.hass, "config_panel.water_approx", {
             v: formatVolumeNumber(litresToUnit(z.flow_rate_lpm * minutes, unit)),
             u: unit,
         });
@@ -7233,7 +7407,7 @@ class ViewZones extends i$2 {
         const source = rs.water_source?.[z.zone_id];
         const unit = volumeUnit(this.hass);
         const key = source === "measured" ? "config_panel.water_exact" : "config_panel.water_approx";
-        return t(this.hass, key, { v: formatVolumeNumber(litresToUnit(Number(last), unit)), u: unit });
+        return t$2(this.hass, key, { v: formatVolumeNumber(litresToUnit(Number(last), unit)), u: unit });
     }
     /** A zone has an "issue" when an output entity is missing or unavailable. */
     _zoneIssue(z) {
@@ -7295,7 +7469,7 @@ class ViewZones extends i$2 {
     _fmtRemaining(endsAtMs) {
         const diff = endsAtMs - Date.now();
         if (diff <= 0)
-            return t(this.hass, "config_panel.general_remaining_finishing");
+            return t$2(this.hass, "config_panel.general_remaining_finishing");
         const totalSec = Math.round(diff / 1000);
         const h = Math.floor(totalSec / 3600);
         const m = Math.floor((totalSec % 3600) / 60);
@@ -7321,7 +7495,7 @@ class ViewZones extends i$2 {
             return A;
         return b `<p class="hint">
       <ha-icon class="inline-help-icon" icon="mdi:information-outline"></ha-icon>
-      ${t(this.hass, cfg.hintKey)}
+      ${t$2(this.hass, cfg.hintKey)}
     </p>`;
     }
     _presetForZone(z) {
@@ -7357,7 +7531,7 @@ class ViewZones extends i$2 {
             zone_no_outputs: "config_panel.zones_err_zone_no_outputs",
         };
         if (code && map[code])
-            return t(this.hass, map[code]);
+            return t$2(this.hass, map[code]);
         return formatApiError(raw, this.hass);
     }
     async _runZoneNow(zoneId) {
@@ -7466,7 +7640,7 @@ class ViewZones extends i$2 {
         const modeInput = (key, labelKey) => b `
       <ha-input
         type="number"
-        .label=${t(this.hass, labelKey)}
+        .label=${t$2(this.hass, labelKey)}
         .value=${String(z[key])}
         min="0"
         max="240"
@@ -7476,11 +7650,11 @@ class ViewZones extends i$2 {
       ></ha-input>
     `;
         return b `
-      <div class="section-title">${t(this.hass, "config_panel.zones_field_name_title")}</div>
+      <div class="section-title">${t$2(this.hass, "config_panel.zones_field_name_title")}</div>
       <div class="field-block">
         <div class="field-row">
           <ha-input
-            .label=${t(this.hass, "config_panel.zones_field_zone_name")}
+            .label=${t$2(this.hass, "config_panel.zones_field_zone_name")}
             .value=${z.name}
             @input=${(e) => {
             z.name = e.target.value;
@@ -7490,14 +7664,14 @@ class ViewZones extends i$2 {
         </div>
       </div>
       <div class="field-block">
-        <span class="field-title">${t(this.hass, "config_panel.zones_outputs_title")}</span>
+        <span class="field-title">${t$2(this.hass, "config_panel.zones_outputs_title")}</span>
         <div class="field-row">
           <div class="entity-picker-rows">
             ${z.switch_entity_ids.map((eid, i) => b `
                 <div class="entity-picker-row">
                   ${renderNativeEntityField(this.hass, this.outputEntityDomains ?? defaultDomains, i === 0
-            ? t(this.hass, "config_panel.zones_output_first")
-            : t(this.hass, "config_panel.zones_output_n", { n: i + 1 }), eid, (v) => {
+            ? t$2(this.hass, "config_panel.zones_output_first")
+            : t$2(this.hass, "config_panel.zones_output_n", { n: i + 1 }), eid, (v) => {
             const next = [...z.switch_entity_ids];
             next[i] = v;
             z.switch_entity_ids = next;
@@ -7514,7 +7688,7 @@ class ViewZones extends i$2 {
                 this.requestUpdate();
             }}
                       >
-                        ${t(this.hass, "config_panel.general_remove")}
+                        ${t$2(this.hass, "config_panel.general_remove")}
                       </button>`
             : A}
                 </div>
@@ -7527,30 +7701,30 @@ class ViewZones extends i$2 {
             this.requestUpdate();
         }}
             >
-              ${t(this.hass, "config_panel.zones_add_output")}
+              ${t$2(this.hass, "config_panel.zones_add_output")}
             </button>
           </div>
         </div>
         <details class="inline-help">
           <summary>
             <ha-icon class="inline-help-icon" icon="mdi:information-outline"></ha-icon>
-            ${t(this.hass, "config_panel.zones_outputs_title")}
+            ${t$2(this.hass, "config_panel.zones_outputs_title")}
           </summary>
-          <p>${t(this.hass, "config_panel.zones_outputs_desc")}</p>
+          <p>${t$2(this.hass, "config_panel.zones_outputs_desc")}</p>
         </details>
       </div>
 
-      <div class="section-title">${t(this.hass, "config_panel.zones_runtime_title")}</div>
+      <div class="section-title">${t$2(this.hass, "config_panel.zones_runtime_title")}</div>
       <div class="field-block">
         <div class="duration-row">
           ${modeInput("duration_eco_min", "config_panel.zones_duration_eco")}
           ${modeInput("duration_normal_min", "config_panel.zones_duration_normal")}
           ${modeInput("duration_extra_min", "config_panel.zones_duration_extra")}
         </div>
-        <p class="hint">${t(this.hass, "config_panel.zones_runtime_desc")}</p>
+        <p class="hint">${t$2(this.hass, "config_panel.zones_runtime_desc")}</p>
       </div>
 
-      <div class="section-title">${t(this.hass, "config_panel.zones_behavior_title")}</div>
+      <div class="section-title">${t$2(this.hass, "config_panel.zones_behavior_title")}</div>
       <div class="field-block">
         <div class="switch-rows">
           <div class="switch-row">
@@ -7562,7 +7736,7 @@ class ViewZones extends i$2 {
             this.requestUpdate();
         }}
             ></ha-switch>
-            <span class="switch-row-label">${t(this.hass, "config_panel.zones_enabled")}</span>
+            <span class="switch-row-label">${t$2(this.hass, "config_panel.zones_enabled")}</span>
           </div>
           <div class="switch-row">
             <ha-switch
@@ -7573,16 +7747,16 @@ class ViewZones extends i$2 {
             this.requestUpdate();
         }}
             ></ha-switch>
-            <span class="switch-row-label">${t(this.hass, "config_panel.zones_exclusive")}</span>
+            <span class="switch-row-label">${t$2(this.hass, "config_panel.zones_exclusive")}</span>
           </div>
         </div>
-        <p class="hint">${t(this.hass, "config_panel.zones_behavior_desc")}</p>
+        <p class="hint">${t$2(this.hass, "config_panel.zones_behavior_desc")}</p>
       </div>
 
-      <div class="section-title">${t(this.hass, "config_panel.zones_water_title")}</div>
+      <div class="section-title">${t$2(this.hass, "config_panel.zones_water_title")}</div>
       <div class="field-block">
         <div class="field-row">
-          ${renderNativeEntityField(this.hass, ["sensor"], t(this.hass, "config_panel.zones_water_meter_label"), z.water_meter_entity_id, (v) => {
+          ${renderNativeEntityField(this.hass, ["sensor"], t$2(this.hass, "config_panel.zones_water_meter_label"), z.water_meter_entity_id, (v) => {
             z.water_meter_entity_id = v;
             this.requestUpdate();
         }, { placeholderKey: "config_panel.water_meter_placeholder" })}
@@ -7590,7 +7764,7 @@ class ViewZones extends i$2 {
         <div class="field-row">
           <ha-input
             type="number"
-            .label=${t(this.hass, "config_panel.zones_flow_rate_label", { unit: volumeUnit(this.hass) })}
+            .label=${t$2(this.hass, "config_panel.zones_flow_rate_label", { unit: volumeUnit(this.hass) })}
             .value=${z.flow_rate_lpm > 0 ? formatRateNumber(litresToUnit(z.flow_rate_lpm, volumeUnit(this.hass))) : ""}
             min="0"
             max="1000"
@@ -7608,17 +7782,17 @@ class ViewZones extends i$2 {
         ], "mdi:water-outline")}
       </div>
 
-      <div class="section-title">${t(this.hass, "config_panel.zones_advanced_title")}</div>
+      <div class="section-title">${t$2(this.hass, "config_panel.zones_advanced_title")}</div>
       <div class="field-block">
         <details class="inline-help" ?open=${Boolean(z.start_service || z.duration_field || z.duration_unit || z.start_entity_id)}>
           <summary>
             <ha-icon class="inline-help-icon" icon="mdi:tune"></ha-icon>
-            ${t(this.hass, "config_panel.zones_advanced_summary")}
+            ${t$2(this.hass, "config_panel.zones_advanced_summary")}
           </summary>
-          <p>${t(this.hass, "config_panel.zones_advanced_desc")}</p>
+          <p>${t$2(this.hass, "config_panel.zones_advanced_desc")}</p>
           <div class="field-row">
             <label class="stacked-field-label" for="si-preset-${z.zone_id || "new"}">
-              ${t(this.hass, "config_panel.zones_start_preset")}
+              ${t$2(this.hass, "config_panel.zones_start_preset")}
             </label>
             <select
               id="si-preset-${z.zone_id || "new"}"
@@ -7643,8 +7817,8 @@ class ViewZones extends i$2 {
             this.requestUpdate();
         }}
             >
-              <option value="none">${t(this.hass, "config_panel.zones_start_preset_none")}</option>
-              <option value="custom">${t(this.hass, "config_panel.zones_start_preset_custom")}</option>
+              <option value="none">${t$2(this.hass, "config_panel.zones_start_preset_none")}</option>
+              <option value="custom">${t$2(this.hass, "config_panel.zones_start_preset_custom")}</option>
               <option value="rainbird">Rain Bird</option>
               <option value="rachio">Rachio</option>
               <option value="hydrawise">Hydrawise</option>
@@ -7654,8 +7828,8 @@ class ViewZones extends i$2 {
           </div>
           ${this._renderPresetHint(z)}
           <div class="field-row">
-            ${i(this._presetForZone(z), b `<ha-input
-                .label=${t(this.hass, "config_panel.zones_start_service")}
+            ${i$1(this._presetForZone(z), b `<ha-input
+                .label=${t$2(this.hass, "config_panel.zones_start_service")}
                 .value=${z.start_service}
                 @input=${(e) => {
             z.start_service = e.target.value;
@@ -7664,8 +7838,8 @@ class ViewZones extends i$2 {
               ></ha-input>`)}
           </div>
           <div class="duration-row">
-            ${i(this._presetForZone(z), b `<ha-input
-                .label=${t(this.hass, "config_panel.zones_duration_field")}
+            ${i$1(this._presetForZone(z), b `<ha-input
+                .label=${t$2(this.hass, "config_panel.zones_duration_field")}
                 .value=${z.duration_field}
                 @input=${(e) => {
             z.duration_field = e.target.value;
@@ -7680,27 +7854,27 @@ class ViewZones extends i$2 {
             this.requestUpdate();
         }}
             >
-              <option value="">${t(this.hass, "config_panel.zones_duration_unit_empty")}</option>
-              <option value="minutes">${t(this.hass, "config_panel.zones_duration_unit_minutes")}</option>
-              <option value="seconds">${t(this.hass, "config_panel.zones_duration_unit_seconds")}</option>
+              <option value="">${t$2(this.hass, "config_panel.zones_duration_unit_empty")}</option>
+              <option value="minutes">${t$2(this.hass, "config_panel.zones_duration_unit_minutes")}</option>
+              <option value="seconds">${t$2(this.hass, "config_panel.zones_duration_unit_seconds")}</option>
             </select>
           </div>
           <div class="field-row">
-            ${renderNativeEntityField(this.hass, startTargetDomains, t(this.hass, "config_panel.zones_start_target_entity"), z.start_entity_id, (v) => {
+            ${renderNativeEntityField(this.hass, startTargetDomains, t$2(this.hass, "config_panel.zones_start_target_entity"), z.start_entity_id, (v) => {
             z.start_entity_id = v;
             this.requestUpdate();
         }, { allowCustom: true })}
           </div>
-          <p class="hint">${t(this.hass, "config_panel.zones_advanced_target_desc")}</p>
+          <p class="hint">${t$2(this.hass, "config_panel.zones_advanced_target_desc")}</p>
         </details>
         <details class="inline-help" ?open=${Boolean(z.countdown_entity_id)}>
           <summary>
             <ha-icon class="inline-help-icon" icon="mdi:timer-lock-outline"></ha-icon>
-            ${t(this.hass, "config_panel.zones_countdown_summary")}
+            ${t$2(this.hass, "config_panel.zones_countdown_summary")}
           </summary>
-          <p>${t(this.hass, "config_panel.zones_countdown_desc")}</p>
+          <p>${t$2(this.hass, "config_panel.zones_countdown_desc")}</p>
           <div class="field-row">
-            ${renderNativeEntityField(this.hass, countdownDomains, t(this.hass, "config_panel.zones_countdown_entity"), z.countdown_entity_id, (v) => {
+            ${renderNativeEntityField(this.hass, countdownDomains, t$2(this.hass, "config_panel.zones_countdown_entity"), z.countdown_entity_id, (v) => {
             z.countdown_entity_id = v;
             this.requestUpdate();
         })}
@@ -7715,9 +7889,9 @@ class ViewZones extends i$2 {
             this.requestUpdate();
         }}
             >
-              <option value="">${t(this.hass, "config_panel.zones_countdown_unit_auto")}</option>
-              <option value="minutes">${t(this.hass, "config_panel.zones_duration_unit_minutes")}</option>
-              <option value="seconds">${t(this.hass, "config_panel.zones_duration_unit_seconds")}</option>
+              <option value="">${t$2(this.hass, "config_panel.zones_countdown_unit_auto")}</option>
+              <option value="minutes">${t$2(this.hass, "config_panel.zones_duration_unit_minutes")}</option>
+              <option value="seconds">${t$2(this.hass, "config_panel.zones_duration_unit_seconds")}</option>
             </select>
           </div>
         </details>
@@ -7741,7 +7915,7 @@ class ViewZones extends i$2 {
             foreignRun ||
             runState === "stopping";
         const stopDisabled = this._busy || runState === "stopping";
-        const stopLabel = t(this.hass, "config_panel.zones_stop_zone");
+        const stopLabel = t$2(this.hass, "config_panel.zones_stop_zone");
         const endsAt = active ? this._zoneEndsAt(z.zone_id) : null;
         const mode = this._mode();
         const slotN = slotsPerZone[z.zone_id] ?? 0;
@@ -7750,12 +7924,13 @@ class ViewZones extends i$2 {
         const firstOut = outs[0] ?? "";
         const orderIndex = zoneOrder.indexOf(z.zone_id);
         const canReorder = this._filter === "all" && zoneOrder.length > 1;
+        const dragging = this._drag?.zoneId === z.zone_id;
         const runBtn = b `
       <button
         type="button"
         class="iconbtn"
-        title=${t(this.hass, "config_panel.zones_run_zone_now")}
-        aria-label=${t(this.hass, "config_panel.zones_run_zone_now")}
+        title=${t$2(this.hass, "config_panel.zones_run_zone_now")}
+        aria-label=${t$2(this.hass, "config_panel.zones_run_zone_now")}
         ?disabled=${runDisabled}
         @click=${() => this._runZoneNow(z.zone_id)}
       >
@@ -7779,8 +7954,8 @@ class ViewZones extends i$2 {
       <button
         type="button"
         class="iconbtn"
-        title=${t(this.hass, "config_panel.zones_edit")}
-        aria-label=${t(this.hass, "config_panel.zones_edit")}
+        title=${t$2(this.hass, "config_panel.zones_edit")}
+        aria-label=${t$2(this.hass, "config_panel.zones_edit")}
         @click=${() => {
             this._msg = undefined;
             this._editDraft = this._cloneZone(z);
@@ -7789,66 +7964,46 @@ class ViewZones extends i$2 {
         <ha-icon icon="mdi:pencil"></ha-icon>
       </button>
     `;
-        const reorderButtons = canReorder
-            ? b `<div class="icon-group reorder-actions" role="group">
-          <span
-            class="drag-marker hide-narrow"
-            title=${t(this.hass, "config_panel.zones_drag_to_reorder")}
-            aria-hidden="true"
-            .draggable=${!this._busy}
-            @dragstart=${(e) => {
-                if (this._busy) {
-                    e.preventDefault();
-                    return;
-                }
-                this._dragZoneId = z.zone_id;
-                if (e.dataTransfer) {
-                    e.dataTransfer.effectAllowed = "move";
-                    e.dataTransfer.setData("text/plain", z.zone_id);
-                }
-            }}
-            @dragend=${() => (this._dragZoneId = undefined)}
-          >
-            <ha-icon icon="mdi:drag-vertical"></ha-icon>
-          </span>
-          <button
-            type="button"
-            class="iconbtn"
-            title=${t(this.hass, "config_panel.zones_move_up")}
-            aria-label=${t(this.hass, "config_panel.zones_move_up")}
-            ?disabled=${this._busy || orderIndex <= 0}
-            @click=${() => this._moveZone(z.zone_id, -1)}
-          >
-            <ha-icon icon="mdi:arrow-up"></ha-icon>
-          </button>
-          <button
-            type="button"
-            class="iconbtn"
-            title=${t(this.hass, "config_panel.zones_move_down")}
-            aria-label=${t(this.hass, "config_panel.zones_move_down")}
-            ?disabled=${this._busy || orderIndex < 0 || orderIndex >= zoneOrder.length - 1}
-            @click=${() => this._moveZone(z.zone_id, 1)}
-          >
-            <ha-icon icon="mdi:arrow-down"></ha-icon>
-          </button>
-        </div>`
+        const dragLabel = t$2(this.hass, "config_panel.zones_drag_to_reorder");
+        const dragHandle = canReorder
+            ? b `<button
+          type="button"
+          class="drag-handle"
+          data-zone-id=${z.zone_id}
+          data-reorder="handle"
+          title=${dragLabel}
+          aria-label=${dragLabel}
+          @pointerdown=${(e) => this._onHandlePointerDown(e, z.zone_id)}
+          @pointermove=${this._onHandlePointerMove}
+          @pointerup=${this._onHandlePointerUp}
+          @pointercancel=${this._endDrag}
+          @keydown=${(e) => this._onHandleKeydown(e, z.zone_id)}
+        >
+          <ha-icon icon="mdi:drag-vertical"></ha-icon>
+        </button>`
             : A;
+        // Dragging needs a steady hand; the drawer offers the same move as two buttons.
+        const moveButton = (offset) => {
+            const up = offset < 0;
+            return b `<button
+        type="button"
+        class="btn-outline"
+        data-zone-id=${z.zone_id}
+        data-reorder=${up ? "up" : "down"}
+        ?disabled=${up ? orderIndex <= 0 : orderIndex >= zoneOrder.length - 1}
+        @click=${() => this._moveZone(z.zone_id, offset, up ? "up" : "down")}
+      >
+        <ha-icon icon=${up ? "mdi:chevron-up" : "mdi:chevron-down"}></ha-icon>
+        ${t$2(this.hass, up ? "config_panel.zones_move_up" : "config_panel.zones_move_down")}
+      </button>`;
+        };
         return b `
       <div
-        class="compact-row ${accentClass} ${this._dragZoneId === z.zone_id ? "dragging" : ""}"
-        @dragover=${(e) => {
-            if (canReorder && this._dragZoneId && this._dragZoneId !== z.zone_id) {
-                e.preventDefault();
-                if (e.dataTransfer)
-                    e.dataTransfer.dropEffect = "move";
-            }
-        }}
-        @drop=${(e) => {
-            e.preventDefault();
-            this._dropZone(z.zone_id);
-        }}
+        class="compact-row ${accentClass} ${dragging ? "dragging" : this._drag ? "shifting" : ""}"
+        style=${o(this._dragStyle(orderIndex))}
       >
         <div class="compact-row-header">
+          ${dragHandle}
           <ha-switch
             .disabled=${this._busy}
             .checked=${z.enabled}
@@ -7859,22 +8014,22 @@ class ViewZones extends i$2 {
               <span class="ellipsis">${z.name || z.zone_id.slice(0, 8)}</span>
               ${active
             ? b `<span class="badge badge-primary badge-dot"
-                    >${t(this.hass, "config_panel.zones_badge_running")}${endsAt !== null
+                    >${t$2(this.hass, "config_panel.zones_badge_running")}${endsAt !== null
                 ? b ` · ${this._fmtRemaining(endsAt)}`
                 : A}</span
                   >`
             : queued
-                ? b `<span class="badge">${t(this.hass, "config_panel.zones_badge_queued")}</span>`
+                ? b `<span class="badge">${t$2(this.hass, "config_panel.zones_badge_queued")}</span>`
                 : A}
               ${!z.enabled
-            ? b `<span class="badge">${t(this.hass, "config_panel.zones_detail_disabled")}</span>`
+            ? b `<span class="badge">${t$2(this.hass, "config_panel.zones_detail_disabled")}</span>`
             : A}
               ${z.exclusive
-            ? b `<span class="badge badge-primary badge-dot">${t(this.hass, "config_panel.zones_detail_exclusive")}</span>`
+            ? b `<span class="badge badge-primary badge-dot">${t$2(this.hass, "config_panel.zones_detail_exclusive")}</span>`
             : A}
               ${issue
             ? b `<span class="preflight-badge would_skip"
-                    ><ha-icon icon="mdi:alert-outline"></ha-icon>${t(this.hass, "config_panel.zones_issue_output_unavailable")}</span
+                    ><ha-icon icon="mdi:alert-outline"></ha-icon>${t$2(this.hass, "config_panel.zones_issue_output_unavailable")}</span
                   >`
             : A}
             </div>
@@ -7892,25 +8047,25 @@ class ViewZones extends i$2 {
                 ? b `${sep}<strong>${val}</strong>`
                 : b `${sep}${val}`;
         })}
-                ${" "}${t(this.hass, "config_panel.zones_min_suffix")}
+                ${" "}${t$2(this.hass, "config_panel.zones_min_suffix")}
               </span>
               ${this._waterPerRun(z)
             ? b `<span class="meta"
                     ><ha-icon icon="mdi:water-outline"></ha-icon>${this._waterPerRun(z)}
-                    ${t(this.hass, "config_panel.water_per_run")}</span
+                    ${t$2(this.hass, "config_panel.water_per_run")}</span
                   >`
             : A}
               ${this._waterLastRun(z)
             ? b `<span class="meta"
-                    ><ha-icon icon="mdi:water-check-outline"></ha-icon>${t(this.hass, "config_panel.general_water_last_run")}
+                    ><ha-icon icon="mdi:water-check-outline"></ha-icon>${t$2(this.hass, "config_panel.general_water_last_run")}
                     ${this._waterLastRun(z)}</span
                   >`
             : A}
               ${slotN > 0
             ? b `<span class="meta"
                     ><ha-icon icon="mdi:format-list-bulleted"></ha-icon>${slotN === 1
-                ? t(this.hass, "config_panel.zones_in_cycles_one")
-                : t(this.hass, "config_panel.zones_in_cycles_many", { n: slotN })}</span
+                ? t$2(this.hass, "config_panel.zones_in_cycles_one")
+                : t$2(this.hass, "config_panel.zones_in_cycles_many", { n: slotN })}</span
                   >`
             : A}
               ${firstOut
@@ -7920,7 +8075,6 @@ class ViewZones extends i$2 {
             : A}
             </div>
           </div>
-          ${reorderButtons}
           <div class="icon-group hide-narrow" role="group">
             ${primaryBtn}${editBtn}
           </div>
@@ -7928,7 +8082,7 @@ class ViewZones extends i$2 {
             type="button"
             class="iconbtn only-narrow"
             aria-expanded=${expanded ? "true" : "false"}
-            aria-label=${t(this.hass, "config_panel.zones_edit")}
+            aria-label=${t$2(this.hass, "config_panel.zones_edit")}
             @click=${() => this._toggleExpand(z.zone_id)}
           >
             <ha-icon icon=${expanded ? "mdi:chevron-up" : "mdi:chevron-down"}></ha-icon>
@@ -7943,7 +8097,7 @@ class ViewZones extends i$2 {
                       ${stopLabel}
                     </button>`
                 : b `<button type="button" class="btn-outline" ?disabled=${runDisabled} @click=${() => this._runZoneNow(z.zone_id)}>
-                      ${t(this.hass, "config_panel.zones_run_zone_now")}
+                      ${t$2(this.hass, "config_panel.zones_run_zone_now")}
                     </button>`}
                 <button
                   type="button"
@@ -7953,8 +8107,11 @@ class ViewZones extends i$2 {
                 this._editDraft = this._cloneZone(z);
             }}
                 >
-                  ${t(this.hass, "config_panel.zones_edit")}
+                  ${t$2(this.hass, "config_panel.zones_edit")}
                 </button>
+                ${canReorder
+                ? b `<div class="drawer-move">${moveButton(-1)}${moveButton(1)}</div>`
+                : A}
               </div>
             </div>`
             : A}
@@ -7963,7 +8120,7 @@ class ViewZones extends i$2 {
     }
     render() {
         const all = this._zonesFromInstallation();
-        const zoneOrder = orderedZoneIds(this.installation);
+        const zoneOrder = all.map((z) => z.zone_id);
         const issuesCount = all.filter((z) => this._zoneIssue(z)).length;
         const filtered = all.filter((z) => {
             if (this._filter === "enabled")
@@ -7978,34 +8135,34 @@ class ViewZones extends i$2 {
       <ha-card>
         <div class="card-header">
           <ha-icon icon="mdi:vector-square"></ha-icon>
-          ${t(this.hass, "config_panel.zones_card_title")}
+          ${t$2(this.hass, "config_panel.zones_card_title")}
           <div class="header-actions">
-            <div class="segmented" role="group" aria-label=${t(this.hass, "config_panel.zones_filter_all")}>
+            <div class="segmented" role="group" aria-label=${t$2(this.hass, "config_panel.zones_filter_all")}>
               <button
                 type="button"
                 class=${this._filter === "all" ? "selected" : ""}
                 @click=${() => (this._filter = "all")}
               >
-                ${t(this.hass, "config_panel.zones_filter_all")}
+                ${t$2(this.hass, "config_panel.zones_filter_all")}
               </button>
               <button
                 type="button"
                 class=${this._filter === "enabled" ? "selected" : ""}
                 @click=${() => (this._filter = "enabled")}
               >
-                ${t(this.hass, "config_panel.zones_filter_enabled")}
+                ${t$2(this.hass, "config_panel.zones_filter_enabled")}
               </button>
               <button
                 type="button"
                 class=${this._filter === "issues" ? "selected" : ""}
                 @click=${() => (this._filter = "issues")}
               >
-                ${t(this.hass, "config_panel.zones_filter_issues")}
+                ${t$2(this.hass, "config_panel.zones_filter_issues")}
                 ${issuesCount > 0 ? b `<span class="count">${issuesCount}</span>` : A}
               </button>
             </div>
             <button type="button" class="btn hide-narrow" @click=${() => (this._addDialogOpen = true)}>
-              ${t(this.hass, "config_panel.zones_add_zone")}
+              ${t$2(this.hass, "config_panel.zones_add_zone")}
             </button>
           </div>
         </div>
@@ -8014,36 +8171,36 @@ class ViewZones extends i$2 {
           <details class="inline-help">
             <summary>
               <ha-icon class="inline-help-icon" icon="mdi:information-outline"></ha-icon>
-              ${t(this.hass, "config_panel.zones_help_summary")}
+              ${t$2(this.hass, "config_panel.zones_help_summary")}
             </summary>
-            <p>${t(this.hass, "config_panel.zones_intro")}</p>
-            <p>${t(this.hass, "config_panel.zones_reorder_hint")}</p>
+            <p>${t$2(this.hass, "config_panel.zones_intro")}</p>
+            <p>${t$2(this.hass, "config_panel.zones_reorder_hint")}</p>
           </details>
 
           ${all.length === 0
             ? b `<div class="empty-state">
                 <ha-icon icon="mdi:vector-square"></ha-icon>
-                <p>${t(this.hass, "config_panel.zones_empty")}</p>
+                <p>${t$2(this.hass, "config_panel.zones_empty")}</p>
                 <button type="button" class="btn" @click=${() => (this._addDialogOpen = true)}>
-                  ${t(this.hass, "config_panel.zones_add_zone")}
+                  ${t$2(this.hass, "config_panel.zones_add_zone")}
                 </button>
               </div>`
             : filtered.length === 0
                 ? b `<div class="empty-state">
                   <ha-icon icon="mdi:filter-variant-remove"></ha-icon>
-                  <p>${t(this.hass, "config_panel.zones_empty_filtered")}</p>
+                  <p>${t$2(this.hass, "config_panel.zones_empty_filtered")}</p>
                   <button type="button" class="btn-outline" @click=${() => (this._filter = "all")}>
-                    ${t(this.hass, "config_panel.zones_filter_all")}
+                    ${t$2(this.hass, "config_panel.zones_filter_all")}
                   </button>
                 </div>`
-                : filtered.map((z) => this._renderRow(z, slotsPerZone, zoneOrder))}
+                : c(filtered, (z) => z.zone_id, (z) => this._renderRow(z, slotsPerZone, zoneOrder))}
 
           <details class="inline-help" style="margin-top:14px">
             <summary>
               <ha-icon class="inline-help-icon" icon="mdi:robot-outline"></ha-icon>
-              ${t(this.hass, "config_panel.settings_automations_summary")}
+              ${t$2(this.hass, "config_panel.settings_automations_summary")}
             </summary>
-            <p>${t(this.hass, "config_panel.zones_intro_automation")}</p>
+            <p>${t$2(this.hass, "config_panel.zones_intro_automation")}</p>
           </details>
         </div>
       </ha-card>
@@ -8051,8 +8208,8 @@ class ViewZones extends i$2 {
       <button
         type="button"
         class="fab"
-        aria-label=${t(this.hass, "config_panel.zones_add_zone")}
-        title=${t(this.hass, "config_panel.zones_add_zone")}
+        aria-label=${t$2(this.hass, "config_panel.zones_add_zone")}
+        title=${t$2(this.hass, "config_panel.zones_add_zone")}
         @click=${() => (this._addDialogOpen = true)}
       >
         <ha-icon icon="mdi:plus"></ha-icon>
@@ -8060,7 +8217,7 @@ class ViewZones extends i$2 {
 
       <ha-dialog
         .open=${this._addDialogOpen}
-        header-title=${t(this.hass, "config_panel.zones_dialog_new_title")}
+        header-title=${t$2(this.hass, "config_panel.zones_dialog_new_title")}
         @closed=${() => this._closeAddDialog()}
       >
         ${this._renderZoneFields(this._new)}
@@ -8069,7 +8226,7 @@ class ViewZones extends i$2 {
             <div class="dialog-footer-lead"></div>
             <div class="dialog-footer-actions">
               <button type="button" class="btn-outline" @click=${() => this._closeAddDialog()} ?disabled=${this._busy}>
-                ${t(this.hass, "config_panel.zones_cancel")}
+                ${t$2(this.hass, "config_panel.zones_cancel")}
               </button>
               <button
                 type="button"
@@ -8077,7 +8234,7 @@ class ViewZones extends i$2 {
                 ?disabled=${this._busy || !this._canSaveZone(this._new)}
                 @click=${() => this._saveZone("add", undefined, { ...this._new, zone_id: "" })}
               >
-                ${this._busy ? t(this.hass, "config_panel.zones_adding") : t(this.hass, "config_panel.zones_add_zone_btn")}
+                ${this._busy ? t$2(this.hass, "config_panel.zones_adding") : t$2(this.hass, "config_panel.zones_add_zone_btn")}
               </button>
             </div>
           </div>
@@ -8087,7 +8244,7 @@ class ViewZones extends i$2 {
       <ha-dialog
         .open=${edit !== null}
         header-title=${edit
-            ? t(this.hass, "config_panel.zones_dialog_edit_title", { name: edit.name || edit.zone_id.slice(0, 8) })
+            ? t$2(this.hass, "config_panel.zones_dialog_edit_title", { name: edit.name || edit.zone_id.slice(0, 8) })
             : ""}
         @closed=${() => this._closeEditDialog()}
       >
@@ -8101,18 +8258,18 @@ class ViewZones extends i$2 {
                     class="btn-danger"
                     ?disabled=${this._busy}
                     @click=${() => {
-                if (edit && confirm(t(this.hass, "config_panel.zones_confirm_delete"))) {
+                if (edit && confirm(t$2(this.hass, "config_panel.zones_confirm_delete"))) {
                     void this._saveZone("delete", edit.zone_id);
                 }
             }}
                   >
-                    ${t(this.hass, "config_panel.zones_delete_zone")}
+                    ${t$2(this.hass, "config_panel.zones_delete_zone")}
                   </button>`
             : A}
             </div>
             <div class="dialog-footer-actions">
               <button type="button" class="btn-outline" @click=${() => this._closeEditDialog()} ?disabled=${this._busy}>
-                ${t(this.hass, "config_panel.zones_cancel")}
+                ${t$2(this.hass, "config_panel.zones_cancel")}
               </button>
               <button
                 type="button"
@@ -8121,8 +8278,8 @@ class ViewZones extends i$2 {
                 @click=${() => edit && this._saveZone("update", edit.zone_id, edit)}
               >
                 ${this._busy
-            ? t(this.hass, "config_panel.zones_saving_changes")
-            : t(this.hass, "config_panel.zones_save_changes")}
+            ? t$2(this.hass, "config_panel.zones_saving_changes")
+            : t$2(this.hass, "config_panel.zones_save_changes")}
               </button>
             </div>
           </div>
@@ -8151,7 +8308,10 @@ __decorate([
 ], ViewZones.prototype, "_expanded", void 0);
 __decorate([
     r()
-], ViewZones.prototype, "_dragZoneId", void 0);
+], ViewZones.prototype, "_drag", void 0);
+__decorate([
+    r()
+], ViewZones.prototype, "_orderDraft", void 0);
 defineCustomElementOnce("si-view-zones", ViewZones);
 
 const VERSION = "1.12.0";
@@ -8181,7 +8341,7 @@ function normalizePanelPage(raw) {
         return p;
     return PAGE_ALIASES[p] ?? "overview";
 }
-class SimpleIrrigationPanel extends i$2 {
+class SimpleIrrigationPanel extends i$4 {
     constructor() {
         super(...arguments);
         this.narrow = false;
@@ -8494,11 +8654,11 @@ class SimpleIrrigationPanel extends i$2 {
         if (!path.entryId) {
             return b `
         <div class="entry-picker">
-          <h2>${t(this.hass, "config_panel.entry_picker_title")}</h2>
-          <p class="lead">${t(this.hass, "config_panel.entry_picker_lead")}</p>
+          <h2>${t$2(this.hass, "config_panel.entry_picker_title")}</h2>
+          <p class="lead">${t$2(this.hass, "config_panel.entry_picker_lead")}</p>
           ${this._error ? b `<p class="error">${this._error}</p>` : A}
           ${this._entriesLoading
-                ? b `<p class="muted">${t(this.hass, "config_panel.entry_picker_loading")}</p>`
+                ? b `<p class="muted">${t$2(this.hass, "config_panel.entry_picker_loading")}</p>`
                 : A}
           <div class="entry-cards">
             ${this._entries.map((e) => b `
@@ -8510,28 +8670,28 @@ class SimpleIrrigationPanel extends i$2 {
                     <div class="entry-card-head">
                       <div class="entry-card-title">${e.title}</div>
                       ${e.is_default
-                ? b `<span class="entry-badge entry-badge-default">${t(this.hass, "config_panel.entry_badge_default")}</span>`
+                ? b `<span class="entry-badge entry-badge-default">${t$2(this.hass, "config_panel.entry_badge_default")}</span>`
                 : A}
                       ${e.disabled_by
-                ? b `<span class="entry-badge entry-badge-ha">${t(this.hass, "config_panel.entry_badge_ha")}</span>`
+                ? b `<span class="entry-badge entry-badge-ha">${t$2(this.hass, "config_panel.entry_badge_ha")}</span>`
                 : !e.plan_enabled
-                    ? b `<span class="entry-badge entry-badge-off">${t(this.hass, "config_panel.entry_badge_plan_off")}</span>`
-                    : b `<span class="entry-badge entry-badge-on">${t(this.hass, "config_panel.entry_badge_active")}</span>`}
+                    ? b `<span class="entry-badge entry-badge-off">${t$2(this.hass, "config_panel.entry_badge_plan_off")}</span>`
+                    : b `<span class="entry-badge entry-badge-on">${t$2(this.hass, "config_panel.entry_badge_active")}</span>`}
                     </div>
-                    <p class="entry-card-desc">${t(this.hass, "config_panel.entry_card_desc")}</p>
+                    <p class="entry-card-desc">${t$2(this.hass, "config_panel.entry_card_desc")}</p>
                   </button>
                 `)}
           </div>
           ${!this._entries.length && !this._entriesLoading
-                ? b `<p class="muted">${t(this.hass, "config_panel.entry_picker_empty")}</p>`
+                ? b `<p class="muted">${t$2(this.hass, "config_panel.entry_picker_empty")}</p>`
                 : A}
-          <div class="howto-add">${t(this.hass, "config_panel.entry_picker_howto")}</div>
+          <div class="howto-add">${t$2(this.hass, "config_panel.entry_picker_howto")}</div>
         </div>
       `;
         }
         if (this._loading || !this._state) {
             return b `<div class="view"><div class="view-inner">${this._error ||
-                t(this.hass, "config_panel.loading")}</div></div>`;
+                t$2(this.hass, "config_panel.loading")}</div></div>`;
         }
         const inst = this._state.installation;
         const rs = this._state.run_state;
@@ -8541,7 +8701,7 @@ class SimpleIrrigationPanel extends i$2 {
         <div class="toolbar">
           <ha-menu-button .hass=${this.hass} .narrow=${this.narrow}></ha-menu-button>
           <div class="main-title">
-            ${String(inst.name || "").trim() || t(this.hass, "config_panel.main_title")}
+            ${String(inst.name || "").trim() || t$2(this.hass, "config_panel.main_title")}
           </div>
           <div class="version">v${VERSION}</div>
         </div>
@@ -8549,7 +8709,7 @@ class SimpleIrrigationPanel extends i$2 {
           ${PANEL_PAGES.map((p) => b `
               <ha-tab-group-tab slot="nav" panel=${p} .active=${page === p}>
                 <ha-icon slot="prefix" icon=${TAB_ICONS[p]}></ha-icon>
-                ${t(this.hass, TAB_LABEL_KEYS[p])}
+                ${t$2(this.hass, TAB_LABEL_KEYS[p])}
               </ha-tab-group-tab>
             `)}
         </ha-tab-group>

@@ -369,8 +369,6 @@
     "zones_detail_outputs_one": "1 output",
     "zones_detail_outputs_many": "{n} outputs",
     "zones_edit": "Edit",
-    "zones_move_up": "Move up",
-    "zones_move_down": "Move down",
     "zones_drag_to_reorder": "Drag to reorder, or press the up or down arrow key",
     "zones_reorder_hint": "To reorder zones, drag one by its handle, or focus the handle and press the up or down arrow key. The order applies wherever zones are listed, and is the run order a new cycle starts with. Existing cycles keep their run order.",
     "zones_run_zone_now": "Run zone now",

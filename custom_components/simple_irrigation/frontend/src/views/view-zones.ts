@@ -216,31 +216,6 @@ export class ViewZones extends LitElement {
       .compact-row.shifting {
         transition: transform 0.15s ease;
       }
-      .drawer-move {
-        display: flex;
-        gap: 8px;
-      }
-      .drawer-move .btn-outline {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        gap: 6px;
-        flex: 1 1 0;
-        width: auto;
-        align-self: stretch;
-        white-space: nowrap;
-      }
-      .out-line {
-        margin: 8px 0 0;
-        font-size: 0.8rem;
-        color: var(--secondary-text-color);
-      }
-      /* Local reset: form-layout adds align-self/margin to .btn-outline. */
-      .card-header .header-actions .btn-outline,
-      .card-header .header-actions .btn {
-        margin-top: 0;
-        align-self: center;
-      }
     `,
   ];
 
@@ -377,8 +352,8 @@ export class ViewZones extends LitElement {
     }
   }
 
-  /** One step up or down, from a key on the handle or a button in the drawer. */
-  private async _moveZone(zoneId: string, offset: -1 | 1, control: string): Promise<void> {
+  /** One step up or down, from an arrow key on the handle. */
+  private async _moveZone(zoneId: string, offset: -1 | 1): Promise<void> {
     const order = [...this._zoneOrder()];
     const from = order.indexOf(zoneId);
     const to = from + offset;
@@ -387,18 +362,15 @@ export class ViewZones extends LitElement {
     void this._commitZoneOrder(order);
     // The row moved in the DOM and took the focus with it into nowhere.
     await this.updateComplete;
-    const row = `[data-zone-id="${zoneId}"]`;
-    const again = this.renderRoot.querySelector<HTMLButtonElement>(`${row}[data-reorder="${control}"]`);
-    const target = again && !again.disabled
-      ? again
-      : this.renderRoot.querySelector<HTMLButtonElement>(`${row}[data-reorder="handle"]`);
-    target?.focus();
+    this.renderRoot
+      .querySelector<HTMLElement>(`.drag-handle[data-zone-id="${zoneId}"]`)
+      ?.focus();
   }
 
   private _onHandleKeydown(e: KeyboardEvent, zoneId: string): void {
     if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
     e.preventDefault();
-    if (!this._drag) void this._moveZone(zoneId, e.key === "ArrowUp" ? -1 : 1, "handle");
+    if (!this._drag) void this._moveZone(zoneId, e.key === "ArrowUp" ? -1 : 1);
   }
 
   private _onDragKeydown = (e: KeyboardEvent): void => {
@@ -1143,7 +1115,6 @@ export class ViewZones extends LitElement {
           type="button"
           class="drag-handle"
           data-zone-id=${z.zone_id}
-          data-reorder="handle"
           title=${dragLabel}
           aria-label=${dragLabel}
           @pointerdown=${(e: PointerEvent) => this._onHandlePointerDown(e, z.zone_id)}
@@ -1155,22 +1126,6 @@ export class ViewZones extends LitElement {
           <ha-icon icon="mdi:drag-vertical"></ha-icon>
         </button>`
       : nothing;
-    // Dragging needs a steady hand; the drawer offers the same move as two buttons.
-    const moveButton = (offset: -1 | 1) => {
-      const up = offset < 0;
-      return html`<button
-        type="button"
-        class="btn-outline"
-        data-zone-id=${z.zone_id}
-        data-reorder=${up ? "up" : "down"}
-        ?disabled=${up ? orderIndex <= 0 : orderIndex >= zoneOrder.length - 1}
-        @click=${() => this._moveZone(z.zone_id, offset, up ? "up" : "down")}
-      >
-        <ha-icon icon=${up ? "mdi:chevron-up" : "mdi:chevron-down"}></ha-icon>
-        ${t(this.hass, up ? "config_panel.zones_move_up" : "config_panel.zones_move_down")}
-      </button>`;
-    };
-
     return html`
       <div
         class="compact-row ${accentClass} ${dragging ? "dragging" : this._drag ? "shifting" : ""}"
@@ -1297,9 +1252,6 @@ export class ViewZones extends LitElement {
                 >
                   ${t(this.hass, "config_panel.zones_edit")}
                 </button>
-                ${canReorder
-                  ? html`<div class="drawer-move">${moveButton(-1)}${moveButton(1)}</div>`
-                  : nothing}
               </div>
             </div>`
           : nothing}

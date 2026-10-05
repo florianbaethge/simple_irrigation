@@ -369,8 +369,6 @@
     "zones_detail_outputs_one": "1 uscita",
     "zones_detail_outputs_many": "{n} uscite",
     "zones_edit": "Modifica",
-    "zones_move_up": "Sposta su",
-    "zones_move_down": "Sposta giù",
     "zones_drag_to_reorder": "Trascina per riordinare, oppure premi il tasto freccia su o giù",
     "zones_reorder_hint": "Per riordinare le zone, trascinane una dalla maniglia, oppure porta il focus sulla maniglia e premi il tasto freccia su o giù. L’ordine vale ovunque siano elencate le zone ed è l’ordine di esecuzione con cui parte un nuovo ciclo. I cicli esistenti mantengono il proprio ordine di esecuzione.",
     "zones_run_zone_now": "Esegui zona ora",

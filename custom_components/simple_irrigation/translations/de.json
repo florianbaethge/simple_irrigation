@@ -369,8 +369,6 @@
     "zones_detail_outputs_one": "1 Ausgang",
     "zones_detail_outputs_many": "{n} Ausgänge",
     "zones_edit": "Bearbeiten",
-    "zones_move_up": "Nach oben",
-    "zones_move_down": "Nach unten",
     "zones_drag_to_reorder": "Zum Sortieren ziehen oder die Pfeiltaste nach oben oder unten drücken",
     "zones_reorder_hint": "Zum Sortieren ziehen Sie eine Zone an ihrem Griff, oder Sie fokussieren den Griff und drücken die Pfeiltaste nach oben oder unten. Die Reihenfolge gilt überall, wo Zonen aufgelistet werden, und ist die Lauffolge, mit der ein neuer Zyklus beginnt. Bestehende Zyklen behalten ihre Lauffolge.",
     "zones_run_zone_now": "Zone jetzt starten",

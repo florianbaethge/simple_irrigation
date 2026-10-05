@@ -369,8 +369,6 @@
     "zones_detail_outputs_one": "1 uitgang",
     "zones_detail_outputs_many": "{n} uitgangen",
     "zones_edit": "Bewerken",
-    "zones_move_up": "Omhoog",
-    "zones_move_down": "Omlaag",
     "zones_drag_to_reorder": "Sleep om te sorteren, of druk op de pijltoets omhoog of omlaag",
     "zones_reorder_hint": "Sleep een zone aan de greep om de volgorde te wijzigen, of geef de greep de focus en druk op de pijltoets omhoog of omlaag. De volgorde geldt overal waar zones worden vermeld en is de uitvoeringsvolgorde waarmee een nieuwe cyclus begint. Bestaande cycli behouden hun uitvoeringsvolgorde.",
     "zones_run_zone_now": "Zone nu uitvoeren",

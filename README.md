@@ -15,6 +15,7 @@
 - **Watering cycles, not raw cron** — a guided wizard turns *“every 2 days, evenings”* into a working schedule; the panel previews the **next 14 days** live before you save.
 - **Three watering modes** — Eco / Normal / Extra, switchable by hand or from automations (weather, tank level, season …).
 - **Smart runs** — ordered zones grouped into **phases**, configurable parallelism, and **exclusive** zones that always run alone.
+- **Seasons** — the installation, and each schedule on its own, can water only in chosen periods of the year: daily in summer, every third day in spring and autumn, nothing in winter.
 - **Cycle & Soak** — a slot can water in several short passes with rests in between, so the water soaks in instead of running off. Every output is closed while it rests.
 - **Water use, honestly** — litres per run from a meter on the line or a flow rate you measured once, marked as measured or estimated, handed to Home Assistant's statistics and Energy dashboard through plain water sensors.
 - **Everything in the UI** — Overview · Zones · Schedule · Timetable · Settings. No YAML for zones or schedules.
@@ -31,10 +32,10 @@ Outputs can be any mix of `switch`, `input_boolean`, `group` and `valve` entitie
 | Tab | What it does |
 |-----|----------------|
 | **Overview** | Live run state with a countdown to the next run, the next few upcoming runs (duration and expected litres), the active watering mode, water used so far while running, and quick actions: *Run next slot now*, *Skip today*, *Pause 48 h* (plus *Stop* / *Skip phase* while running). Shows **Soaking** with a countdown while a run rests. |
-| **Zones** | Named zones with one or more output entities, Eco / Normal / Extra runtimes, an **enabled** toggle and **exclusive** flag. An optional **supply** — an upstream valve or a pump only this zone needs. Optional **water** tracking per zone: a meter entity or a flow rate, shown as litres per run and last run. Advanced settings support integration-specific start services that receive the runtime. Filter by **All / Enabled / Issues**, reorder zones, run a zone now, and see how many cycles use it. |
-| **Schedule** | Your watering **cycles** and single slots. A guided **New irrigation cycle** wizard (daily, every 2/3 days, x-per-week, weekly, every 2 weeks, custom), with one or several start times a day. Every row expands to a **14-day run strip**; multi-slot cycles show their members and can be detached. Per-slot **conditions** gate a run on soil moisture, rain, tank level or any other entity, per-slot **scripts** override the installation's pre-start / post-run script, and **Cycle & Soak** repeats the slot's phases with rests in between. |
+| **Zones** | Named zones with one or more output entities, Eco / Normal / Extra runtimes, an **enabled** toggle and **exclusive** flag. An optional **supply** — an upstream valve or a pump only this zone needs. Optional **water** tracking per zone: a meter entity or a flow rate, shown as litres per run and last run. A **start service** section supports integration-specific start services that receive the runtime, and a valve's own **hardware countdown** can be armed as a safety net. Filter by **All / Enabled / Issues**, reorder zones, run a zone now, and see how many cycles use it. |
+| **Schedule** | Your watering **cycles** and single slots. A guided **New irrigation cycle** wizard (daily, every 2/3 days, x-per-week, weekly, every 2 weeks, custom), with one or several start times a day. Every row expands to a **14-day run strip**; multi-slot cycles show their members and can be detached. Per-slot **conditions** gate a run on soil moisture, rain, tank level or any other entity, per-slot **scripts** override the installation's pre-start / post-run script, **Cycle & Soak** repeats the slot's phases with rests in between, a **season** limits it to periods of the year, and **fixed minutes** per zone override the mode for one schedule. |
 | **Timetable** | Week-at-a-glance grid (zones × weekdays, morning / daytime / evening) with per-day totals, using the same phase and mode timing as a real run — every Cycle & Soak pass is drawn. On phones it becomes a per-day list. Click a run to jump straight to its editor. |
-| **Settings** | Installation name (shown in the panel header), optional **pre-start** and **post-run scripts**, pre-start outputs & delay, watering mode, max parallel zones, an optional **water meter** on the supply line, global **conditions**, default installation, service reference and raw diagnostics. |
+| **Settings** | Installation name (shown in the panel header), optional **pre-start** and **post-run scripts**, pre-start outputs & delay, watering mode, max parallel zones, whether schedules that overlap **wait their turn**, the installation's **season**, an optional **water meter** on the supply line, global **conditions**, default installation, service reference and raw diagnostics. Every section is closed to a line that says what is set. |
 
 **Editors are accordions.** A zone, a schedule and the settings each open as a short list of sections, every one closed to a line that says what it holds — *When: Daily · 06:00*, *Zones: Front lawn, Back lawn · ~20 min*, *Cycle & Soak: Off*. What every schedule needs comes first; conditions, rests, season and scripts sit under **More options** and say by themselves whether they are in use. Explanations are behind the small info lines, so nothing has to be scrolled past on a phone. Deleting, and splitting a slot into single days, are in the **⋮** menu next to *Cancel* and *Save*.
 
@@ -591,14 +592,17 @@ Both are **water** sensors, so they appear in the Energy dashboard's water secti
 ## Development
 
 ```bash
-# Python tests
-pip install -r requirements_test.txt
-pytest tests/
-
 # Panel and Lovelace card (from repo root) — one build produces both bundles
 cd custom_components/simple_irrigation/frontend
 npm ci
 npm run build
+cd ../../..
+
+# Python tests. One of them builds the panel's schedule logic on its own and
+# holds it against the Python side under Node; without Node and `npm ci` it is
+# skipped locally (and fails in CI, where it must not go missing).
+pip install -r requirements_test.txt
+pytest tests/
 
 # Regenerate screenshots against a running sandbox (headers of both scripts
 # list what the sandbox needs)

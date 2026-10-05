@@ -4883,7 +4883,9 @@ let SimpleIrrigationCard = class SimpleIrrigationCard extends i$2 {
           ${hasParity
             ? b `<span>
                 <span class="lkey dash"></span>
-                ${localize(this.hass, "legend_parity_odd")}
+                ${
+            // Dashed is what does not run this week: the other kind's.
+            localize(this.hass, week.odd_week ? "legend_parity_even" : "legend_parity_odd")}
               </span>`
             : A}
           ${hasOffSeason

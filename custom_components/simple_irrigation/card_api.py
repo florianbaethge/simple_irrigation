@@ -373,7 +373,13 @@ def _week(hass: HomeAssistant, inst: Installation) -> dict[str, Any]:
             }
         )
 
-    return {"days": days, "total_runs": total_runs, "total_min": total_min}
+    return {
+        "days": days,
+        "total_runs": total_runs,
+        "total_min": total_min,
+        # A run drawn dashed belongs to the other kind of week than this one.
+        "odd_week": monday.isocalendar()[1] % 2 == 1,
+    }
 
 
 def _entity_id(hass: HomeAssistant, entry_id: str, suffix: str, platform: str) -> str:

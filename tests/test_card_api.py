@@ -343,6 +343,17 @@ def test_week_keeps_off_rhythm_runs_visible_but_uncounted() -> None:
     assert week["total_runs"] == 0
 
 
+def test_week_says_which_kind_of_week_it_is() -> None:
+    """The card labels dashed runs as the other kind's: "even weeks only" in an odd week."""
+    with _freeze():
+        assert _week(_hass(), _installation())["odd_week"] is False  # ISO week 34
+    with patch(
+        "custom_components.simple_irrigation.card_api.dt_util.now",
+        return_value=NOW + timedelta(days=7),
+    ):
+        assert _week(_hass(), _installation())["odd_week"] is True
+
+
 def test_week_marks_days_a_pause_covers() -> None:
     inst = _installation(pause_until=NOW + timedelta(days=2))
     hass = _hass()

@@ -122,6 +122,8 @@ export interface WeekDay {
 }
 
 export interface Week {
+  /** Whether the week shown is an odd ISO week. */
+  odd_week?: boolean;
   days: WeekDay[];
   total_runs: number;
   total_min: number;

@@ -32,6 +32,7 @@ from custom_components.simple_irrigation.models import (
     Installation,
     RunState,
     ScheduleSlot,
+    WaitingRun,
     Zone,
 )
 
@@ -445,6 +446,22 @@ def test_snapshot_marks_queued_zones_from_the_upcoming_phases() -> None:
     assert by_id["z2"]["queued"] and by_id["z3"]["queued"]
 
 
+def test_snapshot_names_the_schedules_waiting_behind_the_run() -> None:
+    """One the card can label; a schedule deleted meanwhile is left out."""
+    rs = RunState(
+        run_state=RUN_STATE_RUNNING,
+        active_zone_ids=["z1"],
+        waiting_runs=[WaitingRun(["evening", "gone"], NOW)],
+    )
+    with _freeze(), patch(
+        "custom_components.simple_irrigation.card_api._entity_id", return_value=""
+    ):
+        snap = _snapshot(_hass(), "e1", _coordinator(_installation(), rs))
+    assert snap["waiting"] == [
+        {"slot_id": "evening", "name": "Evening beds", "time": "19:30", "due_at": NOW.isoformat()}
+    ]
+
+
 def test_snapshot_is_json_serializable() -> None:
     """It goes over the websocket verbatim; a stray datetime would 500 the card."""
     import json
@@ -460,6 +477,7 @@ def test_snapshot_is_json_serializable() -> None:
         active_script="script.mower_go_home",
         active_script_started_at=NOW,
         active_script_timeout_sec=300,
+        waiting_runs=[WaitingRun(["evening"], NOW)],
     )
     hass = _hass()
     with _freeze(), patch(

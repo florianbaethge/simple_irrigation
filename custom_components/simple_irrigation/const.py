@@ -79,6 +79,22 @@ MAX_REPETITIONS: Final = 10
 MAX_ZONE_DURATION_MIN: Final = 240
 # Longest a supply output may lead or trail its zone, like the pre-start delay.
 MAX_SUPPLY_DELAY_SEC: Final = 3600
+
+# Schedules that came due while something else ran, if the installation lets
+# them wait: how long at most by default, the longest that can be asked for,
+# and how many may line up. The last is a safety net, not a setting.
+DEFAULT_WAIT_MAX_MIN: Final = 120
+MAX_WAIT_MAX_MIN: Final = 720
+MAX_WAITING_RUNS: Final = 8
+
+# Why a schedule that was due did not run (``reason`` of the skipped event).
+SKIP_BUSY: Final = "busy"  # something was running and schedules do not wait
+SKIP_EXPIRED: Final = "expired"  # waited longer than it may
+SKIP_CONDITIONS: Final = "conditions"  # a condition was not met
+SKIP_PAUSED: Final = "paused"  # paused or switched off while it waited
+SKIP_STOPPED: Final = "stopped"  # Stop was pressed
+SKIP_ERROR: Final = "error"  # the run before it failed
+SKIP_QUEUE_FULL: Final = "queue_full"
 MAX_SOAK_MIN: Final = 240
 
 STORE_VERSION: Final = 1
@@ -125,6 +141,7 @@ EVENT_ZONE_STARTED: Final = f"{DOMAIN}_zone_started"
 EVENT_ZONE_FINISHED: Final = f"{DOMAIN}_zone_finished"
 EVENT_MODE_CHANGED: Final = f"{DOMAIN}_mode_changed"
 EVENT_PAUSE_UNTIL_CHANGED: Final = f"{DOMAIN}_pause_until_changed"
+EVENT_SCHEDULE_SKIPPED: Final = f"{DOMAIN}_schedule_skipped"
 
 SERVICE_RUN_ZONE: Final = "run_zone"
 SERVICE_RUN_ZONE_WITH_DURATION: Final = "run_zone_with_duration"

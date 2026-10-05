@@ -363,6 +363,23 @@ export class ViewOverview extends LitElement {
     }
   }
 
+  /** Schedules that came due during this run and take their turn after it. */
+  private _waitingLine(rs: Record<string, unknown>): string {
+    const slots = (this._inst.schedule_slots as Array<Record<string, unknown>> | undefined) ?? [];
+    const runs = Array.isArray(rs.waiting_runs)
+      ? (rs.waiting_runs as Array<{ slot_ids?: string[] }>)
+      : [];
+    const names: string[] = [];
+    for (const id of runs.flatMap((run) => run.slot_ids ?? [])) {
+      const slot = slots.find((s) => s.slot_id === id);
+      if (!slot) continue;
+      const label = String((slot.cycle_meta as CycleMeta)?.label ?? slot.name ?? "").trim();
+      names.push(`${label || this._kindLabel(slot)} (${String(slot.time_local ?? "")})`);
+    }
+    if (names.length <= 2) return names.join(", ");
+    return `${names.slice(0, 2).join(", ")} +${names.length - 2}`;
+  }
+
   /** The next `limit` distinct run fires across all enabled slots (client-side). */
   private _upcomingRuns(limit: number): UpcomingRun[] {
     const slots = (this._inst.schedule_slots as Array<Record<string, unknown>> | undefined) ?? [];
@@ -561,6 +578,7 @@ export class ViewOverview extends LitElement {
       .map((g) => g.map((id) => this._zoneName(String(id))).join(", "))
       .filter(Boolean)
       .join(" → ");
+    const waiting = this._waitingLine(rs);
     const mode = this._mode();
     const next = runs[0];
     const badgeClass = runBusy ? "running" : runState === "error" ? "error" : "";
@@ -657,7 +675,7 @@ export class ViewOverview extends LitElement {
               `
             : nothing}
 
-          ${activeIds.length || soaking || (runBusy && runWater !== null) || nextZones || lastErr
+          ${activeIds.length || soaking || (runBusy && runWater !== null) || nextZones || waiting || lastErr
             ? html`
                 <ul class="pill-list">
                   ${soaking
@@ -700,6 +718,13 @@ export class ViewOverview extends LitElement {
                         <ha-icon icon="mdi:playlist-play"></ha-icon>
                         <span><strong>${t(this.hass, "config_panel.general_next_zones")}</strong>
                           ${nextZones}</span>
+                      </li>`
+                    : nothing}
+                  ${waiting
+                    ? html`<li class="pill">
+                        <ha-icon icon="mdi:timer-pause-outline"></ha-icon>
+                        <span><strong>${t(this.hass, "config_panel.general_waiting")}</strong>
+                          ${waiting}</span>
                       </li>`
                     : nothing}
                   ${lastErr

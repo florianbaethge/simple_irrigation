@@ -388,6 +388,7 @@ const TRANSLATIONS = {
         zones_count: "{count} zones",
         zones_count_one: "1 zone",
         queued: "queued",
+        runs_after: "afterwards",
         phase_of: "Phase {index} of {total}",
         ends_at: "ends {time}",
         watering_mode: "Watering mode",
@@ -575,6 +576,7 @@ const TRANSLATIONS = {
         zones_count: "{count} zones",
         zones_count_one: "1 zone",
         queued: "en file d’attente",
+        runs_after: "ensuite",
         phase_of: "Phase {index} sur {total}",
         ends_at: "se termine à {time}",
         watering_mode: "Mode d’arrosage",
@@ -760,6 +762,7 @@ const TRANSLATIONS = {
         zones_count: "{count} Zonen",
         zones_count_one: "1 Zone",
         queued: "wartet",
+        runs_after: "danach",
         phase_of: "Phase {index} von {total}",
         ends_at: "endet {time}",
         watering_mode: "Bewässerungsmodus",
@@ -933,6 +936,7 @@ const TRANSLATIONS = {
         zones_count: "{count} zones",
         zones_count_one: "1 zone",
         queued: "in wachtrij",
+        runs_after: "daarna",
         phase_of: "Fase {index} van {total}",
         ends_at: "eindigt {time}",
         watering_mode: "Bewateringsmodus",
@@ -1106,6 +1110,7 @@ const TRANSLATIONS = {
         zones_count: "{count} zone",
         zones_count_one: "1 zona",
         queued: "in coda",
+        runs_after: "dopo",
         phase_of: "Fase {index} di {total}",
         ends_at: "termina {time}",
         watering_mode: "Modalità di irrigazione",
@@ -4458,6 +4463,15 @@ let SimpleIrrigationCard = class SimpleIrrigationCard extends i$2 {
                   ${queued.map((z) => z.name).join(", ")}
                 </span>
                 <span class="val">${localize(this.hass, "queued")}</span>
+              </div>`
+            : A}
+          ${snap.waiting?.length
+            ? b `<div class="qrow pending">
+                <span class="qdot"></span>
+                <span class="name">
+                  ${snap.waiting.map((w) => w.name || w.time).join(", ")}
+                </span>
+                <span class="val">${localize(this.hass, "runs_after")}</span>
               </div>`
             : A}
         </div>

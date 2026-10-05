@@ -11,6 +11,14 @@ from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
 from homeassistant.helpers.event import async_track_point_in_time
 from homeassistant.util import dt as dt_util
 
+from .const import (
+    EVENT_SCHEDULE_SKIPPED,
+    SKIP_BUSY,
+    SKIP_CONDITIONS,
+    SKIP_ERROR,
+    SKIP_EXPIRED,
+    SKIP_QUEUE_FULL,
+)
 from .grouping import compute_phases
 from .guards import guards_allow_run
 from .models import Installation, ScheduleSlot, Zone
@@ -82,6 +90,44 @@ def program_for_slot(
     return expand_program(phases_for_slot(slot, zones, max_parallel), slot)
 
 
+def program_for_slots(slots: list[ScheduleSlot], inst: Installation) -> list[RunStep]:
+    """Slots due in the same minute as one run, back to back.
+
+    Each keeps its own Cycle & Soak steps; the queue is the one place they meet.
+    """
+    steps: list[RunStep] = []
+    for slot in slots:
+        steps.extend(program_for_slot(slot, inst.zones, inst.max_parallel_zones))
+    return steps
+
+
+# Skipped for a reason nobody chose: worth a warning. The others are somebody's
+# doing -- a condition, a pause, the Stop button -- and only worth a note.
+_UNEXPECTED_SKIPS = frozenset({SKIP_BUSY, SKIP_EXPIRED, SKIP_QUEUE_FULL, SKIP_ERROR})
+
+
+def report_schedule_skipped(
+    hass: HomeAssistant, slot: ScheduleSlot, due_at: datetime, reason: str
+) -> None:
+    """A schedule that was due did not run: say so, in the log and as an event."""
+    _LOGGER.log(
+        logging.WARNING if reason in _UNEXPECTED_SKIPS else logging.INFO,
+        "Schedule %s, due %s, was skipped: %s",
+        slot.name or slot.slot_id,
+        dt_util.as_local(due_at).strftime("%H:%M"),
+        reason,
+    )
+    hass.bus.async_fire(
+        EVENT_SCHEDULE_SKIPPED,
+        {
+            "slot_id": slot.slot_id,
+            "name": slot.name,
+            "due_at": due_at.isoformat(),
+            "reason": reason,
+        },
+    )
+
+
 class IrrigationScheduler:
     """Track point-in-time for next irrigation slot."""
 
@@ -97,6 +143,10 @@ class IrrigationScheduler:
         self.runtime = runtime
         self._unsub: CALLBACK_TYPE | None = None
         self._lock = asyncio.Lock()
+        # The occurrence of each slot that was last dealt with. A slot due
+        # within the next minute is taken along with the one firing now; when
+        # its own minute comes it must not count as due a second time.
+        self._handled: dict[str, datetime] = {}
 
     async def async_setup(self) -> None:
         """Start scheduling."""
@@ -189,10 +239,6 @@ class IrrigationScheduler:
             if pause_until and now < pause_until:
                 return
 
-            if self.runtime.is_busy():
-                _LOGGER.debug("Scheduler skipped: runtime busy")
-                return
-
             due_slots: list[ScheduleSlot] = []
             for slot in inst.schedule_slots:
                 if not slot.enabled:
@@ -207,29 +253,34 @@ class IrrigationScheduler:
                 if nxt is None:
                     continue
                 if abs((now - nxt).total_seconds()) < 90:
+                    if self._handled.get(slot.slot_id) == nxt:
+                        continue
+                    self._handled[slot.slot_id] = nxt
                     if guards_allow_run(self.hass, inst, slot):
                         due_slots.append(slot)
+                    else:
+                        report_schedule_skipped(self.hass, slot, now, SKIP_CONDITIONS)
 
             if not due_slots:
                 return
 
-            # Slots due in the same minute run back to back. Each keeps its own
-            # Cycle & Soak steps; the queue is the one place they meet.
-            merged_steps: list[RunStep] = []
-            for slot in due_slots:
-                merged_steps.extend(
-                    program_for_slot(slot, inst.zones, inst.max_parallel_zones),
-                )
+            # Behind whatever is running, and behind whoever is waiting already.
+            if self.runtime.is_busy() or self.runtime.has_waiting():
+                await self.runtime.async_wait_or_skip(due_slots, now)
+                return
 
+            merged_steps = program_for_slots(due_slots, inst)
             if not merged_steps:
                 return
 
-            slot_ids = [s.slot_id for s in due_slots]
-            await self.runtime.async_run_phases(
+            started = await self.runtime.async_run_phases(
                 merged_steps,
                 scheduled=True,
-                slot_ids=slot_ids,
+                slot_ids=[s.slot_id for s in due_slots],
             )
+            if not started:
+                # A manual run got in first, in this very moment.
+                await self.runtime.async_wait_or_skip(due_slots, now)
         finally:
             await self._async_reschedule()
 

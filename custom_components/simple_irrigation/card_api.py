@@ -449,6 +449,19 @@ def _snapshot(hass: HomeAssistant, entry_id: str, data: dict[str, Any]) -> dict[
                 current_slot_name = slot.name or ""
                 break
 
+    by_id = {slot.slot_id: slot for slot in inst.schedule_slots}
+    waiting = [
+        {
+            "slot_id": slot_id,
+            "name": by_id[slot_id].name or "",
+            "time": by_id[slot_id].time_local,
+            "due_at": run.due_at.isoformat(),
+        }
+        for run in rs.waiting_runs
+        for slot_id in run.slot_ids
+        if slot_id in by_id
+    ]
+
     return {
         "entry_id": entry_id,
         "name": inst.name,
@@ -477,6 +490,8 @@ def _snapshot(hass: HomeAssistant, entry_id: str, data: dict[str, Any]) -> dict[
         # Set while the run rests between Cycle & Soak passes; the card counts
         # it down in place of a zone.
         "soak_until": rs.soak_until.isoformat() if rs.soak_until else None,
+        # Schedules that came due during this run and take their turn after it.
+        "waiting": waiting,
         # Water, always in litres; the card converts to the user's unit system.
         "tracks_water": bool(inst.water_meter_entity_id.strip())
         or any(z.tracks_water for z in inst.zones.values()),

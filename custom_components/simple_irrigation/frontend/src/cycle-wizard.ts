@@ -723,6 +723,13 @@ export class CycleWizard extends LitElement {
     const slots = this._slots();
     const first = this._firstRun(slots);
     const conflict = this._conflicts();
+    // What becomes of a start that falls into a run still under way.
+    const then = t(
+      this.hass,
+      this.installation?.wait_when_busy
+        ? "config_panel.cycle_conflict_waits"
+        : "config_panel.cycle_conflict_skipped"
+    );
 
     return html`
       <div class="section-title">
@@ -943,12 +950,12 @@ export class CycleWizard extends LitElement {
 
       ${this._ownTimesOverlap()
         ? html`<div class="warning" style="margin-top:10px">
-            ${t(this.hass, "config_panel.cycle_conflict_own_times", { n: est })}
+            ${t(this.hass, "config_panel.cycle_conflict_own_times", { n: est })} ${then}
           </div>`
         : nothing}
       ${conflict
         ? html`<div class="warning" style="display:flex;align-items:center;gap:10px;margin-top:10px">
-            <span>${t(this.hass, "config_panel.cycle_conflict_warning")}</span>
+            <span>${t(this.hass, "config_panel.cycle_conflict_warning")} ${then}</span>
             <button type="button" class="btn-outline" style="margin-top:0" @click=${() => this._shiftLater()}>
               ${t(this.hass, "config_panel.cycle_conflict_shift")}
             </button>

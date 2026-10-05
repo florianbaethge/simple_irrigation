@@ -146,6 +146,8 @@ export interface Snapshot {
   run_ends_at: string | null;
   /** End of the Cycle & Soak rest the run is in; null while a zone waters. */
   soak_until: string | null;
+  /** Schedules that came due during this run and take their turn after it. */
+  waiting?: { slot_id: string; name: string; time: string; due_at: string }[];
   /** Water, always in litres; the card converts to the unit system. */
   tracks_water: boolean;
   run_water_l: number | null;

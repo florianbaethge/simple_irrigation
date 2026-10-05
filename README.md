@@ -166,11 +166,28 @@ A **cycle** is a repeating watering cadence. The wizard offers:
 
 Why the split? A slot waters on chosen weekdays at **one time of day** and, optionally, only in **odd** or **even** ISO calendar weeks. That covers most cadences in one slot — but a true *every-2-days* rhythm needs two slots on alternating parity (odd weeks Mon/Wed/Fri/Sun, even weeks Tue/Thu/Sat), and every further start time needs the cadence's slots once more. Whatever takes more than one slot appears as a **cycle** with member rows and a **Detach into single slots** action; everything else is a plain, single slot. Either way, **every row expands to a 14-day run strip** so you can see exactly when it fires.
 
-- **Several start times a day:** fresh seed, pots in a heat wave and a greenhouse want water more than once a day. In the wizard's time step, **Add start time** gives a cycle up to eight start times. The whole cycle — zones, run order, conditions, Cycle & Soak — runs at each of them and stays one row to edit. This is not Cycle & Soak: that repeats the phases back to back with short rests, this spreads whole runs over the day. A start that falls into a run still under way is skipped, so the wizard warns when two start times are closer together than one run takes.
+- **Several start times a day:** fresh seed, pots in a heat wave and a greenhouse want water more than once a day. In the wizard's time step, **Add start time** gives a cycle up to eight start times. The whole cycle — zones, run order, conditions, Cycle & Soak — runs at each of them and stays one row to edit. This is not Cycle & Soak: that repeats the phases back to back with short rests, this spreads whole runs over the day. The wizard warns when two start times are closer together than one run takes — what becomes of the later one is described under [When schedules overlap](#when-schedules-overlap).
 - **Fixed minutes:** in a slot's run order — and in the wizard's zone step — every zone has a minutes field. Empty, the zone waters as long as the active mode says, and the field shows what that is. A number fixes it for this schedule, whatever the mode: the lawn gets twenty minutes in the morning and five in the evening without a second set of zones. The row carries a **Fixed minutes** badge, and all estimates count with it. An automation can set and clear the same field with `simple_irrigation.set_zone_duration`.
 - **Run order & phases:** the ordered zone list is grouped into **phases** by the *max parallel* limit and *exclusive* flags. The editor shows the phase breakdown live.
 - **Optimize cycles:** detects existing single-day slots that together form a known cadence and offers to merge them into one cycle — no re-entry, nothing runs differently.
 - **Run now:** *Run next slot now* (Overview), *Run this slot now* (a schedule row) and *Run zone now* (Zones) all use the same pre-start and shutdown pipeline as a scheduled run.
+
+#### When schedules overlap
+
+One run at a time: a schedule that comes due while something else is running — another schedule or a manual run — cannot start. Schedules due in the very same minute are no overlap; they run as one run, back to back.
+
+By default the later schedule is **skipped**. That is no longer silent: the log says which schedule was skipped and why, and the `simple_irrigation_schedule_skipped` event carries the same (see [Automations and services](#automations-and-services)).
+
+**Settings → Watering → Let schedules wait for their turn** makes it wait instead:
+
+- It starts once the run before it is completely done — post-run script, outputs closed — as a run of its own, with its own pre-start, scripts and Cycle & Soak. Several waiting schedules run in the order they came due.
+- When its turn comes, everything that would have kept it from running at its own time is looked at again: the installation is not paused or switched off, the schedule still exists and is enabled, its **conditions hold now**. Minutes and mode are those of the moment it starts.
+- **Wait at most** (120 minutes by default) is counted from the time it was due. A schedule due at 06:30 starts by 08:30 or not at all — nothing drifts into the midday sun.
+- **Stop** ends the run and sends the waiting schedules home with it; nothing starts behind a stop. *Skip phase* and stopping a single zone leave them alone. A run that ends in an error drops them too.
+- To take one waiting schedule out of the line, switch that schedule off — or press *Skip today* to drop them all.
+- Nothing waits across a restart of Home Assistant.
+
+While a run is under way, Overview and the dashboard card name the schedules waiting behind it, and `binary_sensor.<installation>_running` lists them in `waiting_slot_ids`. Manual runs never wait: *Run now* during a run answers "already running", as before.
 
 #### Cycle & Soak
 
@@ -244,6 +261,7 @@ Manual runs (*Run now*, *Run zone now*) always start, regardless of conditions.
 
 - **Watering mode (Eco / Normal / Extra):** chosen on Overview or Settings, or via `simple_irrigation.set_mode` for weather/tank automations.
 - **Max parallel zones:** caps concurrency; exclusive zones still run alone.
+- **Let schedules wait for their turn:** what happens to a schedule that comes due during another run — see [When schedules overlap](#when-schedules-overlap).
 - **Pre-start / post-run scripts:** optional scripts run **before** the pre-start outputs and **after** the last one goes off — see below.
 - **Pre-start outputs & delay:** outputs turned on before any zone (pump / master valve), with an editable delay to build pressure — both configured on **Settings**. An output that only some zones need goes into those zones' **Supply** instead.
 - **Pause / Skip today / Pause 48 h:** affect **scheduled** starts only; an already-running cycle is stopped from **Overview**, or one zone at a time from **Zones**.
@@ -477,6 +495,19 @@ action: simple_irrigation.set_mode
 data:
   mode: eco
   # config_entry_id: abc123...  # if multiple entries
+```
+
+Example — get told when a schedule did not run. `simple_irrigation_schedule_skipped` fires for every schedule that was due and did not start, with `slot_id`, `name`, `due_at` and a `reason`: `busy` (something was running and schedules do not wait), `expired` (waited longer than it may), `conditions`, `paused`, `stopped`, `error` (the run before it failed) or `queue_full`.
+
+```yaml
+triggers:
+  - trigger: event
+    event_type: simple_irrigation_schedule_skipped
+conditions: "{{ trigger.event.data.reason in ['busy', 'expired'] }}"
+actions:
+  - action: notify.mobile_app_phone
+    data:
+      message: "{{ trigger.event.data.name }} was skipped ({{ trigger.event.data.reason }})"
 ```
 
 Every schedule slot and per-slot toggle is also exposed as a **switch** entity, so you can enable/disable individual runs from dashboards and automations. Use **Developer tools → Actions** to explore fields with translated descriptions.

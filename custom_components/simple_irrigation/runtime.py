@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import timedelta
+from datetime import datetime, timedelta
 from contextlib import suppress
 from typing import TYPE_CHECKING
 
@@ -20,19 +20,32 @@ from .const import (
     EVENT_RUN_STARTED,
     EVENT_ZONE_FINISHED,
     EVENT_ZONE_STARTED,
+    MAX_WAITING_RUNS,
     RUN_STATE_ERROR,
     RUN_STATE_IDLE,
     RUN_STATE_PREPARING,
     RUN_STATE_RUNNING,
     RUN_STATE_STOPPING,
     SCRIPT_DOMAIN,
+    SKIP_BUSY,
+    SKIP_CONDITIONS,
+    SKIP_ERROR,
+    SKIP_EXPIRED,
+    SKIP_PAUSED,
+    SKIP_QUEUE_FULL,
+    SKIP_STOPPED,
 )
 from .countdown import async_set_countdown, clear_value, countdown_value
 from .grouping import can_join_active_phase, compute_phases
 from .guards import guards_allow_run
-from .models import RunState, ScheduleSlot, Zone
+from .models import RunState, ScheduleSlot, WaitingRun, Zone
 from .program import Phase, RunStep, Soak, phase_slot_id, watering_steps
-from .scheduler import phases_for_slot, program_for_slot
+from .scheduler import (
+    phases_for_slot,
+    program_for_slot,
+    program_for_slots,
+    report_schedule_skipped,
+)
 from .scripts import ScriptCall, effective_post_run_script, effective_pre_start_script
 from .water import (
     SOURCE_ESTIMATED,
@@ -124,6 +137,10 @@ class IrrigationRuntime:
         # Zones a run was watering when Home Assistant went down under it.
         self._interrupted_zone_ids: list[str] = []
         self._unsub_started: CALLBACK_TYPE | None = None
+        # Schedules waiting for their turn live in run_state.waiting_runs. One
+        # of them is started at a time, and none while Stop is being carried out.
+        self._waiting_lock = asyncio.Lock()
+        self._stopping_all = 0
 
     async def async_setup(self) -> None:
         """Reset state on startup and shut what an interrupted run left open."""
@@ -249,14 +266,14 @@ class IrrigationRuntime:
         scheduled: bool,
         slot_ids: list[str] | None = None,
         duration_overrides: dict[str, int] | None = None,
-    ) -> None:
-        """Start background task to run phases."""
+    ) -> bool:
+        """Start a background run of these phases; False if it could not start."""
         if not phases:
-            return
+            return False
         async with self._run_lock:
             if self.is_busy():
                 _LOGGER.warning("Run skipped: already busy")
-                return
+                return False
             self._duration_overrides = dict(duration_overrides or {})
             self._phase_queue = _copy_steps(phases)
             self._manual_zone_order.clear()
@@ -267,11 +284,44 @@ class IrrigationRuntime:
             self._skip_phase_event.clear()
             self._touched_entities.clear()
             self._forget_supplies()
-            self._task = self.hass.async_create_task(
-                self._async_run_pipeline(scheduled, slot_ids or []),
-            )
+            self._launch(scheduled, slot_ids or [])
+            return True
 
-    async def _async_run_pipeline(
+    def _launch(self, scheduled: bool, slot_ids: list[str]) -> None:
+        """Hand the prepared run to its task.
+
+        Busy from this line on, not from the task's first step: two starts in
+        the same moment -- a waiting schedule and a tap on the card -- must not
+        both find the installation idle.
+        """
+        rs = self.coordinator.run_state
+        rs.run_state = RUN_STATE_PREPARING
+        rs.manual_run = not scheduled
+        self._task = self.hass.async_create_task(
+            self._async_run_pipeline(scheduled, slot_ids),
+        )
+
+    async def _async_run_pipeline(self, scheduled: bool, slot_ids: list[str]) -> None:
+        """Run one pipeline, then let the next waiting schedule have its turn.
+
+        Only once the pipeline is through its ``finally``: that clears the phase
+        queue, which the next run has just been given.
+        """
+        await self._async_run_pipeline_once(scheduled, slot_ids)
+        rs = self.coordinator.run_state
+        if not rs.waiting_runs or self._stopping_all:
+            return
+        try:
+            if rs.run_state == RUN_STATE_ERROR:
+                # Watering on as if nothing had happened would bury the error.
+                self._drop_waiting(SKIP_ERROR)
+                await self.coordinator.async_update_run_state(rs)
+                return
+            await self._async_start_next_waiting()
+        except Exception:  # noqa: BLE001 - the run that just ended is not at fault
+            _LOGGER.exception("Could not start the next waiting schedule")
+
+    async def _async_run_pipeline_once(
         self,
         scheduled: bool,
         slot_ids: list[str],
@@ -383,6 +433,110 @@ class IrrigationRuntime:
             return override
         slot = self._slot_by_id(slot_id)
         return slot.duration_for(zone, mode) if slot else zone.duration_for_mode(mode)
+
+    # --- waiting schedules ----------------------------------------------------
+
+    def has_waiting(self) -> bool:
+        """Whether a schedule is waiting for its turn."""
+        return bool(self.coordinator.run_state.waiting_runs)
+
+    async def async_wait_or_skip(self, slots: list[ScheduleSlot], due_at: datetime) -> None:
+        """Schedules came due while something else is running.
+
+        They take their turn behind it if the installation lets schedules wait,
+        and are reported as skipped otherwise. One that is running right now or
+        waiting already is not lined up a second time.
+        """
+        inst = self.coordinator.installation
+        rs = self.coordinator.run_state
+        refused: str | None = None
+        if self._stopping_all:
+            refused = SKIP_STOPPED
+        elif self.is_busy() and not inst.wait_when_busy:
+            refused = SKIP_BUSY
+        elif len(rs.waiting_runs) >= MAX_WAITING_RUNS:
+            refused = SKIP_QUEUE_FULL
+        taken = {slot.slot_id for slot in self._run_slots}
+        taken.update(slot_id for run in rs.waiting_runs for slot_id in run.slot_ids)
+        fresh: list[ScheduleSlot] = []
+        for slot in slots:
+            if refused is None and slot.slot_id not in taken:
+                fresh.append(slot)
+            else:
+                report_schedule_skipped(self.hass, slot, due_at, refused or SKIP_BUSY)
+        if not fresh:
+            return
+        rs.waiting_runs.append(WaitingRun([slot.slot_id for slot in fresh], due_at))
+        _LOGGER.info(
+            "Waiting for the current run to finish: %s",
+            ", ".join(slot.name or slot.slot_id for slot in fresh),
+        )
+        await self.coordinator.async_update_run_state(rs)
+        await self._async_start_next_waiting()
+
+    def _drop_waiting(self, reason: str) -> None:
+        """Nobody waits any more; each schedule is reported as skipped."""
+        rs = self.coordinator.run_state
+        for run in rs.waiting_runs:
+            for slot_id in run.slot_ids:
+                slot = self._slot_by_id(slot_id)
+                if slot is not None:
+                    report_schedule_skipped(self.hass, slot, run.due_at, reason)
+        rs.waiting_runs = []
+
+    def _still_due(self, run: WaitingRun) -> list[ScheduleSlot]:
+        """The schedules of a waiting run that may start now.
+
+        Its turn has come, and everything that would have kept it from running
+        at its own time is looked at again: a pause, a switch, a condition. On
+        top of that it must not have waited longer than the installation allows.
+        """
+        inst = self.coordinator.installation
+        dropped: str | None = None
+        pause_until = inst.pause_until
+        if not inst.enabled or (pause_until is not None and dt_util.now() < pause_until):
+            dropped = SKIP_PAUSED
+        elif dt_util.utcnow() - run.due_at > timedelta(minutes=inst.wait_max_min):
+            dropped = SKIP_EXPIRED
+        due: list[ScheduleSlot] = []
+        for slot_id in run.slot_ids:
+            slot = self._slot_by_id(slot_id)
+            if slot is None:
+                continue
+            reason = dropped
+            if reason is None and not slot.enabled:
+                reason = SKIP_PAUSED
+            if reason is None and not guards_allow_run(self.hass, inst, slot):
+                reason = SKIP_CONDITIONS
+            if reason is None:
+                due.append(slot)
+            else:
+                report_schedule_skipped(self.hass, slot, run.due_at, reason)
+        return due
+
+    async def _async_start_next_waiting(self) -> None:
+        """Start the schedule that has waited longest, if nothing is in its way."""
+        async with self._waiting_lock:
+            rs = self.coordinator.run_state
+            changed = False
+            try:
+                while rs.waiting_runs and not self.is_busy() and not self._stopping_all:
+                    slots = self._still_due(rs.waiting_runs[0])
+                    steps = program_for_slots(slots, self.coordinator.installation)
+                    if steps and not await self.async_run_phases(
+                        steps,
+                        scheduled=True,
+                        slot_ids=[slot.slot_id for slot in slots],
+                    ):
+                        # Somebody got in between; our turn comes after theirs.
+                        return
+                    rs.waiting_runs.pop(0)
+                    changed = True
+                    if steps:
+                        return
+            finally:
+                if changed:
+                    await self.coordinator.async_update_run_state(rs)
 
     # --- supply ---------------------------------------------------------------
 
@@ -1144,9 +1298,7 @@ class IrrigationRuntime:
             self._skip_phase_event.clear()
             self._touched_entities.clear()
             self._forget_supplies()
-            self._task = self.hass.async_create_task(
-                self._async_run_pipeline(scheduled=False, slot_ids=[]),
-            )
+            self._launch(scheduled=False, slot_ids=[])
 
     async def async_run_schedule_slot(self, slot_id: str) -> None:
         """Run one schedule slot now (same pipeline as “Run this slot now” in the panel)."""
@@ -1279,7 +1431,15 @@ class IrrigationRuntime:
             await self.coordinator.async_update_run_state(rs)
 
     async def async_stop_all(self) -> None:
-        """Signal stop and turn off outputs."""
+        """Signal stop and turn off outputs. Whatever waited for its turn is off too."""
+        self._stopping_all += 1
+        try:
+            self._drop_waiting(SKIP_STOPPED)
+            await self._async_stop_all()
+        finally:
+            self._stopping_all -= 1
+
+    async def _async_stop_all(self) -> None:
         self._stop_event.set()
         self._zone_stop_requests.clear()
         if self._task and not self._task.done():

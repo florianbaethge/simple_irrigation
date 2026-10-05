@@ -23,6 +23,7 @@ from .const import (
     MAX_REPETITIONS,
     MAX_SOAK_MIN,
     MAX_SUPPLY_DELAY_SEC,
+    MAX_WAIT_MAX_MIN,
     MAX_ZONE_DURATION_MIN,
     DOMAIN,
     GUARD_OPERATORS,
@@ -403,6 +404,10 @@ class SimpleIrrigationPanelGlobalView(HomeAssistantView):
                 vol.Optional("pause_until"): vol.Any(cv.string, None),
                 vol.Optional("guards"): GUARD_LIST_SCHEMA,
                 vol.Optional("water_meter_entity_id"): vol.Any(cv.string, None),
+                vol.Optional("wait_when_busy"): cv.boolean,
+                vol.Optional("wait_max_min"): vol.All(
+                    int, vol.Range(min=1, max=MAX_WAIT_MAX_MIN)
+                ),
             }
         )
     )
@@ -470,6 +475,10 @@ class SimpleIrrigationPanelGlobalView(HomeAssistantView):
             if err:
                 return self.json({"success": False, "error": err}, status_code=400)
             inst.water_meter_entity_id = meter
+        if "wait_when_busy" in data:
+            inst.wait_when_busy = bool(data["wait_when_busy"])
+        if "wait_max_min" in data:
+            inst.wait_max_min = int(data["wait_max_min"])
         if "pause_until" in data:
             raw = data["pause_until"]
             if raw in (None, ""):

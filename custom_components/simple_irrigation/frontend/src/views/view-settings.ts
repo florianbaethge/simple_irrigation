@@ -87,6 +87,8 @@ export class ViewSettings extends LitElement {
   private _name = "";
   private _mode = "normal";
   private _maxParallel = 2;
+  @state() private _waitWhenBusy = false;
+  private _waitMaxMin = 120;
   private _preStart: string[] = [];
   private _waterMeter = "";
   private _preStartDelaySec = 10;
@@ -108,6 +110,9 @@ export class ViewSettings extends LitElement {
     this._mode = String(inst.mode ?? "normal");
     this._maxParallel = Number(inst.max_parallel_zones ?? 2);
     this._isDefault = Boolean(inst.is_default ?? false);
+    this._waitWhenBusy = Boolean(inst.wait_when_busy ?? false);
+    const wm = Number(inst.wait_max_min ?? 120);
+    this._waitMaxMin = Number.isFinite(wm) ? Math.max(1, Math.min(720, Math.round(wm))) : 120;
     const ps = Array.isArray(inst.pre_start_switches)
       ? (inst.pre_start_switches as string[]).filter(Boolean)
       : [];
@@ -172,6 +177,8 @@ export class ViewSettings extends LitElement {
         post_run_script_timeout_sec: this._postRunScriptTimeoutSec,
         mode: this._mode,
         max_parallel_zones: this._maxParallel,
+        wait_when_busy: this._waitWhenBusy,
+        wait_max_min: this._waitMaxMin,
         is_default: this._isDefault,
         guards: guardsForSave(this._guards),
         water_meter_entity_id: this._waterMeter.trim(),
@@ -474,6 +481,37 @@ export class ViewSettings extends LitElement {
               ></ha-input>
             </div>
             <p class="hint">${t(this.hass, "config_panel.settings_max_parallel_hint")}</p>
+          </div>
+          <div class="field-block">
+            <div class="switch-row">
+              <ha-switch
+                .checked=${this._waitWhenBusy}
+                @change=${(e: Event) => {
+                  this._waitWhenBusy = Boolean((e.target as HTMLInputElement).checked);
+                  this._markDirty();
+                }}
+              ></ha-switch>
+              <span class="switch-row-label">${t(this.hass, "config_panel.settings_wait_toggle")}</span>
+            </div>
+            <p class="hint">${t(this.hass, "config_panel.settings_wait_hint")}</p>
+            ${this._waitWhenBusy
+              ? html`<div class="field-row">
+                  <ha-input
+                    type="number"
+                    .label=${t(this.hass, "config_panel.settings_wait_max_field")}
+                    .value=${String(this._waitMaxMin)}
+                    min="1"
+                    max="720"
+                    @input=${(e: Event) => {
+                      this._waitMaxMin = Math.max(
+                        1,
+                        Math.min(720, parseInt((e.target as HTMLInputElement).value, 10) || 1)
+                      );
+                      this._markDirty();
+                    }}
+                  ></ha-input>
+                </div>`
+              : nothing}
           </div>
 
           <div class="section-title">${t(this.hass, "config_panel.settings_section_water")}</div>

@@ -2410,6 +2410,24 @@ class ViewOverview extends i$4 {
             }
         }
     }
+    /** Schedules that came due during this run and take their turn after it. */
+    _waitingLine(rs) {
+        const slots = this._inst.schedule_slots ?? [];
+        const runs = Array.isArray(rs.waiting_runs)
+            ? rs.waiting_runs
+            : [];
+        const names = [];
+        for (const id of runs.flatMap((run) => run.slot_ids ?? [])) {
+            const slot = slots.find((s) => s.slot_id === id);
+            if (!slot)
+                continue;
+            const label = String(slot.cycle_meta?.label ?? slot.name ?? "").trim();
+            names.push(`${label || this._kindLabel(slot)} (${String(slot.time_local ?? "")})`);
+        }
+        if (names.length <= 2)
+            return names.join(", ");
+        return `${names.slice(0, 2).join(", ")} +${names.length - 2}`;
+    }
     /** The next `limit` distinct run fires across all enabled slots (client-side). */
     _upcomingRuns(limit) {
         const slots = this._inst.schedule_slots ?? [];
@@ -2603,6 +2621,7 @@ class ViewOverview extends i$4 {
             .map((g) => g.map((id) => this._zoneName(String(id))).join(", "))
             .filter(Boolean)
             .join(" → ");
+        const waiting = this._waitingLine(rs);
         const mode = this._mode();
         const next = runs[0];
         const badgeClass = runBusy ? "running" : runState === "error" ? "error" : "";
@@ -2681,7 +2700,7 @@ class ViewOverview extends i$4 {
               `
             : A}
 
-          ${activeIds.length || soaking || (runBusy && runWater !== null) || nextZones || lastErr
+          ${activeIds.length || soaking || (runBusy && runWater !== null) || nextZones || waiting || lastErr
             ? b `
                 <ul class="pill-list">
                   ${soaking
@@ -2718,6 +2737,13 @@ class ViewOverview extends i$4 {
                         <ha-icon icon="mdi:playlist-play"></ha-icon>
                         <span><strong>${t$2(this.hass, "config_panel.general_next_zones")}</strong>
                           ${nextZones}</span>
+                      </li>`
+                : A}
+                  ${waiting
+                ? b `<li class="pill">
+                        <ha-icon icon="mdi:timer-pause-outline"></ha-icon>
+                        <span><strong>${t$2(this.hass, "config_panel.general_waiting")}</strong>
+                          ${waiting}</span>
                       </li>`
                 : A}
                   ${lastErr
@@ -4171,6 +4197,10 @@ class CycleWizard extends i$4 {
         const slots = this._slots();
         const first = this._firstRun(slots);
         const conflict = this._conflicts();
+        // What becomes of a start that falls into a run still under way.
+        const then = t$2(this.hass, this.installation?.wait_when_busy
+            ? "config_panel.cycle_conflict_waits"
+            : "config_panel.cycle_conflict_skipped");
         return b `
       <div class="section-title">
         ${t$2(this.hass, "config_panel.cycle_step_zones")}
@@ -4357,12 +4387,12 @@ class CycleWizard extends i$4 {
 
       ${this._ownTimesOverlap()
             ? b `<div class="warning" style="margin-top:10px">
-            ${t$2(this.hass, "config_panel.cycle_conflict_own_times", { n: est })}
+            ${t$2(this.hass, "config_panel.cycle_conflict_own_times", { n: est })} ${then}
           </div>`
             : A}
       ${conflict
             ? b `<div class="warning" style="display:flex;align-items:center;gap:10px;margin-top:10px">
-            <span>${t$2(this.hass, "config_panel.cycle_conflict_warning")}</span>
+            <span>${t$2(this.hass, "config_panel.cycle_conflict_warning")} ${then}</span>
             <button type="button" class="btn-outline" style="margin-top:0" @click=${() => this._shiftLater()}>
               ${t$2(this.hass, "config_panel.cycle_conflict_shift")}
             </button>
@@ -5860,6 +5890,8 @@ class ViewSettings extends i$4 {
         this._name = "";
         this._mode = "normal";
         this._maxParallel = 2;
+        this._waitWhenBusy = false;
+        this._waitMaxMin = 120;
         this._preStart = [];
         this._waterMeter = "";
         this._preStartDelaySec = 10;
@@ -5931,6 +5963,9 @@ class ViewSettings extends i$4 {
         this._mode = String(inst.mode ?? "normal");
         this._maxParallel = Number(inst.max_parallel_zones ?? 2);
         this._isDefault = Boolean(inst.is_default ?? false);
+        this._waitWhenBusy = Boolean(inst.wait_when_busy ?? false);
+        const wm = Number(inst.wait_max_min ?? 120);
+        this._waitMaxMin = Number.isFinite(wm) ? Math.max(1, Math.min(720, Math.round(wm))) : 120;
         const ps = Array.isArray(inst.pre_start_switches)
             ? inst.pre_start_switches.filter(Boolean)
             : [];
@@ -5984,6 +6019,8 @@ class ViewSettings extends i$4 {
                 post_run_script_timeout_sec: this._postRunScriptTimeoutSec,
                 mode: this._mode,
                 max_parallel_zones: this._maxParallel,
+                wait_when_busy: this._waitWhenBusy,
+                wait_max_min: this._waitMaxMin,
                 is_default: this._isDefault,
                 guards: guardsForSave(this._guards),
                 water_meter_entity_id: this._waterMeter.trim(),
@@ -6254,6 +6291,34 @@ class ViewSettings extends i$4 {
             </div>
             <p class="hint">${t$2(this.hass, "config_panel.settings_max_parallel_hint")}</p>
           </div>
+          <div class="field-block">
+            <div class="switch-row">
+              <ha-switch
+                .checked=${this._waitWhenBusy}
+                @change=${(e) => {
+            this._waitWhenBusy = Boolean(e.target.checked);
+            this._markDirty();
+        }}
+              ></ha-switch>
+              <span class="switch-row-label">${t$2(this.hass, "config_panel.settings_wait_toggle")}</span>
+            </div>
+            <p class="hint">${t$2(this.hass, "config_panel.settings_wait_hint")}</p>
+            ${this._waitWhenBusy
+            ? b `<div class="field-row">
+                  <ha-input
+                    type="number"
+                    .label=${t$2(this.hass, "config_panel.settings_wait_max_field")}
+                    .value=${String(this._waitMaxMin)}
+                    min="1"
+                    max="720"
+                    @input=${(e) => {
+                this._waitMaxMin = Math.max(1, Math.min(720, parseInt(e.target.value, 10) || 1));
+                this._markDirty();
+            }}
+                  ></ha-input>
+                </div>`
+            : A}
+          </div>
 
           <div class="section-title">${t$2(this.hass, "config_panel.settings_section_water")}</div>
           <div class="field-block">
@@ -6390,6 +6455,9 @@ __decorate([
 __decorate([
     r()
 ], ViewSettings.prototype, "_showRaw", void 0);
+__decorate([
+    r()
+], ViewSettings.prototype, "_waitWhenBusy", void 0);
 __decorate([
     r()
 ], ViewSettings.prototype, "_guards", void 0);

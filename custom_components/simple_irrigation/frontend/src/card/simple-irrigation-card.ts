@@ -865,6 +865,15 @@ export class SimpleIrrigationCard extends LitElement {
                 <span class="val">${localize(this.hass, "queued")}</span>
               </div>`
             : nothing}
+          ${snap.waiting?.length
+            ? html`<div class="qrow pending">
+                <span class="qdot"></span>
+                <span class="name">
+                  ${snap.waiting.map((w) => w.name || w.time).join(", ")}
+                </span>
+                <span class="val">${localize(this.hass, "runs_after")}</span>
+              </div>`
+            : nothing}
         </div>
         <div class="runfoot">
           <span class="cap">${footParts.join(" · ")}</span>

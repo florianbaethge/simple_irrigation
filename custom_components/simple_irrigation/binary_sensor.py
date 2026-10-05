@@ -66,6 +66,8 @@ class RunningBinarySensor(SimpleIrrigationEntity, BinarySensorEntity):
             "active_zone_ids": list(rs.active_zone_ids),
             "active_script": rs.active_script,
             "soak_until": rs.soak_until.isoformat() if rs.soak_until else None,
+            # Schedules that came due during this run and take their turn after it.
+            "waiting_slot_ids": [sid for run in rs.waiting_runs for sid in run.slot_ids],
         }
 
 

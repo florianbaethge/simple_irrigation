@@ -8,9 +8,11 @@ from datetime import datetime
 from typing import Any
 
 from .const import (
+    DEFAULT_WAIT_MAX_MIN,
     MAX_REPETITIONS,
     MAX_SOAK_MIN,
     MAX_SUPPLY_DELAY_SEC,
+    MAX_WAIT_MAX_MIN,
     MAX_ZONE_DURATION_MIN,
     GUARD_BOOLEAN_OPERATORS,
     GUARD_NUMERIC_OPERATORS,
@@ -471,6 +473,15 @@ def _zones_in_saved_order(zones: dict[str, Zone], saved: Any) -> dict[str, Zone]
     return ordered
 
 
+def parse_wait_max(raw: Any) -> int:
+    """Minutes a schedule may wait, 1..720; anything else is the default."""
+    try:
+        minutes = int(raw)
+    except (TypeError, ValueError):
+        return DEFAULT_WAIT_MAX_MIN
+    return minutes if 1 <= minutes <= MAX_WAIT_MAX_MIN else DEFAULT_WAIT_MAX_MIN
+
+
 @dataclass
 class Installation:
     """Global installation settings."""
@@ -494,6 +505,10 @@ class Installation:
     water_meter_entity_id: str = ""
     # Conditions applied to every scheduled run unless a slot opts out.
     guards: list[Guard] = field(default_factory=list)
+    # A schedule that comes due while something else runs is skipped, unless it
+    # may wait for its turn -- and then for no longer than this many minutes.
+    wait_when_busy: bool = False
+    wait_max_min: int = DEFAULT_WAIT_MAX_MIN
     # In the order they are listed in, which is also the run order a new cycle
     # starts with. A slot's own ``zone_ids_ordered`` decides how that slot waters.
     zones: dict[str, Zone] = field(default_factory=dict)
@@ -530,6 +545,8 @@ class Installation:
             "is_default": self.is_default,
             "water_meter_entity_id": self.water_meter_entity_id,
             "guards": [g.to_dict() for g in self.guards],
+            "wait_when_busy": self.wait_when_busy,
+            "wait_max_min": self.wait_max_min,
             "zones": {k: v.to_dict() for k, v in self.zones.items()},
             "zone_order": list(self.zones),
             "schedule_slots": [s.to_dict() for s in self.schedule_slots],
@@ -573,9 +590,27 @@ class Installation:
             is_default=bool(data.get("is_default", False)),
             water_meter_entity_id=str(data.get("water_meter_entity_id") or "").strip(),
             guards=parse_guards(data.get("guards")),
+            wait_when_busy=bool(data.get("wait_when_busy", False)),
+            wait_max_min=parse_wait_max(data.get("wait_max_min")),
             zones=zones,
             schedule_slots=schedule_slots,
         )
+
+
+@dataclass
+class WaitingRun:
+    """Schedules that came due in the same minute while something else ran.
+
+    Only the request is kept, not a plan: zones, minutes and conditions are
+    worked out when its turn comes, so what changed meanwhile counts.
+    """
+
+    slot_ids: list[str]
+    due_at: datetime
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize for the UI payload; a waiting run is never restored."""
+        return {"slot_ids": list(self.slot_ids), "due_at": self.due_at.isoformat()}
 
 
 @dataclass
@@ -616,6 +651,9 @@ class RunState:
     # End of the Cycle & Soak pause the run is resting in, so the UI can count
     # it down; None while watering. Volatile exactly like ``zone_ends_at``.
     soak_until: datetime | None = None
+    # Schedules waiting for the run in flight to finish, oldest first. Volatile
+    # exactly like ``zone_ends_at``: a restart ends the run and with it the wait.
+    waiting_runs: list[WaitingRun] = field(default_factory=list)
     # --- Water ---------------------------------------------------------------
     # Litres per zone: running total (what the water sensors report), the last
     # run, and whether that came from a meter ("measured") or a flow rate
@@ -671,6 +709,7 @@ class RunState:
                 k: v.isoformat() for k, v in self.zone_started_at.items()
             },
             "soak_until": self.soak_until.isoformat() if self.soak_until else None,
+            "waiting_runs": [w.to_dict() for w in self.waiting_runs],
             "water_total_l": {k: round(v, 3) for k, v in self.water_total_l.items()},
             "water_last_run_l": {k: round(v, 3) for k, v in self.water_last_run_l.items()},
             "water_source": dict(self.water_source),
@@ -749,7 +788,7 @@ class RunState:
             last_run_water_l=_opt_float(data.get("last_run_water_l")),
             last_run_water_source=str(data.get("last_run_water_source") or ""),
             water_total_installation_l=_opt_float(data.get("water_total_installation_l")) or 0.0,
-            # zone_ends_at, zone_started_at and soak_until are intentionally NOT restored. They only
+            # zone_ends_at, zone_started_at, soak_until and waiting_runs are intentionally NOT restored. They only
             # mean something while this process is watering; after a restart no
             # zone is running any more and a recovered end time would render a
             # phantom countdown.

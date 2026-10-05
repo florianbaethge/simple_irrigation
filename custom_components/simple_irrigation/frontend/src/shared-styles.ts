@@ -527,9 +527,21 @@ export const sharedStyles = css`
     min-width: 0;
   }
   .compact-row-detail {
-    padding: 0 14px 14px;
+    padding: 12px 14px 14px;
     border-top: 1px solid var(--divider-color);
     margin-top: -2px;
+  }
+  /* A small heading inside a row's detail, over what it introduces. */
+  .detail-caption {
+    margin: 14px 0 6px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--secondary-text-color);
+  }
+  .compact-row-detail > .detail-caption:first-child {
+    margin-top: 0;
   }
 
   /* Icon-only button with a guaranteed hit area + focus ring. */
@@ -647,8 +659,14 @@ export const sharedStyles = css`
     margin: 6px 0;
   }
   @container siview (max-width: 700px) {
+    /* Two rows need air between them, and a cell a finger's worth of height. */
     .day-strip {
       grid-template-columns: repeat(7, minmax(0, 1fr));
+      gap: 6px;
+    }
+    .day-strip .day-cell {
+      height: 42px;
+      font-size: 0.68rem;
     }
   }
   .day-strip .day-cell {
@@ -768,12 +786,16 @@ export const sharedStyles = css`
     .only-narrow {
       display: none !important;
     }
+    /* With the phone's drawer gone, the caption is the first thing in the detail. */
+    .only-narrow + .detail-caption {
+      margin-top: 0;
+    }
   }
   /* What a row can do, behind its chevron on a phone: side by side. */
   .drawer-actions {
     display: flex;
     gap: 8px;
-    padding: 10px 0 4px;
+    padding: 12px 0 0;
   }
   .drawer-actions .btn-outline {
     flex: 1 1 0;

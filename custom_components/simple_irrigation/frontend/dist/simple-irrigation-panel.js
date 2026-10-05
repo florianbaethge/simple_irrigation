@@ -1021,9 +1021,21 @@ const sharedStyles = i$7 `
     min-width: 0;
   }
   .compact-row-detail {
-    padding: 0 14px 14px;
+    padding: 12px 14px 14px;
     border-top: 1px solid var(--divider-color);
     margin-top: -2px;
+  }
+  /* A small heading inside a row's detail, over what it introduces. */
+  .detail-caption {
+    margin: 14px 0 6px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--secondary-text-color);
+  }
+  .compact-row-detail > .detail-caption:first-child {
+    margin-top: 0;
   }
 
   /* Icon-only button with a guaranteed hit area + focus ring. */
@@ -1141,8 +1153,14 @@ const sharedStyles = i$7 `
     margin: 6px 0;
   }
   @container siview (max-width: 700px) {
+    /* Two rows need air between them, and a cell a finger's worth of height. */
     .day-strip {
       grid-template-columns: repeat(7, minmax(0, 1fr));
+      gap: 6px;
+    }
+    .day-strip .day-cell {
+      height: 42px;
+      font-size: 0.68rem;
     }
   }
   .day-strip .day-cell {
@@ -1262,12 +1280,16 @@ const sharedStyles = i$7 `
     .only-narrow {
       display: none !important;
     }
+    /* With the phone's drawer gone, the caption is the first thing in the detail. */
+    .only-narrow + .detail-caption {
+      margin-top: 0;
+    }
   }
   /* What a row can do, behind its chevron on a phone: side by side. */
   .drawer-actions {
     display: flex;
     gap: 8px;
-    padding: 10px 0 4px;
+    padding: 12px 0 0;
   }
   .drawer-actions .btn-outline {
     flex: 1 1 0;
@@ -5341,14 +5363,23 @@ class ViewSchedule extends i$4 {
       .member-line {
         display: flex;
         align-items: center;
-        gap: 8px 12px;
-        flex-wrap: wrap;
+        gap: 8px;
         padding: 8px 0;
         border-top: 1px solid var(--divider-color);
         font-size: 0.85rem;
       }
       .member-line:first-of-type {
         border-top: none;
+        margin-top: 6px;
+      }
+      /* The text may wrap; the edit button keeps its place at the end. */
+      .member-text {
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 4px 12px;
       }
       .detach-line {
         margin-top: 10px;
@@ -6187,9 +6218,14 @@ class ViewSchedule extends i$4 {
         const end = (parseTimeLocalToMinutes(timeLocal) + estMin) % (24 * 60);
         return `${start}–${formatTimeLocalForDisplay(this.hass, minutesToTimeLocal(end))}`;
     }
-    _renderMemberLine(m) {
+    /**
+     * One slot of a row, with its own edit button. `single`: the row is that one
+     * slot -- on a phone its drawer already says and does the same.
+     */
+    _renderMemberLine(m, single = false) {
         return b `
-      <div class="member-line">
+      <div class="member-line ${single ? "hide-narrow" : ""}">
+        <div class="member-text">
         ${m.week_parity !== "every"
             ? b `<span class="badge badge-primary badge-dot">${this._parityLabel(m.week_parity)}</span>`
             : A}
@@ -6217,10 +6253,11 @@ class ViewSchedule extends i$4 {
                 n: m.zone_ids_ordered.length,
             })}</span
         >
+        </div>
         <button
           type="button"
           class="iconbtn"
-          style="margin-left:auto;width:34px;height:34px"
+          style="width:34px;height:34px"
           aria-label=${t$2(this.hass, "config_panel.schedule_edit")}
           @click=${() => this._openSlotEdit(m.slot_id)}
         >
@@ -6368,7 +6405,8 @@ class ViewSchedule extends i$4 {
         ${expanded
             ? b `<div class="compact-row-detail">
               ${this._renderNarrowDrawer(extras, runDisabled, runCycle, () => this._openWizardEdit(g))}
-              <div class="day-strip" style="margin-top:10px">
+              <div class="detail-caption">${t$2(this.hass, "config_panel.cycle_preview_title")}</div>
+              <div class="day-strip">
                 ${strip.map((d) => b `<div class="day-cell ${d.run ? "run" : ""} ${d.off ? "off" : ""} ${d.isToday ? "today" : ""}">
                     <span class="dc-dow">${weekdayShort(this.hass, mondayBasedWeekday(d.date))}</span>
                     <span class="dc-dom">${d.date.getDate()}</span>
@@ -6467,13 +6505,14 @@ class ViewSchedule extends i$4 {
         ${expanded
             ? b `<div class="compact-row-detail">
               ${this._renderNarrowDrawer(extras, runDisabled, () => this._runSlotNow(s.slot_id), () => this._openSlotEdit(s.slot_id))}
-              <div class="day-strip" style="margin-top:10px">
+              <div class="detail-caption">${t$2(this.hass, "config_panel.cycle_preview_title")}</div>
+              <div class="day-strip">
                 ${strip.map((d) => b `<div class="day-cell ${d.run ? "run" : ""} ${d.off ? "off" : ""} ${d.isToday ? "today" : ""}">
                     <span class="dc-dow">${weekdayShort(this.hass, mondayBasedWeekday(d.date))}</span>
                     <span class="dc-dom">${d.date.getDate()}</span>
                   </div>`)}
               </div>
-              ${this._renderMemberLine(s)}
+              ${this._renderMemberLine(s, true)}
             </div>`
             : A}
       </div>

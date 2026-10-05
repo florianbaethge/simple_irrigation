@@ -368,13 +368,10 @@ def _clamp_int(raw: Any, default: int, lo: int, hi: int) -> int:
 
 
 def normalize_zone_order(raw: Any, zones: dict[str, Zone]) -> list[str]:
-    """Return a complete, duplicate-free display order for ``zones``.
+    """The saved order, completed: unknown ids dropped, unlisted zones appended.
 
-    ``zone_order`` is deliberately an additive preference rather than the source
-    of truth for zone membership.  Older stores have no order at all, and a
-    partially written or hand-edited store must not make a zone disappear from
-    the UI.  Keep valid saved ids first, then append every missing zone in the
-    dictionary's stable creation order.
+    Stores from before the order existed have none, and a new zone is not in it
+    until the next reorder -- both fall back to the order zones were created in.
     """
     saved = raw if isinstance(raw, list) else []
     ordered: list[str] = []
@@ -412,14 +409,25 @@ class Installation:
     # Conditions applied to every scheduled run unless a slot opts out.
     guards: list[Guard] = field(default_factory=list)
     zones: dict[str, Zone] = field(default_factory=dict)
-    # Presentation/default-selection order only.  A schedule's explicit
-    # ``zone_ids_ordered`` remains authoritative for its watering sequence.
+    # The order zones are listed in, and the run order a new cycle starts with.
+    # A slot's own ``zone_ids_ordered`` decides how that slot waters.
     zone_order: list[str] = field(default_factory=list)
     schedule_slots: list[ScheduleSlot] = field(default_factory=list)
 
     def ordered_zone_ids(self) -> list[str]:
         """Return all current zone ids in the persisted display order."""
         return normalize_zone_order(self.zone_order, self.zones)
+
+    def set_zone_order(self, order: list[str]) -> bool:
+        """Adopt ``order`` if it names every current zone exactly once.
+
+        Anything else was built from a zone list that has changed since -- a zone
+        added or deleted in another tab -- and is refused rather than repaired.
+        """
+        if len(order) != len(self.zones) or set(order) != set(self.zones):
+            return False
+        self.zone_order = list(order)
+        return True
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize to JSON-compatible dict."""

@@ -33,8 +33,7 @@ async def async_setup_entry(
         CurrentRunEndsAtSensor(coordinator),
         WaterSensor(coordinator),
     ]
-    for zid in coordinator.installation.ordered_zone_ids():
-        zone = coordinator.installation.zones[zid]
+    for zid, zone in coordinator.installation.zones.items():
         entities.append(ZoneNextRunSensor(coordinator, zid, zone.name))
         entities.append(ZoneLastRunSensor(coordinator, zid, zone.name))
         entities.append(ZoneEndsAtSensor(coordinator, zid, zone.name))

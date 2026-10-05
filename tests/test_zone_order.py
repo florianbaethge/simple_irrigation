@@ -8,7 +8,6 @@ from custom_components.simple_irrigation.models import (
     Zone,
     normalize_zone_order,
 )
-from custom_components.simple_irrigation.panel_api import _is_complete_zone_order
 
 
 def _zone(zone_id: str) -> Zone:
@@ -45,7 +44,7 @@ def test_normalize_drops_stale_and_duplicate_ids_then_appends_missing() -> None:
     ]
 
 
-def test_round_trip_preserves_custom_order_without_reordering_a_schedule() -> None:
+def test_round_trip_keeps_the_order_and_leaves_slot_run_orders_alone() -> None:
     slot = ScheduleSlot(
         slot_id="morning",
         weekdays=[0],
@@ -60,10 +59,35 @@ def test_round_trip_preserves_custom_order_without_reordering_a_schedule() -> No
     assert restored.schedule_slots[0].zone_ids_ordered == ["b", "a"]
 
 
-def test_reorder_api_requires_an_exact_current_permutation() -> None:
+def test_set_zone_order_adopts_a_permutation_of_the_current_zones() -> None:
     inst = _installation()
 
-    assert _is_complete_zone_order(["c", "a", "b"], inst)
-    assert not _is_complete_zone_order(["c", "a"], inst)
-    assert not _is_complete_zone_order(["c", "a", "a"], inst)
-    assert not _is_complete_zone_order(["c", "a", "missing"], inst)
+    assert inst.set_zone_order(["c", "a", "b"])
+    assert inst.ordered_zone_ids() == ["c", "a", "b"]
+
+
+def test_set_zone_order_refuses_a_list_from_a_changed_zone_set() -> None:
+    """Another tab added or deleted a zone while this one was being dragged."""
+    inst = _installation(zone_order=["b", "a", "c"])
+
+    for stale in (["c", "a"], ["c", "a", "a"], ["c", "a", "missing"], ["c", "a", "b", "d"]):
+        assert not inst.set_zone_order(stale)
+    assert inst.ordered_zone_ids() == ["b", "a", "c"]
+
+
+def test_a_new_zone_lands_at_the_end_of_a_custom_order() -> None:
+    inst = _installation(zone_order=["c", "a", "b"])
+
+    inst.zones["d"] = _zone("d")
+
+    assert inst.ordered_zone_ids() == ["c", "a", "b", "d"]
+    assert inst.to_dict()["zone_order"] == ["c", "a", "b", "d"]
+
+
+def test_a_deleted_zone_leaves_the_rest_of_the_order_in_place() -> None:
+    inst = _installation(zone_order=["c", "a", "b"])
+
+    inst.zones.pop("a")
+
+    assert inst.ordered_zone_ids() == ["c", "b"]
+    assert inst.to_dict()["zone_order"] == ["c", "b"]

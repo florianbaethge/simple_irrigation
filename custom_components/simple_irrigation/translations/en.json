@@ -25,6 +25,15 @@
         "normal": "Normal",
         "extra": "Extra"
       }
+    },
+    "zone_duration_target": {
+      "options": {
+        "active": "Current mode",
+        "eco": "Eco",
+        "normal": "Normal",
+        "extra": "Extra",
+        "all": "All modes"
+      }
     }
   },
   "entity": {
@@ -217,6 +226,28 @@
         "enabled": {
           "name": "Enabled",
           "description": "When off, the zone is skipped for scheduled and slot runs until enabled again."
+        },
+        "config_entry_id": {
+          "name": "Config entry ID",
+          "description": "Optional. Target installation when multiple entries exist."
+        }
+      }
+    },
+    "set_zone_duration": {
+      "name": "Set zone duration",
+      "description": "Sets the runtime of a zone in minutes, e.g. from a calculation done outside Simple Irrigation. Applies to the next run; a run in progress is not changed. Use Set zone enabled to skip a zone.",
+      "fields": {
+        "zone_id": {
+          "name": "Zone ID",
+          "description": "Internal zone UUID (keys under zones in Download diagnostics for this integration)."
+        },
+        "duration_min": {
+          "name": "Duration (minutes)",
+          "description": "Runtime in minutes (1–1440)."
+        },
+        "mode": {
+          "name": "Mode",
+          "description": "Which runtime to change: Eco, Normal or Extra, the installation's current mode, or all three."
         },
         "config_entry_id": {
           "name": "Config entry ID",
@@ -613,7 +644,7 @@
     "settings_max_parallel_hint": "Exclusive zones always run alone, regardless of this limit.",
     "settings_default_hint": "Opening the sidebar entry jumps straight to this installation.",
     "settings_automations_summary": "Service calls & IDs",
-    "settings_automations_body": "Use these services from automations: set_mode, set_zone_enabled, pause_until, clear_pause, run_zone, run_schedule_slot, stop_all, stop_zone, skip_phase. The config entry id below identifies this installation.",
+    "settings_automations_body": "Use these services from automations: set_mode, set_zone_enabled, set_zone_duration, pause_until, clear_pause, run_zone, run_schedule_slot, stop_all, stop_zone, skip_phase. The config entry id below identifies this installation.",
     "settings_diagnostics_summary": "Diagnostics (raw run state)",
     "settings_danger_title": "Danger zone",
     "settings_danger_desc": "Removing an installation deletes its zones and schedule. This is done from Settings → Devices & Services.",

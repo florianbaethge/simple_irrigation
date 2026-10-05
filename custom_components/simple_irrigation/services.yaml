@@ -102,6 +102,36 @@ set_zone_enabled:
       selector:
         text: {}
 
+set_zone_duration:
+  fields:
+    zone_id:
+      required: true
+      selector:
+        text: {}
+    duration_min:
+      required: true
+      selector:
+        number:
+          min: 1
+          max: 1440
+          mode: box
+    mode:
+      required: false
+      default: active
+      selector:
+        select:
+          translation_key: zone_duration_target
+          options:
+            - active
+            - eco
+            - normal
+            - extra
+            - all
+    config_entry_id:
+      required: false
+      selector:
+        text: {}
+
 pause_until:
   fields:
     until:

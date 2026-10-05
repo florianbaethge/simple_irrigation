@@ -21,6 +21,8 @@ from .const import (
     ATTR_UNTIL,
     ATTR_ZONE_ID,
     DOMAIN,
+    DURATION_TARGET_ACTIVE,
+    DURATION_TARGET_ALL,
     MODES,
     SERVICE_CLEAR_PAUSE,
     SERVICE_PAUSE_UNTIL,
@@ -29,6 +31,7 @@ from .const import (
     SERVICE_RUN_ZONE,
     SERVICE_RUN_ZONE_WITH_DURATION,
     SERVICE_SET_MODE,
+    SERVICE_SET_ZONE_DURATION,
     SERVICE_SET_ZONE_ENABLED,
     SERVICE_SKIP_PHASE,
     SERVICE_STOP_ALL,
@@ -112,6 +115,24 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             msg = f"Unknown Simple Irrigation zone: {zid}"
             raise HomeAssistantError(msg)
         inst.zones[zid].enabled = bool(call.data[ATTR_ENABLED])
+        await coordinator.async_update_installation(inst)
+
+    async def handle_set_zone_duration(call: ServiceCall) -> None:
+        data = _get_domain_data(hass, call)
+        coordinator = data["coordinator"]
+        inst: Installation = coordinator.installation
+        zid = call.data[ATTR_ZONE_ID]
+        if zid not in inst.zones:
+            msg = f"Unknown Simple Irrigation zone: {zid}"
+            raise HomeAssistantError(msg)
+        zone = inst.zones[zid]
+        minutes = int(call.data[ATTR_DURATION_MIN])
+        target = call.data[ATTR_MODE]
+        if target == DURATION_TARGET_ACTIVE:
+            target = inst.mode
+        modes = MODES if target == DURATION_TARGET_ALL else (target,)
+        for mode in modes:
+            setattr(zone, f"duration_{mode}_min", minutes)
         await coordinator.async_update_installation(inst)
 
     async def handle_pause_until(call: ServiceCall) -> None:
@@ -218,6 +239,21 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             {
                 vol.Required(ATTR_ZONE_ID): cv.string,
                 vol.Required(ATTR_ENABLED): cv.boolean,
+                vol.Optional(ATTR_CONFIG_ENTRY_ID): cv.string,
+            }
+        ),
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_SET_ZONE_DURATION,
+        handle_set_zone_duration,
+        schema=vol.Schema(
+            {
+                vol.Required(ATTR_ZONE_ID): cv.string,
+                vol.Required(ATTR_DURATION_MIN): vol.All(vol.Coerce(int), vol.Range(min=1, max=1440)),
+                vol.Optional(ATTR_MODE, default=DURATION_TARGET_ACTIVE): vol.In(
+                    (*MODES, DURATION_TARGET_ACTIVE, DURATION_TARGET_ALL)
+                ),
                 vol.Optional(ATTR_CONFIG_ENTRY_ID): cv.string,
             }
         ),

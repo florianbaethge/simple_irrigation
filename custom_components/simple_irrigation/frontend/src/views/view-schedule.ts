@@ -41,6 +41,7 @@ import {
 } from "../schedule-phases";
 import { durationForMode, plannedLitres } from "../timetable-model";
 import { renderCycleSoakEditor } from "../cycle-soak-editor";
+import { renderTime24Picker } from "../time24";
 import { formatVolumeNumber, litresToUnit, volumeUnit } from "../units";
 import { orderedZoneIds } from "../zone-order";
 import {
@@ -1271,13 +1272,14 @@ export class ViewSchedule extends LitElement {
       <div class="field-block">
         <span class="field-title">${t(this.hass, "config_panel.schedule_start_time_title")}</span>
         <div class="field-row">
-          <input
-            type="time"
-            .value=${draft.time_local}
-            @input=${(e: Event) => {
-              draft.time_local = (e.target as HTMLInputElement).value;
-            }}
-          />
+          ${renderTime24Picker(
+            t(this.hass, "config_panel.schedule_start_time_title"),
+            draft.time_local,
+            (value) => {
+              draft.time_local = value;
+              this.requestUpdate();
+            }
+          )}
         </div>
       </div>
       ${this._renderGuardSection(draft)}

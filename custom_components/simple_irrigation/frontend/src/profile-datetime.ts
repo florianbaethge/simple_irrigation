@@ -55,9 +55,14 @@ function formatDateNumericPart(date: Date, locale: HassUserLocale, serverTz: str
   return formatter.format(date);
 }
 
-function formatTimePart(date: Date, locale: HassUserLocale, serverTz: string): string {
+function formatTimePart(
+  date: Date,
+  locale: HassUserLocale,
+  serverTz: string,
+  force24Hour = false
+): string {
   const tz = resolveTimeZonePref(locale.time_zone, serverTz);
-  const ampm = useAmPmFromLocale(locale);
+  const ampm = !force24Hour && useAmPmFromLocale(locale);
   return new Intl.DateTimeFormat(locale.language, {
     hour: ampm ? "numeric" : "2-digit",
     minute: "2-digit",
@@ -71,9 +76,22 @@ function formatTimePart(date: Date, locale: HassUserLocale, serverTz: string): s
  */
 export function formatDateTimeForProfile(
   hass: HomeAssistant | undefined,
-  date: Date
+  date: Date,
+  force24Hour = false
 ): string {
-  if (!hass) return date.toLocaleString();
+  if (!hass) {
+    return force24Hour
+      ? new Intl.DateTimeFormat(undefined, {
+          weekday: "long",
+          year: "numeric",
+          month: "numeric",
+          day: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+          hourCycle: "h23",
+        }).format(date)
+      : date.toLocaleString();
+  }
   const loc = hass.locale;
   const serverTz = hass.config?.time_zone ?? LOCAL_TZ;
   const lang = (loc?.language ?? hass.language)?.replace(/_/g, "-");
@@ -90,6 +108,7 @@ export function formatDateTimeForProfile(
       year: "numeric",
       hour: "2-digit",
       minute: "2-digit",
+      hourCycle: force24Hour ? "h23" : undefined,
     }).format(date);
   }
   const tz = resolveTimeZonePref(loc!.time_zone, serverTz);
@@ -98,31 +117,6 @@ export function formatDateTimeForProfile(
     timeZone: tz,
   }).format(date);
   const datePart = formatDateNumericPart(date, loc!, serverTz);
-  const timePart = formatTimePart(date, loc!, serverTz);
+  const timePart = formatTimePart(date, loc!, serverTz, force24Hour);
   return `${weekday}, ${datePart}, ${timePart}`;
-}
-
-/**
- * Schedule slot wall time (stored as HH:MM): same clock face, 12h/24h and spacing from profile.
- */
-export function formatSlotTimeForProfile(hass: HomeAssistant | undefined, timeLocal: string): string {
-  const m = /^(\d{1,2}):(\d{2})$/.exec(String(timeLocal).trim());
-  if (!m) return timeLocal;
-  const h = Math.min(23, Math.max(0, parseInt(m[1], 10)));
-  const min = Math.min(59, Math.max(0, parseInt(m[2], 10)));
-  const d = new Date(2000, 0, 1, h, min, 0, 0);
-  const loc = hass?.locale;
-  const lang = (loc?.language ?? hass?.language)?.replace(/_/g, "-") ?? undefined;
-  if (!loc?.language || !loc.time_format) {
-    return new Intl.DateTimeFormat(lang, {
-      hour: "2-digit",
-      minute: "2-digit",
-    }).format(d);
-  }
-  const ampm = useAmPmFromLocale(loc);
-  return new Intl.DateTimeFormat(loc.language, {
-    hour: ampm ? "numeric" : "2-digit",
-    minute: "2-digit",
-    hourCycle: ampm ? "h12" : "h23",
-  }).format(d);
 }

@@ -1302,9 +1302,9 @@ function formatDateNumericPart(date, locale, serverTz) {
         return `${year}${literal}${month}${literal}${day}${lastLiteral}`;
     return formatter.format(date);
 }
-function formatTimePart(date, locale, serverTz) {
+function formatTimePart(date, locale, serverTz, force24Hour = false) {
     const tz = resolveTimeZonePref(locale.time_zone, serverTz);
-    const ampm = useAmPmFromLocale(locale);
+    const ampm = !force24Hour && useAmPmFromLocale(locale);
     return new Intl.DateTimeFormat(locale.language, {
         hour: ampm ? "numeric" : "2-digit",
         minute: "2-digit",
@@ -1315,9 +1315,20 @@ function formatTimePart(date, locale, serverTz) {
 /**
  * Absolute instant (e.g. next run, pause until): weekday + profile date + profile time + TZ preference.
  */
-function formatDateTimeForProfile(hass, date) {
-    if (!hass)
-        return date.toLocaleString();
+function formatDateTimeForProfile(hass, date, force24Hour = false) {
+    if (!hass) {
+        return force24Hour
+            ? new Intl.DateTimeFormat(undefined, {
+                weekday: "long",
+                year: "numeric",
+                month: "numeric",
+                day: "numeric",
+                hour: "2-digit",
+                minute: "2-digit",
+                hourCycle: "h23",
+            }).format(date)
+            : date.toLocaleString();
+    }
     const loc = hass.locale;
     const serverTz = hass.config?.time_zone ?? LOCAL_TZ;
     const lang = (loc?.language ?? hass.language)?.replace(/_/g, "-");
@@ -1333,6 +1344,7 @@ function formatDateTimeForProfile(hass, date) {
             year: "numeric",
             hour: "2-digit",
             minute: "2-digit",
+            hourCycle: force24Hour ? "h23" : undefined,
         }).format(date);
     }
     const tz = resolveTimeZonePref(loc.time_zone, serverTz);
@@ -1341,33 +1353,52 @@ function formatDateTimeForProfile(hass, date) {
         timeZone: tz,
     }).format(date);
     const datePart = formatDateNumericPart(date, loc, serverTz);
-    const timePart = formatTimePart(date, loc, serverTz);
+    const timePart = formatTimePart(date, loc, serverTz, force24Hour);
     return `${weekday}, ${datePart}, ${timePart}`;
 }
-/**
- * Schedule slot wall time (stored as HH:MM): same clock face, 12h/24h and spacing from profile.
- */
-function formatSlotTimeForProfile(hass, timeLocal) {
-    const m = /^(\d{1,2}):(\d{2})$/.exec(String(timeLocal).trim());
-    if (!m)
+
+/** Schedule times are wall-clock values, always presented as 24-hour HH:MM. */
+function formatTime24(timeLocal) {
+    const match = /^(\d{1,2}):(\d{2})$/.exec(timeLocal.trim());
+    if (!match)
         return timeLocal;
-    const h = Math.min(23, Math.max(0, parseInt(m[1], 10)));
-    const min = Math.min(59, Math.max(0, parseInt(m[2], 10)));
-    const d = new Date(2000, 0, 1, h, min, 0, 0);
-    const loc = hass?.locale;
-    const lang = (loc?.language ?? hass?.language)?.replace(/_/g, "-") ?? undefined;
-    if (!loc?.language || !loc.time_format) {
-        return new Intl.DateTimeFormat(lang, {
-            hour: "2-digit",
-            minute: "2-digit",
-        }).format(d);
-    }
-    const ampm = useAmPmFromLocale(loc);
-    return new Intl.DateTimeFormat(loc.language, {
-        hour: ampm ? "numeric" : "2-digit",
-        minute: "2-digit",
-        hourCycle: ampm ? "h12" : "h23",
-    }).format(d);
+    const hour = Number(match[1]);
+    const minute = Number(match[2]);
+    if (hour > 23 || minute > 59)
+        return timeLocal;
+    return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+}
+const HOURS = Array.from({ length: 24 }, (_, hour) => String(hour).padStart(2, "0"));
+const MINUTES = Array.from({ length: 60 }, (_, minute) => String(minute).padStart(2, "0"));
+/** Native time inputs follow the browser's clock preference; two selects do not. */
+function renderTime24Picker(label, timeLocal, onChange) {
+    const [hour = "00", minute = "00"] = formatTime24(timeLocal).split(":");
+    // Lit applies the select's `.value` property before it inserts the dynamic
+    // option list. A native select therefore falls back to option zero (00) on
+    // first render, even when `hour`/`minute` contain a saved schedule time.
+    // Marking the matching options selected as well makes initial rendering and
+    // later edits deterministic while retaining `.value` for normal updates.
+    return b `<span class="time24-picker" role="group" aria-label=${label}>
+    <select
+      aria-label=${`${label} HH`}
+      .value=${hour}
+      @change=${(event) => {
+        onChange(`${event.target.value}:${minute}`);
+    }}
+    >
+      ${HOURS.map((value) => b `<option value=${value} .selected=${value === hour}>${value}</option>`)}
+    </select>
+    <span aria-hidden="true">:</span>
+    <select
+      aria-label=${`${label} MM`}
+      .value=${minute}
+      @change=${(event) => {
+        onChange(`${hour}:${event.target.value}`);
+    }}
+    >
+      ${MINUTES.map((value) => b `<option value=${value} .selected=${value === minute}>${value}</option>`)}
+    </select>
+  </span>`;
 }
 
 function locale(hass) {
@@ -1425,15 +1456,13 @@ function weekdaysSummary(hass, weekdays) {
         return t$2(hass, "config_panel.weekdays_summary_weekend");
     return wds.map((i) => weekdayShort(hass, i)).join(", ");
 }
-/**
- * Absolute instant: weekday + date + time using the user’s profile (12h/24h, DMY/MDY/YMD, server vs local TZ).
- */
-function formatDateTimeForDisplay(hass, date) {
-    return formatDateTimeForProfile(hass, date);
+/** Scheduled run previews keep the user's date format but use a 24-hour clock. */
+function formatDateTime24ForDisplay(hass, date) {
+    return formatDateTimeForProfile(hass, date, true);
 }
-/** Slot wall time HH:MM with profile 12h/24h (same numbers as stored; presentation only). */
-function formatTimeLocalForDisplay(hass, timeLocal) {
-    return formatSlotTimeForProfile(hass, timeLocal);
+/** Schedule wall times always use 24-hour HH:MM, independent of locale. */
+function formatTimeLocalForDisplay(_hass, timeLocal) {
+    return formatTime24(timeLocal);
 }
 
 /** Mirrors `grouping.compute_phases` for schedule slot preview in the panel. */
@@ -1847,6 +1876,7 @@ function formatRateNumber(value) {
  * agree (acceptance §8.4). Cycle length is 7 or 14 days because `week_parity`
  * can only express a 2-week cycle.
  */
+const MAX_CYCLE_START_TIMES = 8;
 /** Round half up (matches JS Math.round and Python `round_half_up`). */
 function roundHalfUp(x) {
     return Math.floor(x + 0.5);
@@ -1944,14 +1974,20 @@ function everyNDaysSlots(n, a, timeLocal, p0) {
         out.push({ weekdays: weekB, time_local: timeLocal, week_parity: oppositeParity(p0) });
     return out;
 }
+/** Expand cadence slots so each one runs at every requested start time. */
+function atEachTime(slots, startTimes) {
+    return slots.flatMap((slot) => startTimes.map((timeLocal) => ({ ...slot, time_local: timeLocal })));
+}
 function generateCycleSlots(kind, meta, anchorParity = "odd") {
     const ts = times(meta);
     const a = anchor(meta);
     const allDays = [0, 1, 2, 3, 4, 5, 6];
     switch (kind) {
         case "daily":
-            return [{ weekdays: allDays, time_local: ts[0], week_parity: "every" }];
+            return atEachTime([{ weekdays: allDays, time_local: ts[0], week_parity: "every" }], ts);
         case "twice_daily": {
+            // Backward compatibility for cycles created before generic multi-time
+            // schedules replaced this dedicated cadence in the wizard.
             const t2 = ts.length > 1 ? ts[1] : ts[0];
             return [
                 { weekdays: allDays, time_local: ts[0], week_parity: "every" },
@@ -1959,22 +1995,18 @@ function generateCycleSlots(kind, meta, anchorParity = "odd") {
             ];
         }
         case "weekly":
-            return [{ weekdays: [a], time_local: ts[0], week_parity: "every" }];
+            return atEachTime([{ weekdays: [a], time_local: ts[0], week_parity: "every" }], ts);
         case "biweekly":
-            return [{ weekdays: [a], time_local: ts[0], week_parity: anchorParity }];
+            return atEachTime([{ weekdays: [a], time_local: ts[0], week_parity: anchorParity }], ts);
         case "n_per_week": {
             const days = weekDays(meta);
-            return [
-                { weekdays: days.length ? days : [a], time_local: ts[0], week_parity: "every" },
-            ];
+            return atEachTime([{ weekdays: days.length ? days : [a], time_local: ts[0], week_parity: "every" }], ts);
         }
         case "every_n_days":
-            return everyNDaysSlots(nValue(meta), a, ts[0], anchorParity);
+            return atEachTime(everyNDaysSlots(nValue(meta), a, ts[0], anchorParity), ts);
         default: {
             const days = weekDays(meta);
-            return [
-                { weekdays: days.length ? days : [a], time_local: ts[0], week_parity: "every" },
-            ];
+            return atEachTime([{ weekdays: days.length ? days : [a], time_local: ts[0], week_parity: "every" }], ts);
         }
     }
 }
@@ -3203,6 +3235,20 @@ const formLayoutStyles = i$7 `
     width: 100%;
     display: block;
   }
+  .time24-picker {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .time24-picker select {
+    min-width: 4.5em;
+    padding: 8px;
+    border: 1px solid var(--divider-color);
+    border-radius: 4px;
+    background: var(--card-background-color);
+    color: var(--primary-text-color);
+    font: inherit;
+  }
   .entity-picker-rows {
     display: flex;
     flex-direction: column;
@@ -3462,13 +3508,13 @@ function renderCycleSoakEditor(hass, cs, busy, onChange) {
 }
 
 const KIND_OPTIONS = [
-    { id: "daily", kind: "daily", multiAnchor: false, twoTimes: false },
-    { id: "every_2_days", kind: "every_n_days", n: 2, multiAnchor: false, twoTimes: false },
-    { id: "every_3_days", kind: "every_n_days", n: 3, multiAnchor: false, twoTimes: false },
-    { id: "n_per_week", kind: "n_per_week", multiAnchor: true, twoTimes: false },
-    { id: "weekly", kind: "weekly", multiAnchor: false, twoTimes: false },
-    { id: "biweekly", kind: "biweekly", multiAnchor: false, twoTimes: false },
-    { id: "custom", kind: "custom", multiAnchor: true, twoTimes: false },
+    { id: "daily", kind: "daily", multiAnchor: false },
+    { id: "every_2_days", kind: "every_n_days", n: 2, multiAnchor: false },
+    { id: "every_3_days", kind: "every_n_days", n: 3, multiAnchor: false },
+    { id: "n_per_week", kind: "n_per_week", multiAnchor: true },
+    { id: "weekly", kind: "weekly", multiAnchor: false },
+    { id: "biweekly", kind: "biweekly", multiAnchor: false },
+    { id: "custom", kind: "custom", multiAnchor: true },
 ];
 const TIME_PRESETS = [
     { key: "config_panel.cycle_time_preset_early", time: "05:30" },
@@ -3482,7 +3528,7 @@ class CycleWizard extends i$4 {
         this.open = false;
         this._step = 1;
         this._optionId = "daily";
-        this._times = ["19:00", "06:00"];
+        this._times = ["19:00"];
         this._anchor = 0;
         this._weekDays = [0, 3];
         this._zoneIds = [];
@@ -3579,12 +3625,14 @@ class CycleWizard extends i$4 {
       }
       .time-fields {
         display: flex;
-        flex-wrap: wrap;
-        gap: 12px;
+        flex-direction: column;
+        gap: 8px;
+        align-items: flex-start;
       }
-      .time-fields input[type="time"] {
-        width: auto;
-        min-width: 120px;
+      .time-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
       }
       .zone-pick {
         display: flex;
@@ -3634,6 +3682,7 @@ class CycleWizard extends i$4 {
         else {
             this._optionId = opts?.optionId ?? "daily";
             this._cycleId = opts?.cycleId ?? null;
+            this._times = ["19:00"];
             this._zoneIds = this._defaultZoneIds();
             this._enabled = true;
             this._label = "";
@@ -3654,14 +3703,22 @@ class CycleWizard extends i$4 {
         const meta = first.cycle_meta ?? {};
         const kind = String(first.cycle_kind ?? "custom");
         this._optionId =
-            kind === "every_n_days"
-                ? meta.n === 3
-                    ? "every_3_days"
-                    : "every_2_days"
-                : kind;
+            kind === "twice_daily"
+                ? "daily"
+                : kind === "every_n_days"
+                    ? meta.n === 3
+                        ? "every_3_days"
+                        : "every_2_days"
+                    : kind;
         this._label = String(meta.label ?? first.name ?? "");
-        const times = slots.map((s) => String(s.time_local ?? "06:00"));
-        this._times = [times[0] ?? "19:00", times[1] ?? "06:00"];
+        const savedTimes = Array.isArray(meta.times)
+            ? meta.times.map(String)
+            : slots.map((s) => String(s.time_local ?? "06:00"));
+        // Multi-week cadences have one slot per parity and time. De-duplicate the
+        // slot fallback while preserving the user's saved order from cycle_meta.
+        this._times = [...new Set(savedTimes)].slice(0, MAX_CYCLE_START_TIMES);
+        if (!this._times.length)
+            this._times = ["19:00"];
         this._anchor = Number(meta.anchor_weekday ?? 0);
         this._weekDays =
             Array.isArray(meta.week_days) && meta.week_days.length
@@ -3694,7 +3751,7 @@ class CycleWizard extends i$4 {
     }
     _meta() {
         const opt = this._option();
-        const meta = { label: this._label.trim(), times: this._times.slice(0, opt.twoTimes ? 2 : 1) };
+        const meta = { label: this._label.trim(), times: [...this._times] };
         if (opt.n)
             meta.n = opt.n;
         if (opt.multiAnchor)
@@ -3765,6 +3822,8 @@ class CycleWizard extends i$4 {
             const opt = this._option();
             if (opt.multiAnchor && this._weekDays.length === 0)
                 return false;
+            if (new Set(this._times).size !== this._times.length)
+                return false;
         }
         if (this._step === 3 && this._zoneIds.length === 0)
             return false;
@@ -3782,6 +3841,18 @@ class CycleWizard extends i$4 {
             parity: s.week_parity,
         }));
         const existing = this.installation?.schedule_slots ?? [];
+        // Warn when two start times in this cycle overlap each other as well as
+        // when they overlap a previously saved schedule.
+        for (let i = 0; i < mine.length; i++) {
+            for (let j = i + 1; j < mine.length; j++) {
+                const shareDay = [...mine[i].days].some((d) => mine[j].days.has(d));
+                const shareWeek = mine[i].parity === "every" ||
+                    mine[j].parity === "every" ||
+                    mine[i].parity === mine[j].parity;
+                if (shareDay && shareWeek && Math.abs(mine[i].start - mine[j].start) < est)
+                    return true;
+            }
+        }
         for (const slot of existing) {
             if (this._cycleId && String(slot.cycle_id ?? "") === this._cycleId)
                 continue;
@@ -3807,6 +3878,26 @@ class CycleWizard extends i$4 {
             const min = Math.min(23 * 60 + 59, parseTimeLocalToMinutes(tl) + 60);
             return minutesToTimeLocal(min).padStart(5, "0");
         });
+    }
+    _addStartTime() {
+        if (this._times.length >= MAX_CYCLE_START_TIMES)
+            return;
+        const used = new Set(this._times);
+        const last = parseTimeLocalToMinutes(this._times.at(-1) ?? "06:00");
+        // Four-hour spacing is a useful grow-in default. If it collides after
+        // wrapping around midnight, walk forward by one hour until it is unique.
+        for (let offset = 4; offset < 28; offset++) {
+            const candidate = minutesToTimeLocal((last + offset * 60) % (24 * 60)).padStart(5, "0");
+            if (!used.has(candidate)) {
+                this._times = [...this._times, candidate];
+                return;
+            }
+        }
+    }
+    _removeStartTime(index) {
+        if (index <= 0)
+            return;
+        this._times = this._times.filter((_time, i) => i !== index);
     }
     async _create() {
         this._busy = true;
@@ -3927,7 +4018,7 @@ class CycleWizard extends i$4 {
               type="button"
               class="chip ${this._times[0] === p.time ? "selected" : ""}"
               @click=${() => {
-            this._times = [p.time, this._times[1]];
+            this._times = [p.time, ...this._times.slice(1)];
             this.requestUpdate();
         }}
             >
@@ -3936,25 +4027,40 @@ class CycleWizard extends i$4 {
           `)}
       </div>
       <div class="time-fields">
-        <input
-          type="time"
-          .value=${this._times[0]}
-          @input=${(e) => {
-            this._times = [e.target.value || "06:00", this._times[1]];
-            this.requestUpdate();
-        }}
-        />
-        ${opt.twoTimes
-            ? b `<input
-              type="time"
-              .value=${this._times[1]}
-              @input=${(e) => {
-                this._times = [this._times[0], e.target.value || "18:00"];
-                this.requestUpdate();
-            }}
-            />`
+        ${this._times.map((timeLocal, index) => b `<div class="time-row">
+            ${renderTime24Picker(`${t$2(this.hass, "config_panel.cycle_time_title")} ${index + 1}`, timeLocal, (value) => {
+            const next = [...this._times];
+            next[index] = value;
+            this._times = next;
+        })}
+            ${index > 0
+            ? b `<button
+                  type="button"
+                  class="iconbtn"
+                  title=${t$2(this.hass, "config_panel.cycle_remove_start_time")}
+                  aria-label=${t$2(this.hass, "config_panel.cycle_remove_start_time")}
+                  @click=${() => this._removeStartTime(index)}
+                >
+                  <ha-icon icon="mdi:trash-can-outline"></ha-icon>
+                </button>`
             : A}
+          </div>`)}
       </div>
+      <button
+        type="button"
+        class="btn-outline"
+        ?disabled=${this._times.length >= MAX_CYCLE_START_TIMES}
+        @click=${() => this._addStartTime()}
+      >
+        <ha-icon icon="mdi:plus"></ha-icon>
+        ${t$2(this.hass, "config_panel.cycle_add_start_time")}
+      </button>
+      <p class="hint">
+        ${t$2(this.hass, "config_panel.cycle_start_times_hint", { n: MAX_CYCLE_START_TIMES })}
+      </p>
+      ${new Set(this._times).size !== this._times.length
+            ? b `<p class="error">${t$2(this.hass, "config_panel.errors_duplicate_start_time")}</p>`
+            : A}
 
       ${opt.kind === "daily" || opt.kind === "twice_daily"
             ? A
@@ -3980,7 +4086,7 @@ class CycleWizard extends i$4 {
       ${first
             ? b `<p class="preview-line">
             ${t$2(this.hass, "config_panel.cycle_preview_first_run", {
-                when: formatDateTimeForDisplay(this.hass, new Date(first.getFullYear(), first.getMonth(), first.getDate(), ...this._times[0].split(":").map(Number))),
+                when: formatDateTime24ForDisplay(this.hass, new Date(first.getFullYear(), first.getMonth(), first.getDate(), ...this._times[0].split(":").map(Number))),
             })}
           </p>`
             : A}
@@ -4007,6 +4113,17 @@ class CycleWizard extends i$4 {
         }}
         >
           ${t$2(this.hass, "config_panel.cycle_select_all")}
+        </button>
+        <button
+          type="button"
+          class="btn-outline"
+          style="margin-left:6px;margin-top:0;padding:4px 10px;font-size:0.8rem"
+          @click=${() => {
+            this._zoneIds = [];
+            this.requestUpdate();
+        }}
+        >
+          ${t$2(this.hass, "config_panel.cycle_select_none")}
         </button>
       </div>
       ${allIds.map((id) => {
@@ -4152,7 +4269,7 @@ class CycleWizard extends i$4 {
         ${first
             ? b `<p class="preview-line" style="margin-bottom:0">
               ${t$2(this.hass, "config_panel.cycle_preview_first_run", {
-                when: formatDateTimeForDisplay(this.hass, new Date(first.getFullYear(), first.getMonth(), first.getDate(), ...this._times[0].split(":").map(Number))),
+                when: formatDateTime24ForDisplay(this.hass, new Date(first.getFullYear(), first.getMonth(), first.getDate(), ...this._times[0].split(":").map(Number))),
             })}
             </p>`
             : A}
@@ -5352,13 +5469,10 @@ class ViewSchedule extends i$4 {
       <div class="field-block">
         <span class="field-title">${t$2(this.hass, "config_panel.schedule_start_time_title")}</span>
         <div class="field-row">
-          <input
-            type="time"
-            .value=${draft.time_local}
-            @input=${(e) => {
-            draft.time_local = e.target.value;
-        }}
-          />
+          ${renderTime24Picker(t$2(this.hass, "config_panel.schedule_start_time_title"), draft.time_local, (value) => {
+            draft.time_local = value;
+            this.requestUpdate();
+        })}
         </div>
       </div>
       ${this._renderGuardSection(draft)}
@@ -6615,8 +6729,8 @@ class ViewTimetable extends i$4 {
         return t$2(this.hass, "config_panel.timetable_legend_bucket_evening");
     }
     _entryTooltip(e) {
-        const start = formatSlotTimeForProfile(this.hass, minutesToTimeLocal(e.startMin));
-        const end = formatSlotTimeForProfile(this.hass, minutesToTimeLocal(e.endMin));
+        const start = formatTimeLocalForDisplay(this.hass, minutesToTimeLocal(e.startMin));
+        const end = formatTimeLocalForDisplay(this.hass, minutesToTimeLocal(e.endMin));
         const modeKey = e.mode === "eco"
             ? "config_panel.timetable_mode_eco"
             : e.mode === "extra"
@@ -6776,8 +6890,8 @@ class ViewTimetable extends i$4 {
             ${dayEntries.length
             ? b `
                   ${dayEntries.map((e) => {
-                const start = formatSlotTimeForProfile(this.hass, minutesToTimeLocal(e.startMin));
-                const end = formatSlotTimeForProfile(this.hass, minutesToTimeLocal(e.endMin));
+                const start = formatTimeLocalForDisplay(this.hass, minutesToTimeLocal(e.startMin));
+                const end = formatTimeLocalForDisplay(this.hass, minutesToTimeLocal(e.endMin));
                 return b `
                       <div
                         class="day-run ${e.enabled ? "" : "disabled"}"
@@ -6840,8 +6954,8 @@ class ViewTimetable extends i$4 {
                         ? b `
                                     <div class="tt-blocks ${multiLane ? "tt-blocks--lanes" : ""}">
                                       ${cellEntries.map((e) => {
-                            const start = formatSlotTimeForProfile(this.hass, minutesToTimeLocal(e.startMin));
-                            const end = formatSlotTimeForProfile(this.hass, minutesToTimeLocal(e.endMin));
+                            const start = formatTimeLocalForDisplay(this.hass, minutesToTimeLocal(e.startMin));
+                            const end = formatTimeLocalForDisplay(this.hass, minutesToTimeLocal(e.endMin));
                             const dur = entryDurationMinutesRounded(e);
                             const durLabel = t$2(this.hass, "config_panel.timetable_duration_min", {
                                 n: dur,

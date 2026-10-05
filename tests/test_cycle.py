@@ -17,6 +17,7 @@ from custom_components.simple_irrigation.cycle import (
     cycle_is_exact,
     round_half_up,
     simulate_fire_days,
+    validate_cycle_start_times,
 )
 from custom_components.simple_irrigation.time_util import next_slot_fire_local_any
 
@@ -42,6 +43,23 @@ def test_daily() -> None:
     assert slots[0]["week_parity"] == "every"
 
 
+def test_daily_supports_multiple_start_times() -> None:
+    slots = generate_cycle_slots("daily", _meta(times=["06:00", "12:00", "19:00"]))
+
+    assert [slot["time_local"] for slot in slots] == ["06:00", "12:00", "19:00"]
+    assert all(slot["weekdays"] == [0, 1, 2, 3, 4, 5, 6] for slot in slots)
+
+
+def test_start_time_validation_rejects_duplicates_and_unbounded_lists() -> None:
+    assert validate_cycle_start_times([" 06:00 ", "19:00"]) == (
+        ["06:00", "19:00"],
+        None,
+    )
+    assert validate_cycle_start_times(["06:00", "06:00"])[1] == "duplicate_start_time"
+    assert validate_cycle_start_times(["25:00"])[1] == "invalid_time"
+    assert validate_cycle_start_times(["06:00"] * 9)[1] == "too_many_start_times"
+
+
 def test_twice_daily() -> None:
     slots = generate_cycle_slots("twice_daily", _meta(times=["06:00", "19:00"]))
     assert len(slots) == 2
@@ -65,6 +83,16 @@ def test_n_per_week() -> None:
     assert slots == [{"weekdays": [0, 2, 4], "time_local": "19:00", "week_parity": "every"}]
 
 
+def test_selected_weekdays_are_repeated_at_each_start_time() -> None:
+    slots = generate_cycle_slots(
+        "custom",
+        _meta(week_days=[1, 4], times=["05:30", "09:30", "13:30"]),
+    )
+
+    assert [slot["time_local"] for slot in slots] == ["05:30", "09:30", "13:30"]
+    assert all(slot["weekdays"] == [1, 4] for slot in slots)
+
+
 def test_every_2_days_two_parity_slots() -> None:
     """n=2 → odd: Mo We Fr Su · even: Tu Th Sa (spec §3.4)."""
     slots = generate_cycle_slots("every_n_days", _meta(n=2), anchor_parity="odd")
@@ -72,6 +100,22 @@ def test_every_2_days_two_parity_slots() -> None:
     by_parity = {s["week_parity"]: s["weekdays"] for s in slots}
     assert by_parity["odd"] == [0, 2, 4, 6]  # Mo We Fr Su
     assert by_parity["even"] == [1, 3, 5]  # Tu Th Sa
+
+
+def test_every_2_days_multiplies_parity_slots_by_start_times() -> None:
+    slots = generate_cycle_slots(
+        "every_n_days",
+        _meta(n=2, times=["06:00", "18:00"]),
+        anchor_parity="odd",
+    )
+
+    assert len(slots) == 4
+    assert [(slot["week_parity"], slot["time_local"]) for slot in slots] == [
+        ("odd", "06:00"),
+        ("odd", "18:00"),
+        ("even", "06:00"),
+        ("even", "18:00"),
+    ]
 
 
 def test_every_3_days() -> None:

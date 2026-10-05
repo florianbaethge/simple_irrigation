@@ -232,6 +232,20 @@ class IrrigationRuntime:
             RUN_STATE_STOPPING,
         )
 
+    async def async_wait_for_current_run(self) -> None:
+        """Wait until the current pipeline has fully cleaned up.
+
+        ``run_state`` becomes idle just before the task's ``finally`` block
+        clears its private queues. Awaiting the task, rather than polling only
+        the public state, prevents a queued run from being started and then
+        accidentally cleared by that final cleanup.
+        """
+        task = self._task
+        if task is None or task.done() or task is asyncio.current_task():
+            return
+        with suppress(asyncio.CancelledError):
+            await asyncio.shield(task)
+
     async def async_run_phases(
         self,
         phases: list[RunStep],
@@ -239,14 +253,14 @@ class IrrigationRuntime:
         scheduled: bool,
         slot_ids: list[str] | None = None,
         duration_overrides: dict[str, int] | None = None,
-    ) -> None:
-        """Start background task to run phases."""
+    ) -> bool:
+        """Start a background run; return whether it was accepted."""
         if not phases:
-            return
+            return False
         async with self._run_lock:
             if self.is_busy():
                 _LOGGER.warning("Run skipped: already busy")
-                return
+                return False
             self._duration_overrides = dict(duration_overrides or {})
             self._phase_queue = _copy_steps(phases)
             self._manual_zone_order.clear()
@@ -259,6 +273,7 @@ class IrrigationRuntime:
             self._task = self.hass.async_create_task(
                 self._async_run_pipeline(scheduled, slot_ids or []),
             )
+            return True
 
     async def _async_run_pipeline(
         self,

@@ -96,7 +96,7 @@ class Garden:
             stop.cancel()
             hold.cancel()
 
-    async def _sleep(self, seconds: float) -> None:
+    async def _sleep(self, seconds: float, **_kwargs) -> None:
         if seconds > 0:
             self.sleeps.append(seconds)
 
@@ -299,7 +299,7 @@ async def test_stop_closes_zone_supply_and_pre_start_in_that_order() -> None:
 async def test_skipping_while_the_supply_comes_up_opens_no_zone() -> None:
     garden = Garden(_zone("a", VALVE, supply_lead_sec=10), _zone("b"))
 
-    async def _skip_during_lead(seconds: float) -> None:
+    async def _skip_during_lead(seconds: float, **_kwargs) -> None:
         if seconds > 0:
             garden.runtime._skip_phase_event.set()
 

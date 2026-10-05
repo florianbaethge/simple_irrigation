@@ -6,6 +6,7 @@ import asyncio
 import logging
 from datetime import datetime, timedelta
 from contextlib import suppress
+from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from homeassistant.exceptions import HomeAssistantError
@@ -115,6 +116,9 @@ class IrrigationRuntime:
         self._touched_entities: set[str] = set()
         # Hardware countdowns armed for this run; cleared once their valve is shut.
         self._armed_countdowns: set[str] = set()
+        # Outputs a clean-up could not close. Every later clean-up tries them
+        # again, and for as long as one is left the run has not ended cleanly.
+        self._unclosed: set[str] = set()
         # Supply outputs this run has opened, and how many watering zones need
         # each of them. One that nobody needs any more is closed -- unless the
         # next phase is about to ask for it again.
@@ -142,6 +146,16 @@ class IrrigationRuntime:
         # of them is started at a time, and none while Stop is being carried out.
         self._waiting_lock = asyncio.Lock()
         self._stopping_all = 0
+        # Home Assistant is going down: nothing starts any more.
+        self._shutting_down = False
+        # A run was cut off by a restart; what it may have left open is closed.
+        self._interrupted = False
+        # What each watering zone took of its supply, and how long that trails:
+        # released as it was taken, whatever the zone is set to by then.
+        self._zone_supplies: dict[str, tuple[list[str], int]] = {}
+        # Zones of the phase whose supply is coming up; not open yet, but
+        # already there for Stop zone to find.
+        self._leading_zone_ids: set[str] = set()
 
     async def async_setup(self) -> None:
         """Reset state on startup and shut what an interrupted run left open."""
@@ -154,6 +168,7 @@ class IrrigationRuntime:
         if rs.run_state not in (RUN_STATE_IDLE, RUN_STATE_ERROR):
             rs.run_state = RUN_STATE_ERROR
             rs.last_error = "Interrupted by Home Assistant restart"
+            self._interrupted = True
             self._interrupted_zone_ids = list(rs.active_zone_ids)
             rs.active_zone_ids = []
             rs.queued_zone_ids = []
@@ -187,7 +202,13 @@ class IrrigationRuntime:
         # Downstream first: the zones, what supplies them, the pre-start outputs.
         # A run that began in the meantime keeps what it holds.
         outputs = [eid for zone in zones for eid in zone.switch_entity_ids]
-        outputs.extend(eid for zone in zones for eid in zone.supply_entity_ids)
+        if self._interrupted:
+            # Every supply, not only that of the zones on record: one that was
+            # still coming up, or trailing behind a zone that had closed, has
+            # no zone to its name.
+            outputs.extend(
+                eid for zone in inst.zones.values() for eid in zone.supply_entity_ids
+            )
         if not self.is_busy():
             outputs.extend(inst.pre_start_switches)
         failed: list[str] = []
@@ -200,6 +221,7 @@ class IrrigationRuntime:
                 failed.append(entity_id)
         if not final:
             return
+        self._interrupted = False
         self._interrupted_zone_ids = []
         for zone in zones:
             countdown = zone.countdown_entity_id.strip()
@@ -219,7 +241,12 @@ class IrrigationRuntime:
         before the call reaches it. The run therefore stays on record as cut
         off, and the next start closes the same outputs once more.
         """
-        if not self.is_busy():
+        busy = self.is_busy()
+        # From here on nothing starts: a schedule coming due while Home
+        # Assistant winds down would open a valve nobody is left to close.
+        self._shutting_down = True
+        self._drop_waiting(SKIP_STOPPED)
+        if not busy:
             return
         rs = self.coordinator.run_state
         state, watering = rs.run_state, list(rs.active_zone_ids)
@@ -252,9 +279,9 @@ class IrrigationRuntime:
             self._task = None
 
     def is_busy(self) -> bool:
-        """Return True if a run is active."""
+        """Return True if a run is active, or none may start any more."""
         rs = self.coordinator.run_state
-        return rs.run_state in (
+        return self._shutting_down or rs.run_state in (
             RUN_STATE_PREPARING,
             RUN_STATE_RUNNING,
             RUN_STATE_STOPPING,
@@ -367,6 +394,8 @@ class IrrigationRuntime:
             rs.upcoming_phases = watering_steps(self._phase_queue)
             await self.coordinator.async_update_run_state(rs)
 
+            # The phase before this step watered nothing.
+            dry = False
             while True:
                 if self._stop_event.is_set():
                     break
@@ -385,19 +414,26 @@ class IrrigationRuntime:
                     break
 
                 # Still set here when Skip phase ended the previous step.
-                skipped = self._skip_phase_event.is_set()
+                skipped = self._skip_phase_event.is_set() or dry
+                dry = False
                 self._skip_phase_event.clear()
                 step = self._phase_queue.pop(0)
                 rs = self.coordinator.run_state
                 rs.upcoming_phases = watering_steps(self._phase_queue)
                 if isinstance(step, Soak):
                     # A skipped phase takes the rest after it along -- whoever
-                    # skips wants to see the next zone, not a pause. And a rest
-                    # with nothing left to water behind it is pointless.
+                    # skips wants to see the next zone, not a pause. So does a
+                    # phase that watered nothing: there is nothing to soak in.
+                    # And a rest with nothing left to water behind it is pointless.
                     if skipped or not self._watering_ahead():
                         await self.coordinator.async_update_run_state(rs)
                         continue
                     await self._async_soak(step.seconds)
+                    continue
+                if not self._phase_waters(step, inst.mode):
+                    # Every zone at 0 minutes, or switched off: not a phase at all.
+                    dry = True
+                    await self.coordinator.async_update_run_state(rs)
                     continue
                 rs.phase_index += 1
                 await self.coordinator.async_update_run_state(rs)
@@ -411,15 +447,26 @@ class IrrigationRuntime:
                 EVENT_RUN_FAILED,
                 {"error": str(err)},
             )
-            await self._async_finish_run(RUN_STATE_ERROR, error=str(err))
+            try:
+                await self._async_finish_run(RUN_STATE_ERROR, error=str(err))
+            except Exception:  # noqa: BLE001 - never leave the run on "stopping"
+                # The clean-up failed as well. Stuck on "stopping" the
+                # installation would refuse every run until a restart.
+                _LOGGER.exception("Cleaning up after the failed run failed too")
+                self._clear_run()
+                self._settle(RUN_STATE_ERROR, str(err))
+                with suppress(Exception):
+                    await self.coordinator.async_update_run_state(rs)
         finally:
-            self._duration_overrides.clear()
-            self._manual_zone_order.clear()
-            self._after_phase_zone_order.clear()
-            self._mid_phase_extensions.clear()
-            self._phase_queue.clear()
-            self._zone_stop_requests.clear()
-            self._run_slots = []
+            # A run that got as far as its end has cleared up already, and the
+            # next one may be under way. Only a run cut off before that -- its
+            # task cancelled -- still has to, and no run can have followed it.
+            if self.coordinator.run_state.run_state in (
+                RUN_STATE_PREPARING,
+                RUN_STATE_RUNNING,
+                RUN_STATE_STOPPING,
+            ) and self._task in (None, asyncio.current_task()):
+                self._clear_run()
 
     def _slot_by_id(self, slot_id: str | None) -> ScheduleSlot | None:
         if slot_id is None:
@@ -451,7 +498,7 @@ class IrrigationRuntime:
         inst = self.coordinator.installation
         rs = self.coordinator.run_state
         refused: str | None = None
-        if self._stopping_all:
+        if self._stopping_all or self._shutting_down:
             refused = SKIP_STOPPED
         elif self.is_busy() and not inst.wait_when_busy:
             refused = SKIP_BUSY
@@ -544,6 +591,8 @@ class IrrigationRuntime:
     def _forget_supplies(self) -> None:
         self._open_supplies.clear()
         self._supply_refs.clear()
+        self._zone_supplies.clear()
+        self._leading_zone_ids.clear()
 
     async def _async_open_supplies(self, zones: list[Zone]) -> None:
         """Bring up what these zones need, then give it its lead time.
@@ -555,6 +604,12 @@ class IrrigationRuntime:
         lead = 0
         for zone in zones:
             opened = False
+            # Released as taken: the zone may be saved differently, or deleted,
+            # before it is done.
+            self._zone_supplies[zone.zone_id] = (
+                list(zone.supply_entity_ids),
+                zone.supply_trail_sec,
+            )
             for entity_id in zone.supply_entity_ids:
                 self._supply_refs[entity_id] = self._supply_refs.get(entity_id, 0) + 1
                 if entity_id not in self._open_supplies:
@@ -566,15 +621,16 @@ class IrrigationRuntime:
                 lead = max(lead, inst.pre_start_delay_sec if own is None else own)
         await self._async_sleep_interruptible(float(lead))
 
-    async def _async_release_supplies(self, zone: Zone, keep: frozenset[str]) -> None:
-        """A zone has closed: let go of its supply, after its trail time.
+    async def _async_release_supplies(self, zone_id: str, keep: frozenset[str]) -> None:
+        """A zone has closed: let go of what it took, after its trail time.
 
         The trail only runs when something is really about to close. Stop and
         Skip phase cut it short.
         """
-        held = [e for e in zone.supply_entity_ids if self._supply_refs.get(e, 0) > 0]
+        taken, trail_sec = self._zone_supplies.pop(zone_id, ([], 0))
+        held = [e for e in taken if self._supply_refs.get(e, 0) > 0]
         if any(self._supply_refs[e] == 1 and e not in keep for e in held):
-            await self._async_sleep_interruptible(float(zone.supply_trail_sec))
+            await self._async_sleep_interruptible(float(trail_sec))
         for entity_id in held:
             self._supply_refs[entity_id] -= 1
         await self._async_close_idle_supplies(keep)
@@ -597,35 +653,47 @@ class IrrigationRuntime:
                 await self._async_switch_turn_off(entity_id)
 
     def _supplies_needed_next(self, mode: str) -> frozenset[str]:
-        """What the phase right behind this one needs; nothing across a rest."""
-        step = self._phase_queue[0] if self._phase_queue else None
-        if step is None or isinstance(step, Soak):
-            return frozenset()
+        """What the next phase that waters needs; nothing across a rest."""
         inst = self.coordinator.installation
-        slot_id = phase_slot_id(step)
-        return frozenset(
-            entity_id
-            for zone_id in step
-            if (zone := inst.zones.get(zone_id)) is not None
-            and zone.enabled
-            and self._zone_minutes(zone, mode, slot_id) > 0
-            for entity_id in zone.supply_entity_ids
-        )
+        passed_dry = False
+        for step in self._phase_queue:
+            if isinstance(step, Soak):
+                if passed_dry:
+                    # The rest behind a phase that waters nothing is left out.
+                    continue
+                return frozenset()
+            if not self._phase_waters(step, mode):
+                passed_dry = True
+                continue
+            slot_id = phase_slot_id(step)
+            return frozenset(
+                entity_id
+                for zone_id in step
+                if (zone := inst.zones.get(zone_id)) is not None
+                and zone.enabled
+                and self._zone_minutes(zone, mode, slot_id) > 0
+                for entity_id in zone.supply_entity_ids
+            )
+        return frozenset()
 
     def _slots_for_ids(self, slot_ids: list[str]) -> list[ScheduleSlot]:
         """The run's slots, in the order they were merged into it."""
         by_id = {s.slot_id: s for s in self.coordinator.installation.schedule_slots}
         return [by_id[sid] for sid in slot_ids if sid in by_id]
 
-    async def _async_finish_run(self, state: str, error: str | None) -> None:
+    def _clear_run(self) -> None:
+        """Forget what belonged to the run that is ending."""
+        self._duration_overrides.clear()
+        self._manual_zone_order.clear()
+        self._after_phase_zone_order.clear()
+        self._mid_phase_extensions.clear()
+        self._phase_queue.clear()
+        self._zone_stop_requests.clear()
+        self._run_slots = []
+
+    def _settle(self, state: str, error: str | None) -> None:
+        """The run is over: ``state`` it ends in, and nothing left of it on show."""
         rs = self.coordinator.run_state
-        rs.run_state = RUN_STATE_STOPPING
-        await self.coordinator.async_update_run_state(rs)
-
-        await self._async_turn_off_all_tracked()
-        self._book_run_water()
-        await self._async_post_run()
-
         rs.run_state = state
         rs.active_zone_ids = []
         rs.queued_zone_ids = []
@@ -643,6 +711,24 @@ class IrrigationRuntime:
             rs.last_error = error
         elif state == RUN_STATE_IDLE:
             rs.last_error = None
+
+    async def _async_finish_run(self, state: str, error: str | None) -> None:
+        rs = self.coordinator.run_state
+        rs.run_state = RUN_STATE_STOPPING
+        await self.coordinator.async_update_run_state(rs)
+
+        failed = await self._async_turn_off_all_tracked()
+        self._book_run_water()
+        await self._async_post_run()
+
+        if failed and not error:
+            # Water may still be running: that is no clean end, whatever the
+            # run itself did.
+            state, error = RUN_STATE_ERROR, f"Could not turn off: {', '.join(failed)}"
+        # Before the state says idle: from that moment the next run may be
+        # handed its queue, and this one must not sweep it away afterwards.
+        self._clear_run()
+        self._settle(state, error)
         await self.coordinator.async_update_run_state(rs)
 
         self.hass.bus.async_fire(
@@ -650,11 +736,24 @@ class IrrigationRuntime:
             {"run_state": state, "error": error},
         )
 
-    def _watering_ahead(self) -> bool:
-        """Whether any phase is still waiting to run."""
-        return any(not isinstance(step, Soak) for step in self._phase_queue) or bool(
-            self._after_phase_zone_order
+    def _phase_waters(self, step: list[str], mode: str) -> bool:
+        """Whether a phase would open a valve: an enabled zone with minutes to run."""
+        inst = self.coordinator.installation
+        slot_id = phase_slot_id(step)
+        return any(
+            (zone := inst.zones.get(zone_id)) is not None
+            and zone.enabled
+            and self._zone_minutes(zone, mode, slot_id) > 0
+            for zone_id in step
         )
+
+    def _watering_ahead(self) -> bool:
+        """Whether any phase that waters is still waiting to run."""
+        mode = self.coordinator.installation.mode
+        return any(
+            not isinstance(step, Soak) and self._phase_waters(step, mode)
+            for step in self._phase_queue
+        ) or bool(self._after_phase_zone_order)
 
     async def _async_soak(self, seconds: int) -> None:
         """Rest between Cycle & Soak steps with every output closed.
@@ -669,10 +768,18 @@ class IrrigationRuntime:
         rs.soak_until = dt_util.utcnow() + timedelta(seconds=seconds)
         rs.active_zone_ids = []
         await self.coordinator.async_update_run_state(rs)
+        # Every output closed means the supplies too, whatever is still held.
+        self._supply_refs.clear()
+        self._zone_supplies.clear()
+        await self._async_close_idle_supplies()
         for entity_id in inst.pre_start_switches:
             await self._async_switch_turn_off(entity_id)
         try:
-            await self._async_sleep_interruptible(float(seconds))
+            # Ends early once nothing is left to water behind it: the last
+            # zone may be taken out of the run while it rests.
+            await self._async_sleep_interruptible(
+                float(seconds), over=lambda: not self._watering_ahead()
+            )
         finally:
             # No await here: stop_all() may cancel this task, and an await in
             # the finally of a cancelled task raises straight away. stop_all()
@@ -681,9 +788,11 @@ class IrrigationRuntime:
         await self.coordinator.async_update_run_state(rs)
         if self._stop_event.is_set() or not inst.pre_start_switches:
             return
+        if not self._watering_ahead():
+            return
         for entity_id in inst.pre_start_switches:
             await self._async_switch_turn_on(entity_id)
-        await self._async_sleep_interruptible(float(inst.pre_start_delay_sec))
+        await self._async_sleep_interruptible(float(inst.pre_start_delay_sec), skippable=False)
 
     # --- water ---------------------------------------------------------------
 
@@ -748,8 +857,17 @@ class IrrigationRuntime:
         rs.run_water_l = None
         rs.run_water_source = ""
 
-    async def _async_sleep_interruptible(self, delay_sec: float) -> None:
-        """Sleep but wake early on stop or skip phase."""
+    async def _async_sleep_interruptible(
+        self,
+        delay_sec: float,
+        *,
+        skippable: bool = True,
+        over: Callable[[], bool] | None = None,
+    ) -> None:
+        """Sleep, but wake early on stop -- and on skip phase, unless told not to.
+
+        ``over`` is asked once a second whether the wait still has a point.
+        """
         if delay_sec <= 0:
             return
         loop = asyncio.get_running_loop()
@@ -757,14 +875,17 @@ class IrrigationRuntime:
         while True:
             if self._stop_event.is_set():
                 return
-            if self._skip_phase_event.is_set():
+            if skippable and self._skip_phase_event.is_set():
+                return
+            if over is not None and over():
                 return
             remaining = deadline - loop.time()
             if remaining <= 0:
                 return
             chunk = min(remaining, 1.0)
+            wake = self._wait_stop_or_skip() if skippable else self._stop_event.wait()
             try:
-                await asyncio.wait_for(self._wait_stop_or_skip(), timeout=chunk)
+                await asyncio.wait_for(wake, timeout=chunk)
             except TimeoutError:
                 pass
 
@@ -785,7 +906,8 @@ class IrrigationRuntime:
             return
         for entity_id in inst.pre_start_switches:
             await self._async_switch_turn_on(entity_id)
-        await self._async_sleep_interruptible(float(delay_sec))
+        # The pump's time to build pressure: Stop ends it, Skip phase does not.
+        await self._async_sleep_interruptible(float(delay_sec), skippable=False)
 
     async def _async_post_run(self) -> None:
         """Run the post-run script once every output is off again.
@@ -923,6 +1045,12 @@ class IrrigationRuntime:
                 # Joined a phase that is already under way.
                 supplied.add(zid)
                 await self._async_open_supplies([zone])
+                if self._stop_event.is_set() or self._skip_phase_event.is_set():
+                    # Stopped or skipped while its supply was coming up.
+                    return
+                if zid in self._zone_stop_requests:
+                    self._zone_stop_requests.discard(zid)
+                    return
             await self._async_zone_run(zone, duration)
 
         # What supplies the phase comes up first, for all its zones at once.
@@ -934,7 +1062,12 @@ class IrrigationRuntime:
             and self._zone_minutes(zone, mode, slot_id) > 0
         ]
         supplied.update(zone.zone_id for zone in first)
-        await self._async_open_supplies(first)
+        # Not open yet, but Stop zone can already reach them.
+        self._leading_zone_ids = set(supplied)
+        try:
+            await self._async_open_supplies(first)
+        finally:
+            self._leading_zone_ids = set()
         # A supply held over from the last phase that this one did not claim.
         await self._async_close_idle_supplies()
 
@@ -945,14 +1078,13 @@ class IrrigationRuntime:
 
         def _let_go(zid: str) -> None:
             """Start closing the supply of a zone that is done with it."""
-            zone = inst.zones.get(zid)
-            if zid not in supplied or zone is None:
+            if zid not in supplied:
                 return
             supplied.discard(zid)
             # With the phase over, what the next one needs is handed on to it
             # instead of closing now and opening again a moment later.
             keep = frozenset() if tasks_by_zone else self._supplies_needed_next(mode)
-            releases.append(asyncio.create_task(self._async_release_supplies(zone, keep)))
+            releases.append(asyncio.create_task(self._async_release_supplies(zid, keep)))
 
         if self._stop_event.is_set() or self._skip_phase_event.is_set():
             # Stopped or skipped while the supply was coming up: the phase is
@@ -971,50 +1103,59 @@ class IrrigationRuntime:
 
         await _sync_active()
 
-        while tasks_by_zone:
-            if self._stop_event.is_set():
-                for t in tasks_by_zone.values():
-                    t.cancel()
-                await asyncio.gather(*tasks_by_zone.values(), return_exceptions=True)
-                tasks_by_zone.clear()
-                break
-
-            ext_wait = asyncio.create_task(self._phase_extend_event.wait())
-            done, _ = await asyncio.wait(
-                set(tasks_by_zone.values()) | {ext_wait},
-                return_when=asyncio.FIRST_COMPLETED,
-            )
-
-            extension_signalled = ext_wait in done
-            if not extension_signalled:
-                ext_wait.cancel()
-            with suppress(asyncio.CancelledError):
-                await ext_wait
-
-            if extension_signalled:
-                self._phase_extend_event.clear()
-                for zid in self._drain_mid_phase_extensions():
-                    _launch(zid)
-
-            for t in done:
-                if t is ext_wait:
-                    continue
-                zid = next((z for z, ut in tasks_by_zone.items() if ut is t), None)
-                if zid is None:
-                    continue
-                tasks_by_zone.pop(zid, None)
-                await t
-                _let_go(zid)
-
-            await _sync_active()
-
         try:
+            while tasks_by_zone:
+                if self._stop_event.is_set():
+                    for t in tasks_by_zone.values():
+                        t.cancel()
+                    await asyncio.gather(*tasks_by_zone.values(), return_exceptions=True)
+                    tasks_by_zone.clear()
+                    break
+
+                ext_wait = asyncio.create_task(self._phase_extend_event.wait())
+                done, _ = await asyncio.wait(
+                    set(tasks_by_zone.values()) | {ext_wait},
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
+
+                extension_signalled = ext_wait in done
+                if not extension_signalled:
+                    ext_wait.cancel()
+                with suppress(asyncio.CancelledError):
+                    await ext_wait
+
+                if extension_signalled:
+                    self._phase_extend_event.clear()
+                    for zid in self._drain_mid_phase_extensions():
+                        _launch(zid)
+
+                for t in done:
+                    if t is ext_wait:
+                        continue
+                    zid = next((z for z, ut in tasks_by_zone.items() if ut is t), None)
+                    if zid is None:
+                        continue
+                    tasks_by_zone.pop(zid, None)
+                    await t
+                    _let_go(zid)
+
+                await _sync_active()
+
             # On stop the run's cleanup closes everything; nothing trails then.
             if not self._stop_event.is_set():
                 await asyncio.gather(*releases)
+        except Exception:
+            # One zone failed. Its neighbours must not water on behind a run
+            # that is over -- and later close their valve under the next one.
+            leftover = [*tasks_by_zone.values(), *releases]
+            for task in leftover:
+                task.cancel()
+            await asyncio.gather(*leftover, return_exceptions=True)
+            raise
         finally:
-            for release in releases:
-                release.cancel()
+            # No await here: this is also where a cancelled run comes through.
+            for task in (*tasks_by_zone.values(), *releases):
+                task.cancel()
 
         rs = self.coordinator.run_state
         rs.active_zone_ids = []
@@ -1250,7 +1391,7 @@ class IrrigationRuntime:
                     )
                 self._duration_overrides[zone_id] = dur
                 self._zone_stop_requests.discard(zone_id)
-                if rs.run_state == RUN_STATE_PREPARING:
+                if rs.run_state == RUN_STATE_PREPARING and not self._run_slots:
                     self._manual_zone_order.append(zone_id)
                     self._phase_queue = compute_phases(
                         self._manual_zone_order,
@@ -1258,6 +1399,13 @@ class IrrigationRuntime:
                         inst.max_parallel_zones,
                     )
                     rs.upcoming_phases = [list(g) for g in self._phase_queue]
+                    await self.coordinator.async_update_run_state(rs)
+                    return
+                if rs.run_state == RUN_STATE_PREPARING:
+                    # "Run this slot now" is preparing: the slot keeps its
+                    # program -- zones, rests, minutes -- and this zone follows it.
+                    self._after_phase_zone_order.append(zone_id)
+                    rs.upcoming_phases = self._upcoming_phases_snapshot()
                     await self.coordinator.async_update_run_state(rs)
                     return
                 if rs.run_state == RUN_STATE_RUNNING:
@@ -1272,14 +1420,7 @@ class IrrigationRuntime:
                         self._phase_extend_event.set()
                     else:
                         self._after_phase_zone_order.append(zone_id)
-                        tail = compute_phases(
-                            self._after_phase_zone_order,
-                            inst.zones,
-                            inst.max_parallel_zones,
-                        )
-                        rs.upcoming_phases = [list(g) for g in self._phase_queue] + [
-                            list(g) for g in tail
-                        ]
+                        rs.upcoming_phases = self._upcoming_phases_snapshot()
                         await self.coordinator.async_update_run_state(rs)
                     return
                 raise ZoneManualRunError("busy", "Irrigation is already running")
@@ -1333,7 +1474,7 @@ class IrrigationRuntime:
             nxt = next_slot_fire(inst, slot, now - timedelta(minutes=2), tz)
             if nxt is None:
                 continue
-            if abs((now - nxt).total_seconds()) < 120:
+            if abs(now.timestamp() - nxt.timestamp()) < 120:
                 if guards_allow_run(self.hass, inst, slot):
                     due_slots.append(slot)
         merged: list[RunStep] = []
@@ -1375,7 +1516,13 @@ class IrrigationRuntime:
                 step = Phase([z for z in step if z != zone_id], phase_slot_id(step))
             if step:
                 kept.append(step)
-        self._phase_queue[:] = kept
+        # Where a whole phase went, the rests on either side of it would now
+        # follow each other: one of them is enough.
+        self._phase_queue[:] = [
+            step
+            for i, step in enumerate(kept)
+            if not (isinstance(step, Soak) and i > 0 and isinstance(kept[i - 1], Soak))
+        ]
         if zone_id in self._after_phase_zone_order:
             self._after_phase_zone_order.remove(zone_id)
             found = True
@@ -1403,7 +1550,8 @@ class IrrigationRuntime:
             if not self.is_busy() or rs.run_state == RUN_STATE_STOPPING:
                 raise ZoneStopError("zone_not_running", "Zone is not part of the current run")
 
-            active = zone_id in rs.active_zone_ids
+            # Watering, or about to: its supply is coming up.
+            active = zone_id in rs.active_zone_ids or zone_id in self._leading_zone_ids
             queued = self._discard_queued_zone(zone_id)
             if not active and not queued:
                 raise ZoneStopError("zone_not_running", "Zone is not part of the current run")
@@ -1435,29 +1583,37 @@ class IrrigationRuntime:
     async def _async_stop_all(self) -> None:
         self._stop_event.set()
         self._zone_stop_requests.clear()
-        if self._task and not self._task.done():
+        stopped = self._task
+        if stopped and not stopped.done():
             try:
-                await asyncio.wait_for(self._task, timeout=300)
+                await asyncio.wait_for(stopped, timeout=300)
             except TimeoutError:
-                self._task.cancel()
-        await self._async_turn_off_all_tracked()
-        rs = self.coordinator.run_state
-        rs.run_state = RUN_STATE_IDLE
-        rs.active_zone_ids = []
-        rs.last_error = None
-        rs.upcoming_phases = []
-        rs.phase_index = 0
-        rs.active_script = None
-        rs.active_script_started_at = None
-        rs.active_script_timeout_sec = None
-        rs.zone_ends_at = {}
-        rs.zone_started_at = {}
-        rs.soak_until = None
-        await self.coordinator.async_update_run_state(rs)
+                stopped.cancel()
+        # Once more, in case the run could not close up itself. Under the lock
+        # every start takes: none slips in between, to have its pump switched
+        # off and its state set to idle under it.
+        async with self._run_lock:
+            if self._task is not stopped:
+                # A run began in the moment the stopped one ended. It is none
+                # of this Stop's business.
+                return
+            failed = await self._async_turn_off_all_tracked()
+            self._clear_run()
+            if failed:
+                # A valve that will not close is not "idle".
+                self._settle(RUN_STATE_ERROR, f"Could not turn off: {', '.join(failed)}")
+            else:
+                self._settle(RUN_STATE_IDLE, None)
+            await self.coordinator.async_update_run_state(self.coordinator.run_state)
 
     async def async_skip_to_next_phase(self) -> bool:
-        """End the current phase early (parallel zones stop) and run the next phase."""
-        if not self.is_busy():
+        """End the current phase early (parallel zones stop) and run the next phase.
+
+        Only while the run is watering or resting. Before that there is no
+        phase to skip -- only the pump's time to build pressure, and that is
+        not to be cut short.
+        """
+        if self.coordinator.run_state.run_state != RUN_STATE_RUNNING:
             return False
         self._skip_phase_event.set()
         return True
@@ -1549,8 +1705,8 @@ class IrrigationRuntime:
                 blocking=True,
             )
 
-    async def _async_turn_off_all_tracked(self) -> None:
-        """Close everything this run touched. Never raises.
+    async def _async_turn_off_all_tracked(self) -> list[str]:
+        """Close everything this run touched; returns what would not close. Never raises.
 
         This is the cleanup path — it runs from _async_finish_run() and from
         async_stop_all(). A raise here would skip the remaining outputs and leave
@@ -1563,9 +1719,10 @@ class IrrigationRuntime:
         # pre-start outputs -- touched or not, they are the run's to close.
         supplies = {eid for zone in inst.zones.values() for eid in zone.supply_entity_ids}
         upstream = supplies | set(inst.pre_start_switches)
+        tracked = self._touched_entities | self._unclosed
         pending = (
-            sorted(self._touched_entities - upstream)
-            + sorted(self._touched_entities & supplies - set(inst.pre_start_switches))
+            sorted(tracked - upstream)
+            + sorted(tracked & supplies - set(inst.pre_start_switches))
             + list(inst.pre_start_switches)
         )
         failed: list[str] = []
@@ -1575,6 +1732,7 @@ class IrrigationRuntime:
             except Exception:  # noqa: BLE001 - one bad output must not strand the rest
                 _LOGGER.exception("Could not turn off %s during cleanup", entity_id)
                 failed.append(entity_id)
+        self._unclosed = set(failed)
         self._touched_entities.clear()
         self._forget_supplies()
         for entity_id in list(self._armed_countdowns):
@@ -1583,3 +1741,4 @@ class IrrigationRuntime:
             self.coordinator.run_state.last_error = (
                 f"Could not turn off: {', '.join(failed)}"
             )
+        return failed

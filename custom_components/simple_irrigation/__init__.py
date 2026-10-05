@@ -93,6 +93,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
 
     async def _async_close_on_stop(_event: Event) -> None:
+        # The timer first: a schedule must not come due while the run is closed.
+        await scheduler.async_shutdown()
         await runtime.async_close_for_shutdown()
 
     entry.async_on_unload(

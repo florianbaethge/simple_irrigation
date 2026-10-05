@@ -195,6 +195,11 @@ def validate_zone_payload(hass: Any, user_input: dict[str, Any]) -> str | None:
         )
         if err:
             return err
+    # Supply outputs are outputs like any other. Whether they make sense
+    # together with the rest of the installation is the user's call.
+    err = validate_pre_start_entities(hass, user_input.get("supply_entity_ids"))
+    if err:
+        return err
 
     return None
 

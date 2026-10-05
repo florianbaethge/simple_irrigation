@@ -31,7 +31,7 @@ Outputs can be any mix of `switch`, `input_boolean`, `group` and `valve` entitie
 | Tab | What it does |
 |-----|----------------|
 | **Overview** | Live run state with a countdown to the next run, the next few upcoming runs (duration and expected litres), the active watering mode, water used so far while running, and quick actions: *Run next slot now*, *Skip today*, *Pause 48 h* (plus *Stop* / *Skip phase* while running). Shows **Soaking** with a countdown while a run rests. |
-| **Zones** | Named zones with one or more output entities, Eco / Normal / Extra runtimes, an **enabled** toggle and **exclusive** flag. Optional **water** tracking per zone: a meter entity or a flow rate, shown as litres per run and last run. Advanced settings support integration-specific start services that receive the runtime. Filter by **All / Enabled / Issues**, reorder zones, run a zone now, and see how many cycles use it. |
+| **Zones** | Named zones with one or more output entities, Eco / Normal / Extra runtimes, an **enabled** toggle and **exclusive** flag. An optional **supply** — an upstream valve or a pump only this zone needs. Optional **water** tracking per zone: a meter entity or a flow rate, shown as litres per run and last run. Advanced settings support integration-specific start services that receive the runtime. Filter by **All / Enabled / Issues**, reorder zones, run a zone now, and see how many cycles use it. |
 | **Schedule** | Your watering **cycles** and single slots. A guided **New irrigation cycle** wizard (daily, every 2/3 days, x-per-week, weekly, every 2 weeks, custom), with one or several start times a day. Every row expands to a **14-day run strip**; multi-slot cycles show their members and can be detached. Per-slot **conditions** gate a run on soil moisture, rain, tank level or any other entity, per-slot **scripts** override the installation's pre-start / post-run script, and **Cycle & Soak** repeats the slot's phases with rests in between. |
 | **Timetable** | Week-at-a-glance grid (zones × weekdays, morning / daytime / evening) with per-day totals, using the same phase and mode timing as a real run — every Cycle & Soak pass is drawn. On phones it becomes a per-day list. Click a run to jump straight to its editor. |
 | **Settings** | Installation name (shown in the panel header), optional **pre-start** and **post-run scripts**, pre-start outputs & delay, watering mode, max parallel zones, an optional **water meter** on the supply line, global **conditions**, default installation, service reference and raw diagnostics. |
@@ -142,6 +142,18 @@ Simple Irrigation closes every output itself — but only while Home Assistant i
 - **The timer never blocks a run.** Simple Irrigation keeps stopping the zone itself; if the countdown cannot be set, a warning is logged and the zone waters on the integration's own timing.
 - Set the countdown before the switch, not after: some valves restart or ignore a countdown written while they are already open. That order is fixed.
 
+#### Supply: an upstream valve or a pump for some of the zones
+
+The installation's **pre-start outputs** are on for a whole run and for every zone. Some gardens need less than that: a master valve that feeds only the drip lines, a cistern pump that only some zones draw from. Open a zone, scroll to **Advanced** and expand **Supply (upstream valve or pump)** to name the outputs that must be open for *this* zone to get water.
+
+- The supply opens **before** the zone and closes **after** it — never the other way round, also on *Stop* and *Skip phase*.
+- Zones that name the same output **share** it. It is switched once for three drip lines watering one after the other, and it stays open for zones watering together.
+- It closes as soon as **no watering zone needs it**: a pump does not go on running against closed valves while another zone finishes.
+- **Lead time** is how long the zone waits after its supply has opened; empty, the installation's pre-start delay applies. It is only waited for when the supply really had to be opened. **Trail time** keeps the supply open that long after the zone has closed.
+- During a Cycle & Soak rest the supply is closed like every other output, and after a restart it is closed along with the zone that was cut off.
+
+A pump that only some zones need belongs here rather than in the pre-start outputs. Everything else stays as it is: a zone without a supply runs exactly as before. What it does not do is wait for a valve to *report* open, or start a supply through a service that takes a duration — a supply is an output that is switched on and off.
+
 ### Cycles and slots
 
 A **cycle** is a repeating watering cadence. The wizard offers:
@@ -233,7 +245,7 @@ Manual runs (*Run now*, *Run zone now*) always start, regardless of conditions.
 - **Watering mode (Eco / Normal / Extra):** chosen on Overview or Settings, or via `simple_irrigation.set_mode` for weather/tank automations.
 - **Max parallel zones:** caps concurrency; exclusive zones still run alone.
 - **Pre-start / post-run scripts:** optional scripts run **before** the pre-start outputs and **after** the last one goes off — see below.
-- **Pre-start outputs & delay:** outputs turned on before any zone (pump / master valve), with an editable delay to build pressure — both configured on **Settings**.
+- **Pre-start outputs & delay:** outputs turned on before any zone (pump / master valve), with an editable delay to build pressure — both configured on **Settings**. An output that only some zones need goes into those zones' **Supply** instead.
 - **Pause / Skip today / Pause 48 h:** affect **scheduled** starts only; an already-running cycle is stopped from **Overview**, or one zone at a time from **Zones**.
 
 ### Pre-start and post-run scripts

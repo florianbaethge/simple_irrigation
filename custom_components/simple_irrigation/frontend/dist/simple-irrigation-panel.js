@@ -3281,6 +3281,12 @@ const formLayoutStyles = i$7 `
     width: 100%;
     display: block;
   }
+  .field-row.supply-delays {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: 12px;
+  }
   .entity-picker-rows {
     display: flex;
     flex-direction: column;
@@ -7402,10 +7408,17 @@ class ViewZones extends i$4 {
             flow_rate_lpm: 0,
             countdown_entity_id: "",
             countdown_unit: "",
+            supply_entity_ids: [""],
+            supply_lead_sec: null,
+            supply_trail_sec: 0,
         };
     }
     _cloneZone(z) {
-        return { ...z, switch_entity_ids: [...z.switch_entity_ids] };
+        return {
+            ...z,
+            switch_entity_ids: [...z.switch_entity_ids],
+            supply_entity_ids: [...z.supply_entity_ids],
+        };
     }
     _zonesFromInstallation() {
         const zones = this.installation?.zones;
@@ -7440,6 +7453,12 @@ class ViewZones extends i$4 {
                 flow_rate_lpm: Math.max(0, Number(o.flow_rate_lpm ?? 0) || 0),
                 countdown_entity_id: String(o.countdown_entity_id ?? ""),
                 countdown_unit: String(o.countdown_unit ?? ""),
+                // One empty row, so the section opens on a picker rather than a button.
+                supply_entity_ids: Array.isArray(o.supply_entity_ids) && o.supply_entity_ids.length
+                    ? o.supply_entity_ids.map(String)
+                    : [""],
+                supply_lead_sec: typeof o.supply_lead_sec === "number" ? o.supply_lead_sec : null,
+                supply_trail_sec: Number(o.supply_trail_sec ?? 0) || 0,
             };
         });
     }
@@ -7854,6 +7873,9 @@ class ViewZones extends i$4 {
                     flow_rate_lpm: zone.flow_rate_lpm,
                     countdown_entity_id: zone.countdown_entity_id.trim(),
                     countdown_unit: zone.countdown_entity_id.trim() ? zone.countdown_unit : "",
+                    supply_entity_ids: zone.supply_entity_ids.map((id) => id.trim()).filter(Boolean),
+                    supply_lead_sec: zone.supply_lead_sec,
+                    supply_trail_sec: zone.supply_trail_sec,
                 };
             }
             const res = await saveZone(this.hass, this.entryId, body);
@@ -8137,7 +8159,84 @@ class ViewZones extends i$4 {
             </select>
           </div>
         </details>
+        ${this._renderSupplyFields(z)}
       </div>
+    `;
+    }
+    /** Seconds, 0..3600; an empty field is "nothing entered". */
+    _secondsFrom(e) {
+        const raw = e.target.value.trim();
+        const n = Math.round(Number(raw));
+        return raw === "" || !Number.isFinite(n) ? null : Math.max(0, Math.min(3600, n));
+    }
+    _renderSupplyFields(z) {
+        const installationDelay = Number(this.installation?.pre_start_delay_sec ?? 10);
+        return b `
+      <details class="inline-help" ?open=${z.supply_entity_ids.some(Boolean)}>
+        <summary>
+          <ha-icon class="inline-help-icon" icon="mdi:pipe-valve"></ha-icon>
+          ${t$2(this.hass, "config_panel.zones_supply_summary")}
+        </summary>
+        <p>${t$2(this.hass, "config_panel.zones_supply_desc")}</p>
+        <div class="field-row">
+          <div class="entity-picker-rows">
+            ${z.supply_entity_ids.map((eid, i) => b `
+                <div class="entity-picker-row">
+                  ${renderNativeEntityField(this.hass, this.outputEntityDomains ?? defaultDomains, t$2(this.hass, "config_panel.zones_supply_output_n", { n: i + 1 }), eid, (v) => {
+            const next = [...z.supply_entity_ids];
+            next[i] = v;
+            z.supply_entity_ids = next;
+            this.requestUpdate();
+        })}
+                  ${z.supply_entity_ids.length > 1
+            ? b `<button
+                        type="button"
+                        class="row-remove"
+                        @click=${() => {
+                z.supply_entity_ids = z.supply_entity_ids.filter((_id, j) => j !== i);
+                this.requestUpdate();
+            }}
+                      >
+                        ${t$2(this.hass, "config_panel.general_remove")}
+                      </button>`
+            : A}
+                </div>
+              `)}
+            <button
+              type="button"
+              class="btn-outline"
+              @click=${() => {
+            z.supply_entity_ids = [...z.supply_entity_ids, ""];
+            this.requestUpdate();
+        }}
+            >
+              ${t$2(this.hass, "config_panel.zones_supply_add")}
+            </button>
+          </div>
+        </div>
+        <div class="field-row supply-delays">
+          <ha-input
+            type="number"
+            min="0"
+            max="3600"
+            .label=${t$2(this.hass, "config_panel.zones_supply_lead", { n: installationDelay })}
+            .value=${z.supply_lead_sec === null ? "" : String(z.supply_lead_sec)}
+            @input=${(e) => {
+            z.supply_lead_sec = this._secondsFrom(e);
+        }}
+          ></ha-input>
+          <ha-input
+            type="number"
+            min="0"
+            max="3600"
+            .label=${t$2(this.hass, "config_panel.zones_supply_trail")}
+            .value=${String(z.supply_trail_sec)}
+            @input=${(e) => {
+            z.supply_trail_sec = this._secondsFrom(e) ?? 0;
+        }}
+          ></ha-input>
+        </div>
+      </details>
     `;
     }
     _renderRow(z, slotsPerZone, zoneOrder) {

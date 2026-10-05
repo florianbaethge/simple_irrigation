@@ -77,7 +77,7 @@ async def test_startup_closes_the_zones_a_run_was_cut_off_in() -> None:
 
     await runtime.async_setup()
 
-    assert _closed(calls) == [PUMP, "switch.z1", "switch.z2"]
+    assert _closed(calls) == ["switch.z1", "switch.z2", PUMP]
     rs = runtime.coordinator.run_state
     assert rs.run_state == RUN_STATE_ERROR
     assert rs.active_zone_ids == []
@@ -99,7 +99,7 @@ async def test_startup_skips_a_zone_that_no_longer_exists() -> None:
 
     await runtime.async_setup()
 
-    assert _closed(calls) == [PUMP, "switch.z1"]
+    assert _closed(calls) == ["switch.z1", PUMP]
 
 
 @pytest.mark.asyncio
@@ -133,7 +133,7 @@ async def test_closing_is_repeated_once_home_assistant_has_started() -> None:
     calls.clear()
     await at_started.call_args.args[1](runtime.hass)
 
-    assert _closed(calls) == [PUMP, "switch.z1"]
+    assert _closed(calls) == ["switch.z1", PUMP]
 
 
 @pytest.mark.asyncio

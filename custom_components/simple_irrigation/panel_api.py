@@ -22,6 +22,7 @@ from homeassistant.util import dt as dt_util
 from .const import (
     MAX_REPETITIONS,
     MAX_SOAK_MIN,
+    MAX_SUPPLY_DELAY_SEC,
     MAX_ZONE_DURATION_MIN,
     DOMAIN,
     GUARD_OPERATORS,
@@ -41,6 +42,8 @@ from .models import (
     ScheduleSlot,
     Zone,
     normalize_weekdays,
+    parse_entity_ids,
+    parse_supply_lead,
     parse_zone_minutes,
 )
 from .cycle import (
@@ -92,6 +95,7 @@ SLOT_SCRIPT_TIMEOUT_SCHEMA = vol.Any(
 SLOT_REPETITIONS_SCHEMA = vol.All(int, vol.Range(min=1, max=MAX_REPETITIONS))
 SLOT_SOAK_SCHEMA = vol.All(int, vol.Range(min=0, max=MAX_SOAK_MIN))
 ZONE_DURATION_SCHEMA = vol.All(int, vol.Range(min=0, max=MAX_ZONE_DURATION_MIN))
+SUPPLY_DELAY_SCHEMA = vol.All(int, vol.Range(min=0, max=MAX_SUPPLY_DELAY_SEC))
 
 
 def _cycle_member_ids(existing: list[ScheduleSlot], specs: list[dict[str, Any]]) -> list[str]:
@@ -524,6 +528,9 @@ class SimpleIrrigationPanelZoneView(HomeAssistantView):
                         vol.Optional("flow_rate_lpm"): vol.Any(float, int, None),
                         vol.Optional("countdown_entity_id"): vol.Any(cv.string, None),
                         vol.Optional("countdown_unit"): vol.Any(cv.string, None),
+                        vol.Optional("supply_entity_ids"): [cv.string],
+                        vol.Optional("supply_lead_sec"): vol.Any(SUPPLY_DELAY_SCHEMA, None),
+                        vol.Optional("supply_trail_sec"): SUPPLY_DELAY_SCHEMA,
                     }
                 ),
             }
@@ -567,6 +574,9 @@ class SimpleIrrigationPanelZoneView(HomeAssistantView):
                 "flow_rate_lpm": zone_data.get("flow_rate_lpm", 0),
                 "countdown_entity_id": zone_data.get("countdown_entity_id", ""),
                 "countdown_unit": zone_data.get("countdown_unit", ""),
+                "supply_entity_ids": zone_data.get("supply_entity_ids", []),
+                "supply_lead_sec": zone_data.get("supply_lead_sec"),
+                "supply_trail_sec": zone_data.get("supply_trail_sec", 0),
             }
             err = validate_zone_payload(hass, payload)
             if err:
@@ -590,6 +600,9 @@ class SimpleIrrigationPanelZoneView(HomeAssistantView):
                 flow_rate_lpm=float(payload["flow_rate_lpm"] or 0),
                 countdown_entity_id=str(payload["countdown_entity_id"] or "").strip(),
                 countdown_unit=str(payload["countdown_unit"] or "").strip(),
+                supply_entity_ids=parse_entity_ids(payload["supply_entity_ids"]),
+                supply_lead_sec=parse_supply_lead(payload["supply_lead_sec"]),
+                supply_trail_sec=int(payload["supply_trail_sec"]),
             )
             await coord.async_update_installation(inst)
             return self.json({"success": True, "zone_id": zid})
@@ -641,6 +654,9 @@ class SimpleIrrigationPanelZoneView(HomeAssistantView):
                 "countdown_entity_id", zone.countdown_entity_id
             ),
             "countdown_unit": zone_data.get("countdown_unit", zone.countdown_unit),
+            "supply_entity_ids": zone_data.get("supply_entity_ids", zone.supply_entity_ids),
+            "supply_lead_sec": zone_data.get("supply_lead_sec", zone.supply_lead_sec),
+            "supply_trail_sec": zone_data.get("supply_trail_sec", zone.supply_trail_sec),
         }
         err = validate_zone_payload(hass, merged)
         if err:
@@ -660,6 +676,9 @@ class SimpleIrrigationPanelZoneView(HomeAssistantView):
         zone.flow_rate_lpm = float(merged["flow_rate_lpm"] or 0)
         zone.countdown_entity_id = str(merged["countdown_entity_id"] or "").strip()
         zone.countdown_unit = str(merged["countdown_unit"] or "").strip()
+        zone.supply_entity_ids = parse_entity_ids(merged["supply_entity_ids"])
+        zone.supply_lead_sec = parse_supply_lead(merged["supply_lead_sec"])
+        zone.supply_trail_sec = int(merged["supply_trail_sec"])
         await coord.async_update_installation(inst)
         return self.json({"success": True})
 

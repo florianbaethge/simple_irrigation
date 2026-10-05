@@ -101,6 +101,11 @@ class IrrigationRuntime:
         self._touched_entities: set[str] = set()
         # Hardware countdowns armed for this run; cleared once their valve is shut.
         self._armed_countdowns: set[str] = set()
+        # Supply outputs this run has opened, and how many watering zones need
+        # each of them. One that nobody needs any more is closed -- unless the
+        # next phase is about to ask for it again.
+        self._open_supplies: set[str] = set()
+        self._supply_refs: dict[str, int] = {}
         self._duration_overrides: dict[str, int] = {}
         # What the run still has ahead of it: phases (zone ids watering in
         # parallel) and, with Cycle & Soak, the rests between them.
@@ -161,10 +166,12 @@ class IrrigationRuntime:
         """
         inst = self.coordinator.installation
         zones = [inst.zones[zid] for zid in self._interrupted_zone_ids if zid in inst.zones]
-        # Pump before valves. A run that began in the meantime keeps what it holds.
-        outputs = [] if self.is_busy() else list(inst.pre_start_switches)
-        for zone in zones:
-            outputs.extend(zone.switch_entity_ids)
+        # Downstream first: the zones, what supplies them, the pre-start outputs.
+        # A run that began in the meantime keeps what it holds.
+        outputs = [eid for zone in zones for eid in zone.switch_entity_ids]
+        outputs.extend(eid for zone in zones for eid in zone.supply_entity_ids)
+        if not self.is_busy():
+            outputs.extend(inst.pre_start_switches)
         failed: list[str] = []
         for entity_id in dict.fromkeys(outputs):
             if entity_id in self._touched_entities:
@@ -259,6 +266,7 @@ class IrrigationRuntime:
             self._stop_event.clear()
             self._skip_phase_event.clear()
             self._touched_entities.clear()
+            self._forget_supplies()
             self._task = self.hass.async_create_task(
                 self._async_run_pipeline(scheduled, slot_ids or []),
             )
@@ -367,6 +375,87 @@ class IrrigationRuntime:
             return None
         slots = self.coordinator.installation.schedule_slots
         return next((s for s in slots if s.slot_id == slot_id), None)
+
+    def _zone_minutes(self, zone: Zone, mode: str, slot_id: str | None) -> int:
+        """How long ``zone`` waters now: a manual duration, its slot's fixed minutes, the mode."""
+        override = self._duration_overrides.get(zone.zone_id)
+        if override is not None:
+            return override
+        slot = self._slot_by_id(slot_id)
+        return slot.duration_for(zone, mode) if slot else zone.duration_for_mode(mode)
+
+    # --- supply ---------------------------------------------------------------
+
+    def _forget_supplies(self) -> None:
+        self._open_supplies.clear()
+        self._supply_refs.clear()
+
+    async def _async_open_supplies(self, zones: list[Zone]) -> None:
+        """Bring up what these zones need, then give it its lead time.
+
+        A supply that is open already -- another zone has it, or the last phase
+        handed it over -- is neither switched nor waited for.
+        """
+        inst = self.coordinator.installation
+        lead = 0
+        for zone in zones:
+            opened = False
+            for entity_id in zone.supply_entity_ids:
+                self._supply_refs[entity_id] = self._supply_refs.get(entity_id, 0) + 1
+                if entity_id not in self._open_supplies:
+                    self._open_supplies.add(entity_id)
+                    await self._async_switch_turn_on(entity_id)
+                    opened = True
+            if opened:
+                own = zone.supply_lead_sec
+                lead = max(lead, inst.pre_start_delay_sec if own is None else own)
+        await self._async_sleep_interruptible(float(lead))
+
+    async def _async_release_supplies(self, zone: Zone, keep: frozenset[str]) -> None:
+        """A zone has closed: let go of its supply, after its trail time.
+
+        The trail only runs when something is really about to close. Stop and
+        Skip phase cut it short.
+        """
+        held = [e for e in zone.supply_entity_ids if self._supply_refs.get(e, 0) > 0]
+        if any(self._supply_refs[e] == 1 and e not in keep for e in held):
+            await self._async_sleep_interruptible(float(zone.supply_trail_sec))
+        for entity_id in held:
+            self._supply_refs[entity_id] -= 1
+        await self._async_close_idle_supplies(keep)
+
+    async def _async_close_idle_supplies(self, keep: frozenset[str] = frozenset()) -> None:
+        """Close every supply no watering zone needs, except what ``keep`` names."""
+        inst = self.coordinator.installation
+        # Not ours to close, whatever the configuration says: an output the
+        # whole run keeps on, and the valve of a zone that is watering.
+        busy = set(inst.pre_start_switches)
+        for zone_id in self.coordinator.run_state.active_zone_ids:
+            zone = inst.zones.get(zone_id)
+            if zone is not None:
+                busy.update(zone.switch_entity_ids)
+        for entity_id in sorted(self._open_supplies):
+            if self._supply_refs.get(entity_id, 0) > 0 or entity_id in keep:
+                continue
+            self._open_supplies.discard(entity_id)
+            if entity_id not in busy:
+                await self._async_switch_turn_off(entity_id)
+
+    def _supplies_needed_next(self, mode: str) -> frozenset[str]:
+        """What the phase right behind this one needs; nothing across a rest."""
+        step = self._phase_queue[0] if self._phase_queue else None
+        if step is None or isinstance(step, Soak):
+            return frozenset()
+        inst = self.coordinator.installation
+        slot_id = phase_slot_id(step)
+        return frozenset(
+            entity_id
+            for zone_id in step
+            if (zone := inst.zones.get(zone_id)) is not None
+            and zone.enabled
+            and self._zone_minutes(zone, mode, slot_id) > 0
+            for entity_id in zone.supply_entity_ids
+        )
 
     def _slots_for_ids(self, slot_ids: list[str]) -> list[ScheduleSlot]:
         """The run's slots, in the order they were merged into it."""
@@ -654,6 +743,12 @@ class IrrigationRuntime:
         self._phase_extend_event.clear()
 
         tasks_by_zone: dict[str, asyncio.Task[None]] = {}
+        slot_id = phase_slot_id(initial_zone_ids)
+        # Zones of this phase whose supply is up, and the closing of it once a
+        # zone is done -- kept apart from the zone's own task, so a zone that
+        # has closed does not go on counting as watering while its supply trails.
+        supplied: set[str] = set()
+        releases: list[asyncio.Task[None]] = []
 
         async def _run_one_zone(zid: str) -> None:
             zone = inst.zones.get(zid)
@@ -663,26 +758,55 @@ class IrrigationRuntime:
                 # Stopped in the moment between launch and first poll.
                 self._zone_stop_requests.discard(zid)
                 return
-            duration = self._duration_overrides.get(zid)
-            if duration is None:
-                # Looked up only now, with the zone about to open: a pre-start
-                # script or an automation may have set the minutes a moment ago.
-                slot = self._slot_by_id(phase_slot_id(initial_zone_ids))
-                duration = (
-                    slot.duration_for(zone, mode) if slot else zone.duration_for_mode(mode)
-                )
+            # Looked up only now, with the zone about to open: a pre-start
+            # script or an automation may have set the minutes a moment ago.
+            duration = self._zone_minutes(zone, mode, slot_id)
             if duration <= 0:
                 # No minutes, no water: opening the valve for an instant is not it.
                 return
+            if zid not in supplied:
+                # Joined a phase that is already under way.
+                supplied.add(zid)
+                await self._async_open_supplies([zone])
             await self._async_zone_run(zone, duration)
+
+        # What supplies the phase comes up first, for all its zones at once.
+        first = [
+            zone
+            for zid in initial_zone_ids
+            if (zone := inst.zones.get(zid)) is not None
+            and zone.enabled
+            and self._zone_minutes(zone, mode, slot_id) > 0
+        ]
+        supplied.update(zone.zone_id for zone in first)
+        await self._async_open_supplies(first)
+        # A supply held over from the last phase that this one did not claim.
+        await self._async_close_idle_supplies()
 
         def _launch(zid: str) -> None:
             if zid in tasks_by_zone:
                 return
             tasks_by_zone[zid] = asyncio.create_task(_run_one_zone(zid))
 
-        for zid in initial_zone_ids:
-            _launch(zid)
+        def _let_go(zid: str) -> None:
+            """Start closing the supply of a zone that is done with it."""
+            zone = inst.zones.get(zid)
+            if zid not in supplied or zone is None:
+                return
+            supplied.discard(zid)
+            # With the phase over, what the next one needs is handed on to it
+            # instead of closing now and opening again a moment later.
+            keep = frozenset() if tasks_by_zone else self._supplies_needed_next(mode)
+            releases.append(asyncio.create_task(self._async_release_supplies(zone, keep)))
+
+        if self._stop_event.is_set() or self._skip_phase_event.is_set():
+            # Stopped or skipped while the supply was coming up: the phase is
+            # over before a valve has opened.
+            for zid in list(supplied):
+                _let_go(zid)
+        else:
+            for zid in initial_zone_ids:
+                _launch(zid)
 
         async def _sync_active() -> None:
             rs.active_zone_ids = [
@@ -725,8 +849,17 @@ class IrrigationRuntime:
                     continue
                 tasks_by_zone.pop(zid, None)
                 await t
+                _let_go(zid)
 
             await _sync_active()
+
+        try:
+            # On stop the run's cleanup closes everything; nothing trails then.
+            if not self._stop_event.is_set():
+                await asyncio.gather(*releases)
+        finally:
+            for release in releases:
+                release.cancel()
 
         rs = self.coordinator.run_state
         rs.active_zone_ids = []
@@ -1010,6 +1143,7 @@ class IrrigationRuntime:
             self._stop_event.clear()
             self._skip_phase_event.clear()
             self._touched_entities.clear()
+            self._forget_supplies()
             self._task = self.hass.async_create_task(
                 self._async_run_pipeline(scheduled=False, slot_ids=[]),
             )
@@ -1272,9 +1406,15 @@ class IrrigationRuntime:
         Failures are collected into last_error instead.
         """
         inst = self.coordinator.installation
-        pending = list(self._touched_entities) + [
-            eid for eid in inst.pre_start_switches if eid not in self._touched_entities
-        ]
+        # Downstream first: zone valves, then what supplies them, then the
+        # pre-start outputs -- touched or not, they are the run's to close.
+        supplies = {eid for zone in inst.zones.values() for eid in zone.supply_entity_ids}
+        upstream = supplies | set(inst.pre_start_switches)
+        pending = (
+            sorted(self._touched_entities - upstream)
+            + sorted(self._touched_entities & supplies - set(inst.pre_start_switches))
+            + list(inst.pre_start_switches)
+        )
         failed: list[str] = []
         for entity_id in pending:
             try:
@@ -1283,6 +1423,7 @@ class IrrigationRuntime:
                 _LOGGER.exception("Could not turn off %s during cleanup", entity_id)
                 failed.append(entity_id)
         self._touched_entities.clear()
+        self._forget_supplies()
         for entity_id in list(self._armed_countdowns):
             await self._async_disarm_countdown(entity_id)
         if failed:

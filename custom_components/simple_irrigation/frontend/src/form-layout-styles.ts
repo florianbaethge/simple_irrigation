@@ -42,6 +42,12 @@ export const formLayoutStyles = css`
     width: 100%;
     display: block;
   }
+  .field-row.supply-delays {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: 12px;
+  }
   .entity-picker-rows {
     display: flex;
     flex-direction: column;

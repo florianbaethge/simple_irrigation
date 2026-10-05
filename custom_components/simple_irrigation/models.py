@@ -10,6 +10,7 @@ from typing import Any
 from .const import (
     MAX_REPETITIONS,
     MAX_SOAK_MIN,
+    MAX_SUPPLY_DELAY_SEC,
     MAX_ZONE_DURATION_MIN,
     GUARD_BOOLEAN_OPERATORS,
     GUARD_NUMERIC_OPERATORS,
@@ -122,6 +123,17 @@ class Zone:
     # empty to take it from the entity's unit_of_measurement.
     countdown_entity_id: str = ""
     countdown_unit: str = ""
+    # --- Supply --------------------------------------------------------------
+    # Outputs that must be open for this zone to get water: a valve further up
+    # the line, a pump. Pre-start outputs of its own, in other words -- on while
+    # the zone waters rather than for the whole run, and shared with any other
+    # zone that names the same output.
+    supply_entity_ids: list[str] = field(default_factory=list)
+    # Seconds between the supply opening and the zone opening; None takes the
+    # installation's pre-start delay.
+    supply_lead_sec: int | None = None
+    # Seconds the supply stays open after the zone has closed.
+    supply_trail_sec: int = 0
 
     @property
     def tracks_water(self) -> bool:
@@ -169,6 +181,9 @@ class Zone:
             "flow_rate_lpm": self.flow_rate_lpm,
             "countdown_entity_id": self.countdown_entity_id,
             "countdown_unit": self.countdown_unit,
+            "supply_entity_ids": list(self.supply_entity_ids),
+            "supply_lead_sec": self.supply_lead_sec,
+            "supply_trail_sec": self.supply_trail_sec,
         }
 
     @staticmethod
@@ -202,7 +217,27 @@ class Zone:
             flow_rate_lpm=_non_negative_float(data.get("flow_rate_lpm")),
             countdown_entity_id=str(data.get("countdown_entity_id") or "").strip(),
             countdown_unit=str(data.get("countdown_unit") or "").strip(),
+            supply_entity_ids=parse_entity_ids(data.get("supply_entity_ids")),
+            supply_lead_sec=parse_supply_lead(data.get("supply_lead_sec")),
+            supply_trail_sec=_clamp_int(data.get("supply_trail_sec"), 0, 0, MAX_SUPPLY_DELAY_SEC),
         )
+
+
+def parse_entity_ids(raw: Any) -> list[str]:
+    """Entity ids from a payload or the store: trimmed, each once, in order."""
+    if not isinstance(raw, (list, tuple)):
+        return []
+    return list(dict.fromkeys(s for s in (str(x).strip() for x in raw) if s))
+
+
+def parse_supply_lead(raw: Any) -> int | None:
+    """A zone's supply lead in seconds; ``None`` means "the installation's delay"."""
+    if raw in (None, ""):
+        return None
+    try:
+        return max(0, min(MAX_SUPPLY_DELAY_SEC, int(raw)))
+    except (TypeError, ValueError):
+        return None
 
 
 def normalize_weekdays(raw: Any) -> list[int]:

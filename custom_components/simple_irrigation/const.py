@@ -77,6 +77,8 @@ MAX_REPETITIONS: Final = 10
 # Longest a zone may run in one go, wherever the number comes from: the zone's
 # own runtimes, a slot's fixed minutes, the set_zone_duration service.
 MAX_ZONE_DURATION_MIN: Final = 240
+# Longest a supply output may lead or trail its zone, like the pre-start delay.
+MAX_SUPPLY_DELAY_SEC: Final = 3600
 MAX_SOAK_MIN: Final = 240
 
 STORE_VERSION: Final = 1

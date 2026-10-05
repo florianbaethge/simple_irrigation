@@ -21,8 +21,7 @@ from .const import (
     ATTR_UNTIL,
     ATTR_ZONE_ID,
     DOMAIN,
-    DURATION_TARGET_ACTIVE,
-    DURATION_TARGET_ALL,
+    MAX_ZONE_DURATION_MIN,
     MODES,
     SERVICE_CLEAR_PAUSE,
     SERVICE_PAUSE_UNTIL,
@@ -38,6 +37,38 @@ from .const import (
     SERVICE_STOP_ZONE,
 )
 from .models import Installation
+
+
+def _set_slot_zone_minutes(
+    inst: Installation, slot_id: str, zone_id: str, minutes: int | None
+) -> bool:
+    """Fix how long a zone waters in one schedule, or let it follow the mode again.
+
+    The members of a cycle share their fixed minutes, as they share their zones:
+    any member's id sets them for all. Returns whether anything changed.
+    """
+    slot = next((s for s in inst.schedule_slots if s.slot_id == slot_id), None)
+    if slot is None:
+        msg = f"Unknown Simple Irrigation schedule slot: {slot_id}"
+        raise HomeAssistantError(msg)
+    members = (
+        [s for s in inst.schedule_slots if s.cycle_id == slot.cycle_id]
+        if slot.cycle_id
+        else [slot]
+    )
+    if any(zone_id not in member.zone_ids_ordered for member in members):
+        msg = f"Zone {zone_id} is not part of schedule slot {slot_id}"
+        raise HomeAssistantError(msg)
+    changed = False
+    for member in members:
+        if member.zone_minutes.get(zone_id) == minutes:
+            continue
+        if minutes is None:
+            del member.zone_minutes[zone_id]
+        else:
+            member.zone_minutes[zone_id] = minutes
+        changed = True
+    return changed
 
 
 def _get_domain_data(hass: HomeAssistant, call: ServiceCall) -> dict[str, Any]:
@@ -125,15 +156,16 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         if zid not in inst.zones:
             msg = f"Unknown Simple Irrigation zone: {zid}"
             raise HomeAssistantError(msg)
-        zone = inst.zones[zid]
-        minutes = int(call.data[ATTR_DURATION_MIN])
-        target = call.data[ATTR_MODE]
-        if target == DURATION_TARGET_ACTIVE:
-            target = inst.mode
-        modes = MODES if target == DURATION_TARGET_ALL else (target,)
-        for mode in modes:
-            setattr(zone, f"duration_{mode}_min", minutes)
-        await coordinator.async_update_installation(inst)
+        minutes = call.data.get(ATTR_DURATION_MIN)
+        if ATTR_SLOT_ID in call.data:
+            changed = _set_slot_zone_minutes(inst, call.data[ATTR_SLOT_ID], zid, minutes)
+        elif minutes is None:
+            raise HomeAssistantError("duration_min is required to set a zone's runtime for a mode")
+        else:
+            changed = inst.zones[zid].set_duration_for_mode(call.data[ATTR_MODE], minutes)
+        # Called every hour by an automation, mostly with the value it had.
+        if changed:
+            await coordinator.async_update_installation(inst)
 
     async def handle_pause_until(call: ServiceCall) -> None:
         data = _get_domain_data(hass, call)
@@ -247,15 +279,19 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         DOMAIN,
         SERVICE_SET_ZONE_DURATION,
         handle_set_zone_duration,
-        schema=vol.Schema(
+        schema=vol.All(
             {
                 vol.Required(ATTR_ZONE_ID): cv.string,
-                vol.Required(ATTR_DURATION_MIN): vol.All(vol.Coerce(int), vol.Range(min=1, max=1440)),
-                vol.Optional(ATTR_MODE, default=DURATION_TARGET_ACTIVE): vol.In(
-                    (*MODES, DURATION_TARGET_ACTIVE, DURATION_TARGET_ALL)
+                vol.Optional(ATTR_DURATION_MIN): vol.All(
+                    vol.Coerce(int), vol.Range(min=0, max=MAX_ZONE_DURATION_MIN)
                 ),
+                # Where the minutes go: into the zone's runtime for one mode, or
+                # into one schedule as that zone's fixed minutes. Not both.
+                vol.Exclusive(ATTR_MODE, "target"): vol.In(MODES),
+                vol.Exclusive(ATTR_SLOT_ID, "target"): cv.string,
                 vol.Optional(ATTR_CONFIG_ENTRY_ID): cv.string,
-            }
+            },
+            cv.has_at_least_one_key(ATTR_MODE, ATTR_SLOT_ID),
         ),
     )
     hass.services.async_register(

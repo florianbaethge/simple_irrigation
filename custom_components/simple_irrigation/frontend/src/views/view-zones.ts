@@ -678,16 +678,33 @@ export class ViewZones extends LitElement {
     }
   }
 
+  /**
+   * Only "enabled" travels. The rest of the row may be older than what an
+   * automation has written since, and sending it along would write that back.
+   */
   private async _toggleZoneEnabled(z: ZoneRow, enabled: boolean): Promise<void> {
     if (this._busy) return;
-    await this._saveZone("update", z.zone_id, { ...z, enabled }, { keepDialogs: true });
+    await this._saveZone("update", z.zone_id, undefined, { keepDialogs: true, fields: { enabled } });
+  }
+
+  /**
+   * Open the editor on what the backend has now, not on what the list was
+   * loaded with: an automation may have set a runtime in the meantime, and
+   * saving the dialog would put the old one back.
+   */
+  private async _openEdit(zoneId: string): Promise<void> {
+    this._msg = undefined;
+    await this.onSaved?.();
+    await new Promise((resolve) => setTimeout(resolve));
+    const zone = this._zonesFromInstallation().find((z) => z.zone_id === zoneId);
+    if (zone) this._editDraft = this._cloneZone(zone);
   }
 
   private async _saveZone(
     action: "add" | "update" | "delete",
     zoneId: string | undefined,
     zone?: ZoneRow,
-    opts?: { keepDialogs?: boolean }
+    opts?: { keepDialogs?: boolean; fields?: Record<string, unknown> }
   ): Promise<void> {
     this._busy = true;
     this._msg = undefined;
@@ -695,7 +712,9 @@ export class ViewZones extends LitElement {
     try {
       const body: Record<string, unknown> = { action };
       if (zoneId) body.zone_id = zoneId;
-      if (zone && action !== "delete") {
+      if (opts?.fields) {
+        body.zone = opts.fields;
+      } else if (zone && action !== "delete") {
         body.zone = {
           name: zone.name,
           switch_entity_ids: zone.switch_entity_ids.filter(Boolean),
@@ -1101,10 +1120,7 @@ export class ViewZones extends LitElement {
         class="iconbtn"
         title=${t(this.hass, "config_panel.zones_edit")}
         aria-label=${t(this.hass, "config_panel.zones_edit")}
-        @click=${() => {
-          this._msg = undefined;
-          this._editDraft = this._cloneZone(z);
-        }}
+        @click=${() => this._openEdit(z.zone_id)}
       >
         <ha-icon icon="mdi:pencil"></ha-icon>
       </button>
@@ -1245,10 +1261,7 @@ export class ViewZones extends LitElement {
                 <button
                   type="button"
                   class="btn-outline"
-                  @click=${() => {
-                    this._msg = undefined;
-                    this._editDraft = this._cloneZone(z);
-                  }}
+                  @click=${() => this._openEdit(z.zone_id)}
                 >
                   ${t(this.hass, "config_panel.zones_edit")}
                 </button>

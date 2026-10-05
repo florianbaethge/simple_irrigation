@@ -10,6 +10,7 @@ from typing import Any
 from .const import (
     MAX_REPETITIONS,
     MAX_SOAK_MIN,
+    MAX_ZONE_DURATION_MIN,
     GUARD_BOOLEAN_OPERATORS,
     GUARD_NUMERIC_OPERATORS,
     GUARD_OP_ABOVE,
@@ -134,6 +135,18 @@ class Zone:
         if mode == "extra":
             return self.duration_extra_min
         return self.duration_normal_min
+
+    def set_duration_for_mode(self, mode: str, minutes: int) -> bool:
+        """Set the runtime ``mode`` uses; whether that changed anything."""
+        attr = {
+            "eco": "duration_eco_min",
+            "normal": "duration_normal_min",
+            "extra": "duration_extra_min",
+        }[mode]
+        if getattr(self, attr) == minutes:
+            return False
+        setattr(self, attr, minutes)
+        return True
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize to JSON-compatible dict."""
@@ -262,6 +275,24 @@ class ScheduleSlot:
     repetitions: int = 1
     soak_between_phases_min: int = 0
     soak_between_repetitions_min: int = 0
+    # --- Fixed minutes -------------------------------------------------------
+    # How long a zone waters in this slot, whatever the mode says. A zone that
+    # is not in here follows the mode, which is how every slot starts out.
+    zone_minutes: dict[str, int] = field(default_factory=dict)
+
+    def duration_for(self, zone: Zone, mode: str) -> int:
+        """Minutes ``zone`` waters in this slot: its fixed minutes, else the mode's."""
+        fixed = self.zone_minutes.get(zone.zone_id)
+        return fixed if fixed is not None else zone.duration_for_mode(mode)
+
+    def prune_zone_minutes(self) -> None:
+        """Forget the fixed minutes of zones that are no longer in the slot.
+
+        Left behind, they would come back to life when the zone is added again.
+        """
+        self.zone_minutes = {
+            zid: m for zid, m in self.zone_minutes.items() if zid in self.zone_ids_ordered
+        }
 
     @property
     def cycle_soak(self) -> bool:
@@ -298,6 +329,7 @@ class ScheduleSlot:
             "repetitions": self.repetitions,
             "soak_between_phases_min": self.soak_between_phases_min,
             "soak_between_repetitions_min": self.soak_between_repetitions_min,
+            "zone_minutes": dict(self.zone_minutes),
         }
 
     @staticmethod
@@ -346,7 +378,29 @@ class ScheduleSlot:
             soak_between_repetitions_min=_clamp_int(
                 data.get("soak_between_repetitions_min"), 0, 0, MAX_SOAK_MIN
             ),
+            zone_minutes=parse_zone_minutes(
+                data.get("zone_minutes"), data.get("zone_ids_ordered", [])
+            ),
         )
+
+
+def parse_zone_minutes(raw: Any, zone_ids: list[str]) -> dict[str, int]:
+    """A slot's fixed minutes from a payload or the store, for its own zones only.
+
+    Minutes outside 0..MAX_ZONE_DURATION_MIN are brought into range; an entry
+    that is no number, or for a zone the slot does not water, is left out.
+    """
+    out: dict[str, int] = {}
+    if not isinstance(raw, dict):
+        return out
+    for zone_id, minutes in raw.items():
+        if zone_id not in zone_ids or isinstance(minutes, bool):
+            continue
+        try:
+            out[str(zone_id)] = max(0, min(MAX_ZONE_DURATION_MIN, int(minutes)))
+        except (TypeError, ValueError):
+            continue
+    return out
 
 
 def _non_negative_float(raw: Any) -> float:

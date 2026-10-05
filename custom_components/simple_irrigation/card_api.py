@@ -183,9 +183,7 @@ def _slot_duration_min(inst: Installation, slot: ScheduleSlot) -> int:
     per_pass = 0
     for phase in phases:
         durations = [
-            inst.zones[zid].duration_for_mode(inst.mode)
-            for zid in phase
-            if zid in inst.zones
+            slot.duration_for(inst.zones[zid], inst.mode) for zid in phase if zid in inst.zones
         ]
         if durations:
             per_pass += max(durations)
@@ -204,7 +202,7 @@ def _slot_water_l(inst: Installation, slot: ScheduleSlot) -> float | None:
     total = 0.0
     known = False
     for zid in _slot_zone_ids(inst, slot):
-        litres = planned_litres(inst.zones[zid], inst.zones[zid].duration_for_mode(inst.mode))
+        litres = planned_litres(inst.zones[zid], slot.duration_for(inst.zones[zid], inst.mode))
         if litres is None:
             continue
         known = True

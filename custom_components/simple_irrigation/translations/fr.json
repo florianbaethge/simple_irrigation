@@ -224,6 +224,32 @@
         }
       }
     },
+    "set_zone_duration": {
+      "name": "Définir la durée d’une zone",
+      "description": "Définit la durée d’arrosage d’une zone, en minutes, par exemple à partir d’un calcul effectué en dehors de Simple Irrigation. Indiquez un mode pour modifier la durée de la zone en Eco, Normal ou Extra, ou un ID de créneau pour fixer ses minutes dans un programme. Une zone qui n’a pas encore démarré reprend la nouvelle valeur, même dans une exécution en cours.",
+      "fields": {
+        "zone_id": {
+          "name": "ID de zone",
+          "description": "UUID interne de la zone (clés sous zones dans Télécharger les diagnostics de cette intégration)."
+        },
+        "duration_min": {
+          "name": "Durée (minutes)",
+          "description": "De 0 à 240. Avec 0, la zone est ignorée. Avec un ID de créneau, la durée peut être omise : les minutes fixes sont supprimées et la zone suit de nouveau le mode."
+        },
+        "mode": {
+          "name": "Mode",
+          "description": "Laquelle des durées de la zone modifier : Eco, Normal ou Extra. Pas en même temps qu’un ID de créneau."
+        },
+        "slot_id": {
+          "name": "ID de créneau",
+          "description": "Facultatif. Fixe les minutes dans ce programme uniquement, quel que soit le mode. Un membre d’un cycle vaut pour tout le cycle. Pas en même temps qu’un mode."
+        },
+        "config_entry_id": {
+          "name": "ID d’entrée de configuration",
+          "description": "Facultatif. Installation cible lorsque plusieurs entrées existent."
+        }
+      }
+    },
     "pause_until": {
       "name": "Pause jusqu’à",
       "description": "Met en pause les exécutions planifiées automatiques jusqu’à la date et l’heure indiquées.",
@@ -561,6 +587,8 @@
     "schedule_edit_dialog_title": "Modifier le créneau · {summary}",
     "schedule_start_time_title": "Heure de début",
     "schedule_run_order_title": "Ordre d’exécution",
+    "schedule_zone_minutes_label": "Minutes pour {zone} dans ce programme. Vide : selon le mode.",
+    "schedule_badge_fixed_minutes": "Minutes fixes",
     "schedule_run_order_desc": "Les zones s’exécutent dans l’ordre de la liste. Les libellés de phase montrent comment les exécutions se regroupent : les zones d’une même phase démarrent ensemble lorsque les règles de parallélisme le permettent ; les zones exclusives s’exécutent toujours seules. Les zones désactivées sont ignorées à l’exécution et n’apparaissent pas dans une phase.",
     "schedule_phase_n": "Phase {n}",
     "schedule_up": "Monter",
@@ -613,7 +641,7 @@
     "settings_max_parallel_hint": "Les zones exclusives s’exécutent toujours seules, quelle que soit cette limite.",
     "settings_default_hint": "Ouvrir l’entrée de la barre latérale mène directement à cette installation.",
     "settings_automations_summary": "Appels de service et ID",
-    "settings_automations_body": "Utilisez ces services depuis vos automatisations : set_mode, set_zone_enabled, pause_until, clear_pause, run_zone, run_schedule_slot, stop_all, stop_zone, skip_phase. L’ID d’entrée de configuration ci-dessous identifie cette installation.",
+    "settings_automations_body": "Utilisez ces services depuis vos automatisations : set_mode, set_zone_enabled, set_zone_duration, pause_until, clear_pause, run_zone, run_schedule_slot, stop_all, stop_zone, skip_phase. L’ID d’entrée de configuration ci-dessous identifie cette installation.",
     "settings_diagnostics_summary": "Diagnostics (état d’exécution brut)",
     "settings_danger_title": "Zone de danger",
     "settings_danger_desc": "Supprimer une installation efface ses zones et sa programmation. Cela se fait depuis Paramètres → Appareils et services.",

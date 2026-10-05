@@ -31,7 +31,7 @@ from .countdown import async_set_countdown, clear_value, countdown_value
 from .grouping import can_join_active_phase, compute_phases
 from .guards import guards_allow_run
 from .models import RunState, ScheduleSlot, Zone
-from .program import RunStep, Soak, watering_steps
+from .program import Phase, RunStep, Soak, phase_slot_id, watering_steps
 from .scheduler import phases_for_slot, program_for_slot
 from .scripts import ScriptCall, effective_post_run_script, effective_pre_start_script
 from .water import (
@@ -58,7 +58,9 @@ SHUTDOWN_CLOSE_TIMEOUT_SEC = 20
 
 def _copy_steps(steps: list[RunStep]) -> list[RunStep]:
     """A queue of our own: phases are copied, soaks are immutable already."""
-    return [step if isinstance(step, Soak) else list(step) for step in steps]
+    return [
+        step if isinstance(step, Soak) else Phase(step, phase_slot_id(step)) for step in steps
+    ]
 
 
 class ZoneManualRunError(HomeAssistantError):
@@ -360,6 +362,12 @@ class IrrigationRuntime:
             self._zone_stop_requests.clear()
             self._run_slots = []
 
+    def _slot_by_id(self, slot_id: str | None) -> ScheduleSlot | None:
+        if slot_id is None:
+            return None
+        slots = self.coordinator.installation.schedule_slots
+        return next((s for s in slots if s.slot_id == slot_id), None)
+
     def _slots_for_ids(self, slot_ids: list[str]) -> list[ScheduleSlot]:
         """The run's slots, in the order they were merged into it."""
         by_id = {s.slot_id: s for s in self.coordinator.installation.schedule_slots}
@@ -655,10 +663,17 @@ class IrrigationRuntime:
                 # Stopped in the moment between launch and first poll.
                 self._zone_stop_requests.discard(zid)
                 return
-            duration = self._duration_overrides.get(
-                zid,
-                zone.duration_for_mode(mode),
-            )
+            duration = self._duration_overrides.get(zid)
+            if duration is None:
+                # Looked up only now, with the zone about to open: a pre-start
+                # script or an automation may have set the minutes a moment ago.
+                slot = self._slot_by_id(phase_slot_id(initial_zone_ids))
+                duration = (
+                    slot.duration_for(zone, mode) if slot else zone.duration_for_mode(mode)
+                )
+            if duration <= 0:
+                # No minutes, no water: opening the valve for an instant is not it.
+                return
             await self._async_zone_run(zone, duration)
 
         def _launch(zid: str) -> None:
@@ -1078,7 +1093,7 @@ class IrrigationRuntime:
                 continue
             if zone_id in step:
                 found = True
-                step = [z for z in step if z != zone_id]
+                step = Phase([z for z in step if z != zone_id], phase_slot_id(step))
             if step:
                 kept.append(step)
         self._phase_queue[:] = kept

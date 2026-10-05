@@ -44,9 +44,16 @@ import {
   minutesToTimeLocal,
   parseTimeLocalToMinutes,
   plannedLitres,
+  slotZoneMinutes,
 } from "../timetable-model";
 import { renderCycleSoakEditor } from "../cycle-soak-editor";
 import { formatVolumeNumber, litresToUnit, volumeUnit } from "../units";
+import {
+  renderZoneMinutesInput,
+  zoneMinutesForSave,
+  zoneMinutesOf,
+  type ZoneMinutes,
+} from "../zone-minutes-input";
 import { orderedZoneIds } from "../zone-order";
 import {
   mondayBasedWeekday,
@@ -78,6 +85,8 @@ interface SlotRow {
   cycle_kind: string;
   cycle_meta: CycleMeta | null;
   cycle_soak: CycleSoak;
+  /** Fixed minutes per zone; a zone that is not in here follows the mode. */
+  zone_minutes: ZoneMinutes;
 }
 
 interface CycleGroup {
@@ -92,6 +101,7 @@ interface CleanupProposal {
   optionId: string;
   meta: CycleMeta;
   zoneIds: string[];
+  zoneMinutes: ZoneMinutes;
   memberIds: string[];
   label: string;
 }
@@ -109,7 +119,7 @@ export class ViewSchedule extends LitElement {
   entryId!: string;
   installation!: Record<string, unknown>;
   runState?: Record<string, unknown>;
-  onSaved?: () => void;
+  onSaved?: () => void | Promise<void>;
 
   static styles = [
     sharedStyles,
@@ -258,6 +268,7 @@ export class ViewSchedule extends LitElement {
         cycle_kind: String(o.cycle_kind ?? "custom"),
         cycle_meta: (o.cycle_meta as CycleMeta) ?? null,
         cycle_soak: cycleSoakOf(o),
+        zone_minutes: zoneMinutesOf(o),
       };
     });
   }
@@ -308,6 +319,7 @@ export class ViewSchedule extends LitElement {
       pre_start_script: { ...s.pre_start_script },
       post_run_script: { ...s.post_run_script },
       cycle_soak: { ...s.cycle_soak },
+      zone_minutes: { ...s.zone_minutes },
     };
   }
 
@@ -334,7 +346,13 @@ export class ViewSchedule extends LitElement {
 
   /** "~120 L" for one run of the slot, from the zones' flow rates. */
   private _renderWaterMeta(s: SlotRow): TemplateResult | typeof nothing {
-    const litres = plannedLitres(s.zone_ids_ordered, this._zonesMap(), this._mode(), s.cycle_soak.repetitions);
+    const litres = plannedLitres(
+      s.zone_ids_ordered,
+      this._zonesMap(),
+      this._mode(),
+      s.cycle_soak.repetitions,
+      s.zone_minutes
+    );
     if (litres === null) return nothing;
     const unit = volumeUnit(this.hass);
     return html`<span class="meta"
@@ -414,7 +432,7 @@ export class ViewSchedule extends LitElement {
     return out;
   }
 
-  private _estimateMin(zoneIds: string[], cs: CycleSoak): number {
+  private _estimateMin(zoneIds: string[], cs: CycleSoak, fixed: ZoneMinutes): number {
     const zones = this._zonesMap();
     if (!zones) return 0;
     const phases = computePhases(zoneIds, this._zonesPhaseInput(), this._maxParallel(), true);
@@ -422,9 +440,15 @@ export class ViewSchedule extends LitElement {
     const mode = this._mode();
     const minutes = programMinutes(phases, cs, (zid) => {
       const z = zones[zid];
-      return z && Boolean(z.enabled ?? true) ? durationForMode(z, mode) : 0;
+      return z && Boolean(z.enabled ?? true) ? slotZoneMinutes(zid, z, mode, fixed) : 0;
     });
     return Math.round(preStart + minutes);
+  }
+
+  /** A badge for a slot that fixes the minutes of at least one of its zones. */
+  private _renderFixedMinutesBadge(s: SlotRow | undefined): TemplateResult | typeof nothing {
+    if (!s || !s.zone_ids_ordered.some((id) => id in s.zone_minutes)) return nothing;
+    return html`<span class="badge">${t(this.hass, "config_panel.schedule_badge_fixed_minutes")}</span>`;
   }
 
   private _phaseCount(zoneIds: string[]): number {
@@ -585,12 +609,30 @@ export class ViewSchedule extends LitElement {
     this._wizard?.start({ step: 1 });
   }
 
-  private _openWizardEdit(g: CycleGroup): void {
+  /**
+   * The installation as the backend has it now. Editors open on that: an
+   * automation may have set a slot's minutes since the list was loaded, and
+   * saving a dialog built from the old list would put the old ones back.
+   */
+  private async _reload(): Promise<void> {
+    await this.onSaved?.();
+    await new Promise((resolve) => setTimeout(resolve));
+  }
+
+  private async _openWizardEdit(g: CycleGroup): Promise<void> {
     this._msg = undefined;
+    await this._reload();
     const slots = (this.installation?.schedule_slots as Array<Record<string, unknown>>).filter(
       (s) => String(s.cycle_id ?? "") === g.cycle_id
     );
-    this._wizard?.start({ seedFromSlots: slots, step: 1 });
+    if (slots.length) this._wizard?.start({ seedFromSlots: slots, step: 1 });
+  }
+
+  private async _openSlotEdit(slotId: string): Promise<void> {
+    this._addZonePick = "";
+    await this._reload();
+    const slot = this._slots().find((s) => s.slot_id === slotId);
+    if (slot) this._slotEditDraft = this._cloneSlot(slot);
   }
 
   // ---- cleanup ------------------------------------------------------------
@@ -600,7 +642,8 @@ export class ViewSchedule extends LitElement {
     const { custom } = this._groupsAndCustom();
     const buckets = new Map<string, SlotRow[]>();
     for (const s of custom) {
-      const key = `${s.time_local}||${s.zone_ids_ordered.join(",")}`;
+      const minutes = JSON.stringify(zoneMinutesForSave(s.zone_minutes, s.zone_ids_ordered));
+      const key = `${s.time_local}||${s.zone_ids_ordered.join(",")}||${minutes}`;
       if (!buckets.has(key)) buckets.set(key, []);
       buckets.get(key)!.push(s);
     }
@@ -610,6 +653,7 @@ export class ViewSchedule extends LitElement {
       const parities = new Set(list.map((s) => s.week_parity));
       const time = list[0].time_local;
       const zoneIds = list[0].zone_ids_ordered;
+      const zoneMinutes = zoneMinutesForSave(list[0].zone_minutes, zoneIds);
       const memberIds = list.map((s) => s.slot_id);
 
       if (parities.size === 1 && parities.has("every")) {
@@ -619,7 +663,7 @@ export class ViewSchedule extends LitElement {
         const meta: CycleMeta = { times: [time] };
         if (optionId === "weekly") meta.anchor_weekday = union[0];
         else if (optionId === "n_per_week") meta.week_days = union;
-        proposals.push({ optionId, meta, zoneIds, memberIds, label: list[0].name });
+        proposals.push({ optionId, meta, zoneIds, zoneMinutes, memberIds, label: list[0].name });
       } else if (
         list.length === 2 &&
         parities.has("odd") &&
@@ -630,6 +674,7 @@ export class ViewSchedule extends LitElement {
           optionId: "every_2_days",
           meta: { times: [time], n: 2, anchor_weekday: normalizeWeekdays(list[0].weekdays)[0] ?? 0 },
           zoneIds,
+          zoneMinutes,
           memberIds,
           label: list[0].name,
         });
@@ -661,6 +706,7 @@ export class ViewSchedule extends LitElement {
           cycle_kind: kind,
           cycle_meta: p.meta as Record<string, unknown>,
           zone_ids_ordered: p.zoneIds,
+          zone_minutes: p.zoneMinutes,
           enabled: true,
         });
         if (!res.success) {
@@ -785,6 +831,7 @@ export class ViewSchedule extends LitElement {
       repetitions: d.cycle_soak.repetitions,
       soak_between_phases_min: d.cycle_soak.soakBetweenPhasesMin,
       soak_between_repetitions_min: d.cycle_soak.soakBetweenRepetitionsMin,
+      zone_minutes: zoneMinutesForSave(d.zone_minutes, d.zone_ids_ordered),
     });
     if (ok) this._closeEditDialog();
   }
@@ -893,10 +940,7 @@ export class ViewSchedule extends LitElement {
           class="iconbtn"
           style="margin-left:auto;width:34px;height:34px"
           aria-label=${t(this.hass, "config_panel.schedule_edit")}
-          @click=${() => {
-            this._addZonePick = "";
-            this._slotEditDraft = this._cloneSlot(m);
-          }}
+          @click=${() => this._openSlotEdit(m.slot_id)}
         >
           <ha-icon icon="mdi:pencil"></ha-icon>
         </button>
@@ -909,7 +953,11 @@ export class ViewSchedule extends LitElement {
     const anyEnabled = g.members.some((m) => m.enabled);
     const expanded = this._expanded.has(g.cycle_id);
     const zoneIds = g.members[0]?.zone_ids_ordered ?? [];
-    const est = this._estimateMin(zoneIds, g.members[0]?.cycle_soak ?? cycleSoakOf(undefined));
+    const est = this._estimateMin(
+      zoneIds,
+      g.members[0]?.cycle_soak ?? cycleSoakOf(undefined),
+      g.members[0]?.zone_minutes ?? {}
+    );
     const phases = this._phaseCount(zoneIds);
     const times = [...new Set(g.members.map((m) => m.time_local))].sort();
     const next = this._nextFire(g.members);
@@ -941,6 +989,7 @@ export class ViewSchedule extends LitElement {
             <div class="compact-row-title">
               <span class="ellipsis">${label}</span>
               <span class="badge badge-primary">${this._cycleBadge(g.kind, g.meta)}</span>
+              ${this._renderFixedMinutesBadge(g.members[0])}
               ${!anyEnabled
                 ? html`<span class="badge">${t(this.hass, "config_panel.cycle_paused_n", {
                     n: g.members.length,
@@ -1050,7 +1099,7 @@ export class ViewSchedule extends LitElement {
   }
 
   private _renderCustomRow(s: SlotRow): TemplateResult {
-    const est = this._estimateMin(s.zone_ids_ordered, s.cycle_soak);
+    const est = this._estimateMin(s.zone_ids_ordered, s.cycle_soak, s.zone_minutes);
     const phases = this._phaseCount(s.zone_ids_ordered);
     const accent = s.enabled ? "" : "inactive";
     const expanded = this._expanded.has(s.slot_id);
@@ -1083,6 +1132,7 @@ export class ViewSchedule extends LitElement {
               ${s.week_parity !== "every"
                 ? html`<span class="badge badge-primary badge-dot">${this._parityLabel(s.week_parity)}</span>`
                 : nothing}
+              ${this._renderFixedMinutesBadge(s)}
             </div>
             <div class="meta-line">
               <span class="meta"
@@ -1121,10 +1171,7 @@ export class ViewSchedule extends LitElement {
               type="button"
               title=${t(this.hass, "config_panel.schedule_edit")}
               aria-label=${t(this.hass, "config_panel.schedule_edit")}
-              @click=${() => {
-                this._addZonePick = "";
-                this._slotEditDraft = this._cloneSlot(s);
-              }}
+              @click=${() => this._openSlotEdit(s.slot_id)}
             >
               <ha-icon icon="mdi:pencil"></ha-icon>
             </button>
@@ -1323,6 +1370,16 @@ export class ViewSchedule extends LitElement {
                   : nothing}
                 <li>
                   <span>${idx + 1}. ${this._zoneName(zid)}</span>
+                  ${renderZoneMinutesInput(
+                    this.hass,
+                    this._zoneName(zid),
+                    durationForMode(this._zonesMap()?.[zid], this._mode()),
+                    draft.zone_minutes[zid],
+                    (minutes) => {
+                      if (minutes === undefined) delete draft.zone_minutes[zid];
+                      else draft.zone_minutes[zid] = minutes;
+                    }
+                  )}
                   <span class="zone-actions">
                     <button type="button" class="btn-outline" @click=${() => {
                       if (idx > 0) {

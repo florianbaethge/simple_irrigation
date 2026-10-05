@@ -109,24 +109,24 @@ set_zone_duration:
       selector:
         text: {}
     duration_min:
-      required: true
+      required: false
       selector:
         number:
-          min: 1
-          max: 1440
+          min: 0
+          max: 240
           mode: box
     mode:
       required: false
-      default: active
       selector:
         select:
-          translation_key: zone_duration_target
           options:
-            - active
             - eco
             - normal
             - extra
-            - all
+    slot_id:
+      required: false
+      selector:
+        text: {}
     config_entry_id:
       required: false
       selector:

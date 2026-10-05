@@ -21,6 +21,24 @@ class Soak:
     seconds: int
 
 
+class Phase(list[str]):
+    """Zone ids that water in parallel, and the slot that scheduled them.
+
+    A plain list wherever it is read. The slot matters at one point only: when
+    a zone starts, its fixed minutes are looked up there -- as late as that, so
+    a pre-start script can still set them. ``None`` for a manual run.
+    """
+
+    def __init__(self, zone_ids: list[str] | tuple[str, ...] = (), slot_id: str | None = None):
+        super().__init__(zone_ids)
+        self.slot_id = slot_id
+
+
+def phase_slot_id(step: object) -> str | None:
+    """The slot a phase belongs to; None for a manual phase, which is a bare list."""
+    return getattr(step, "slot_id", None)
+
+
 RunStep: TypeAlias = list[str] | Soak
 
 
@@ -50,7 +68,7 @@ def expand_program(phases: list[list[str]], slot: ScheduleSlot) -> list[RunStep]
         for phase_index, phase in enumerate(phases):
             if phase_index > 0 and between_phases > 0:
                 steps.append(Soak(between_phases))
-            steps.append(list(phase))
+            steps.append(Phase(phase, slot.slot_id))
     return steps
 
 

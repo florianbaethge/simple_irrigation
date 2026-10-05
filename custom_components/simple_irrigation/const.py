@@ -74,6 +74,9 @@ MAX_GUARDS: Final = 10
 # rest between them. Long soaks are legitimate (clay takes an hour), so the
 # cap is generous; the repetition cap keeps a typo from watering all night.
 MAX_REPETITIONS: Final = 10
+# Longest a zone may run in one go, wherever the number comes from: the zone's
+# own runtimes, a slot's fixed minutes, the set_zone_duration service.
+MAX_ZONE_DURATION_MIN: Final = 240
 MAX_SOAK_MIN: Final = 240
 
 STORE_VERSION: Final = 1
@@ -112,10 +115,6 @@ ATTR_UNTIL: Final = "until"
 ATTR_MODE: Final = "mode"
 ATTR_ENABLED: Final = "enabled"
 ATTR_SCHEDULED: Final = "scheduled"
-
-# set_zone_duration targets: one of the MODES, the installation's current mode, or all three.
-DURATION_TARGET_ACTIVE: Final = "active"
-DURATION_TARGET_ALL: Final = "all"
 
 EVENT_RUN_STARTED: Final = f"{DOMAIN}_run_started"
 EVENT_RUN_FINISHED: Final = f"{DOMAIN}_run_finished"

@@ -25,15 +25,6 @@
         "normal": "Normal",
         "extra": "Extra"
       }
-    },
-    "zone_duration_target": {
-      "options": {
-        "active": "Current mode",
-        "eco": "Eco",
-        "normal": "Normal",
-        "extra": "Extra",
-        "all": "All modes"
-      }
     }
   },
   "entity": {
@@ -235,7 +226,7 @@
     },
     "set_zone_duration": {
       "name": "Set zone duration",
-      "description": "Sets the runtime of a zone in minutes, e.g. from a calculation done outside Simple Irrigation. Applies to the next run; a run in progress is not changed. Use Set zone enabled to skip a zone.",
+      "description": "Sets how long a zone waters, in minutes, for example from a calculation done outside Simple Irrigation. Give a mode to change the zone's runtime for Eco, Normal or Extra, or a slot ID to fix its minutes in one schedule. A zone that has not started yet picks the new value up, also in a run that is under way.",
       "fields": {
         "zone_id": {
           "name": "Zone ID",
@@ -243,11 +234,15 @@
         },
         "duration_min": {
           "name": "Duration (minutes)",
-          "description": "Runtime in minutes (1–1440)."
+          "description": "0 to 240. With 0 the zone is left out. With a slot ID the duration may be omitted: the fixed minutes are removed and the zone follows the mode again."
         },
         "mode": {
           "name": "Mode",
-          "description": "Which runtime to change: Eco, Normal or Extra, the installation's current mode, or all three."
+          "description": "Which of the zone's runtimes to change: Eco, Normal or Extra. Not together with a slot ID."
+        },
+        "slot_id": {
+          "name": "Slot ID",
+          "description": "Optional. Fixes the minutes in this schedule only, whatever the mode. One member of a cycle stands for the whole cycle. Not together with a mode."
         },
         "config_entry_id": {
           "name": "Config entry ID",
@@ -592,6 +587,8 @@
     "schedule_edit_dialog_title": "Edit slot · {summary}",
     "schedule_start_time_title": "Start time",
     "schedule_run_order_title": "Run order",
+    "schedule_zone_minutes_label": "Minutes for {zone} in this schedule. Empty: as the mode says.",
+    "schedule_badge_fixed_minutes": "Fixed minutes",
     "schedule_run_order_desc": "Zones run in list order. Phase labels show how runs group: zones in the same phase start together when parallel rules allow; exclusive zones always run alone. Disabled zones are skipped at runtime and are not shown in a phase.",
     "schedule_phase_n": "Phase {n}",
     "schedule_up": "Up",

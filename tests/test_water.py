@@ -283,10 +283,11 @@ def test_a_run_without_water_leaves_the_last_run_untouched() -> None:
 @pytest.mark.asyncio
 async def test_a_full_run_books_the_zone_and_the_run() -> None:
     """End to end through the pipeline: meter read on open, again on close."""
-    zone = _zone(water_meter_entity_id="sensor.z1_meter", duration_normal_min=0)
+    zone = _zone(water_meter_entity_id="sensor.z1_meter", duration_normal_min=1)
     hass = _hass({"sensor.z1_meter": _state("100", "L")})
     inst = Installation(installation_id="i", name="g", zones={"z1": zone})
     runtime = _runtime(hass, inst)
+    runtime._async_wait_zone_duration = AsyncMock()  # the zone is over at once
 
     async def _call(domain, service, data=None, **kw):
         # Water flows while the zone is open: bump the meter on turn_on.

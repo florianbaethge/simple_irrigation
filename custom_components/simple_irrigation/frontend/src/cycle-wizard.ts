@@ -47,7 +47,18 @@ import {
   type ZonePhaseInput,
 } from "./schedule-phases";
 import { renderCycleSoakEditor } from "./cycle-soak-editor";
-import { durationForMode, parseTimeLocalToMinutes, minutesToTimeLocal } from "./timetable-model";
+import {
+  durationForMode,
+  minutesToTimeLocal,
+  parseTimeLocalToMinutes,
+  slotZoneMinutes,
+} from "./timetable-model";
+import {
+  renderZoneMinutesInput,
+  zoneMinutesForSave,
+  zoneMinutesOf,
+  type ZoneMinutes,
+} from "./zone-minutes-input";
 import { formatDateTimeForDisplay } from "./date-format";
 import { orderedZoneIds } from "./zone-order";
 import type { HomeAssistant } from "./types";
@@ -227,6 +238,8 @@ export class CycleWizard extends LitElement {
   @state() private _anchor = 0;
   @state() private _weekDays: number[] = [0, 3];
   @state() private _zoneIds: string[] = [];
+  /** Fixed minutes per zone; a zone that is not in here follows the mode. */
+  @state() private _zoneMinutes: ZoneMinutes = {};
   @state() private _enabled = true;
   @state() private _label = "";
   @state() private _guards: Guard[] = [];
@@ -256,6 +269,7 @@ export class CycleWizard extends LitElement {
       this._cycleId = opts?.cycleId ?? null;
       this._times = ["19:00"];
       this._zoneIds = this._defaultZoneIds();
+      this._zoneMinutes = {};
       this._enabled = true;
       this._label = "";
       this._guards = [];
@@ -296,6 +310,7 @@ export class CycleWizard extends LitElement {
     this._zoneIds = Array.isArray(first.zone_ids_ordered)
       ? [...(first.zone_ids_ordered as string[])]
       : this._defaultZoneIds();
+    this._zoneMinutes = zoneMinutesOf(first);
     this._enabled = Boolean(first.enabled ?? true);
     this._guards = normalizeGuards(first.guards);
     this._ignoreGlobalGuards = Boolean(first.ignore_global_guards ?? false);
@@ -382,7 +397,9 @@ export class CycleWizard extends LitElement {
     const mode = this._mode();
     const minutes = programMinutes(phases, this._cycleSoak, (zid) => {
       const z = zones[zid];
-      return z && Boolean(z.enabled ?? true) ? durationForMode(z, mode) : 0;
+      return z && Boolean(z.enabled ?? true)
+        ? slotZoneMinutes(zid, z, mode, this._zoneMinutes)
+        : 0;
     });
     return Math.round(preStart + minutes);
   }
@@ -509,6 +526,7 @@ export class CycleWizard extends LitElement {
         repetitions: this._cycleSoak.repetitions,
         soak_between_phases_min: this._cycleSoak.soakBetweenPhasesMin,
         soak_between_repetitions_min: this._cycleSoak.soakBetweenRepetitionsMin,
+        zone_minutes: zoneMinutesForSave(this._zoneMinutes, this._zoneIds),
       });
       if (!res.success) {
         this._msg = formatApiError(res.error, this.hass);
@@ -753,13 +771,26 @@ export class CycleWizard extends LitElement {
             <div class="zone-pick-main">
               <div class="zone-pick-name">${this._zoneName(id)}</div>
               <div class="meta-line">
-                <span class="meta"
-                  ><ha-icon icon="mdi:timer-outline"></ha-icon>${t(
-                    this.hass,
-                    "config_panel.timetable_duration_min",
-                    { n: this._zoneDuration(id) }
-                  )}</span
-                >
+                ${checked
+                  ? renderZoneMinutesInput(
+                      this.hass,
+                      this._zoneName(id),
+                      this._zoneDuration(id),
+                      this._zoneMinutes[id],
+                      (minutes) => {
+                        const next = { ...this._zoneMinutes };
+                        if (minutes === undefined) delete next[id];
+                        else next[id] = minutes;
+                        this._zoneMinutes = next;
+                      }
+                    )
+                  : html`<span class="meta"
+                      ><ha-icon icon="mdi:timer-outline"></ha-icon>${t(
+                        this.hass,
+                        "config_panel.timetable_duration_min",
+                        { n: this._zoneDuration(id) }
+                      )}</span
+                    >`}
                 ${checked && phase
                   ? html`<span class="meta"
                       ><ha-icon icon="mdi:layers-triple-outline"></ha-icon>${excl

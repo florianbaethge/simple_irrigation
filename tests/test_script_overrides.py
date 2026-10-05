@@ -220,12 +220,13 @@ async def test_full_pipeline_uses_the_slots_scripts() -> None:
                 zone_id="z1",
                 name="Lawn",
                 switch_entity_ids=["switch.z1"],
-                duration_normal_min=0,
+                duration_normal_min=1,
             )
         },
         schedule_slots=[slot],
     )
     runtime = _runtime(_hass(calls), inst)
+    runtime._async_wait_zone_duration = AsyncMock()  # the zone is over at once
 
     await runtime.async_run_phases([["z1"]], scheduled=True, slot_ids=["lawn"])
     await runtime._task
@@ -252,11 +253,12 @@ async def test_manual_zone_run_uses_the_installations_scripts() -> None:
                 zone_id="z1",
                 name="Lawn",
                 switch_entity_ids=["switch.z1"],
-                duration_normal_min=0,
+                duration_normal_min=1,
             )
         },
     )
     runtime = _runtime(_hass(calls), inst)
+    runtime._async_wait_zone_duration = AsyncMock()  # the zone is over at once
 
     await runtime.async_run_zone("z1")
     await runtime._task

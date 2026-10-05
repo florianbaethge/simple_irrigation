@@ -25,15 +25,6 @@
         "normal": "Normale",
         "extra": "Extra"
       }
-    },
-    "zone_duration_target": {
-      "options": {
-        "active": "Modalità attuale",
-        "eco": "Eco",
-        "normal": "Normale",
-        "extra": "Extra",
-        "all": "Tutte le modalità"
-      }
     }
   },
   "entity": {
@@ -235,19 +226,23 @@
     },
     "set_zone_duration": {
       "name": "Imposta durata zona",
-      "description": "Imposta la durata di una zona in minuti, ad esempio da un calcolo fatto fuori da Simple Irrigation. Vale dalla prossima esecuzione; un'irrigazione in corso non cambia. Per saltare una zona usa Imposta zona abilitata.",
+      "description": "Imposta per quanti minuti irriga una zona, ad esempio a partire da un calcolo fatto fuori da Simple Irrigation. Indica una modalità per cambiare la durata della zona in Eco, Normale o Extra, oppure un ID fascia per fissarne i minuti in un programma. Una zona non ancora avviata prende il nuovo valore, anche in un’esecuzione già in corso.",
       "fields": {
         "zone_id": {
           "name": "ID zona",
-          "description": "UUID interno della zona (chiavi sotto zones in Scarica diagnostica di questa integrazione)."
+          "description": "UUID interno della zona (chiavi sotto zones nei download diagnostici per questa integrazione)."
         },
         "duration_min": {
           "name": "Durata (minuti)",
-          "description": "Durata in minuti (1–1440)."
+          "description": "Da 0 a 240. Con 0 la zona viene saltata. Con un ID fascia la durata può mancare: i minuti fissi vengono rimossi e la zona torna a seguire la modalità."
         },
         "mode": {
           "name": "Modalità",
-          "description": "Quale durata modificare: Eco, Normale o Extra, la modalità attuale dell'installazione, oppure tutte e tre."
+          "description": "Quale durata della zona cambiare: Eco, Normale o Extra. Non insieme a un ID fascia."
+        },
+        "slot_id": {
+          "name": "ID fascia",
+          "description": "Facoltativo. Fissa i minuti solo in questo programma, qualunque sia la modalità. Un membro di un ciclo vale per l’intero ciclo. Non insieme a una modalità."
         },
         "config_entry_id": {
           "name": "ID voce di configurazione",
@@ -581,6 +576,8 @@
     "schedule_edit_dialog_title": "Modifica fascia · {summary}",
     "schedule_start_time_title": "Ora di inizio",
     "schedule_run_order_title": "Ordine di esecuzione",
+    "schedule_zone_minutes_label": "Minuti per {zone} in questo programma. Vuoto: come da modalità.",
+    "schedule_badge_fixed_minutes": "Minuti fissi",
     "schedule_run_order_desc": "Le zone vengono eseguite nell’ordine dell’elenco. Le etichette di fase mostrano come si raggruppano le esecuzioni: le zone nella stessa fase iniziano insieme quando le regole di parallelismo lo consentono; le zone esclusive vengono sempre eseguite da sole. Le zone disabilitate vengono saltate durante l’esecuzione e non sono mostrate in una fase.",
     "schedule_phase_n": "Fase {n}",
     "schedule_up": "Su",

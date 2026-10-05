@@ -224,6 +224,32 @@
         }
       }
     },
+    "set_zone_duration": {
+      "name": "Zonen-Laufzeit setzen",
+      "description": "Legt fest, wie lange eine Zone bewässert, in Minuten, zum Beispiel aus einer Berechnung außerhalb von Simple Irrigation. Mit einem Modus wird die Laufzeit der Zone für Eco, Normal oder Extra geändert, mit einer Slot-ID werden ihre Minuten in einem Zeitplan fest vorgegeben. Eine Zone, die noch nicht gestartet ist, übernimmt den neuen Wert, auch in einem bereits laufenden Lauf.",
+      "fields": {
+        "zone_id": {
+          "name": "Zonen-ID",
+          "description": "Interne Zonen-UUID (Schlüssel unter zones in „Diagnose herunterladen“ für diese Integration)."
+        },
+        "duration_min": {
+          "name": "Dauer (Minuten)",
+          "description": "0 bis 240. Bei 0 wird die Zone ausgelassen. Mit einer Slot-ID darf die Dauer fehlen: Dann entfällt die feste Vorgabe, und die Zone folgt wieder dem Modus."
+        },
+        "mode": {
+          "name": "Modus",
+          "description": "Welche Laufzeit der Zone geändert wird: Eco, Normal oder Extra. Nicht zusammen mit einer Slot-ID."
+        },
+        "slot_id": {
+          "name": "Slot-ID",
+          "description": "Optional. Gibt die Minuten nur in diesem Zeitplan fest vor, unabhängig vom Modus. Ein Mitglied eines Zyklus steht für den ganzen Zyklus. Nicht zusammen mit einem Modus."
+        },
+        "config_entry_id": {
+          "name": "Konfigurationseintrags-ID",
+          "description": "Optional. Ziel-Installation bei mehreren Einträgen."
+        }
+      }
+    },
     "pause_until": {
       "name": "Pause bis",
       "description": "Pausiert automatische Zeitplan-Läufe bis zum angegebenen Datum und Uhrzeit.",
@@ -561,6 +587,8 @@
     "schedule_edit_dialog_title": "Slot bearbeiten · {summary}",
     "schedule_start_time_title": "Startzeit",
     "schedule_run_order_title": "Lauffolge",
+    "schedule_zone_minutes_label": "Minuten für {zone} in diesem Zeitplan. Leer: wie der Modus vorgibt.",
+    "schedule_badge_fixed_minutes": "Feste Minuten",
     "schedule_run_order_desc": "Zonen laufen in Listenreihenfolge. Phasen zeigen die Gruppierung: Zonen in derselben Phase starten gemeinsam, wenn Parallelregeln es erlauben; exklusive Zonen laufen immer allein. Deaktivierte Zonen werden zur Laufzeit übersprungen und erscheinen nicht in einer Phase.",
     "schedule_phase_n": "Phase {n}",
     "schedule_up": "Hoch",
@@ -613,7 +641,7 @@
     "settings_max_parallel_hint": "Exklusive Zonen laufen immer allein, unabhängig von diesem Limit.",
     "settings_default_hint": "Der Seitenleisten-Eintrag öffnet direkt diese Anlage.",
     "settings_automations_summary": "Dienste & IDs",
-    "settings_automations_body": "Diese Dienste für Automationen nutzen: set_mode, set_zone_enabled, pause_until, clear_pause, run_zone, run_schedule_slot, stop_all, stop_zone, skip_phase. Die Config-Entry-ID unten identifiziert diese Anlage.",
+    "settings_automations_body": "Diese Dienste für Automationen nutzen: set_mode, set_zone_enabled, set_zone_duration, pause_until, clear_pause, run_zone, run_schedule_slot, stop_all, stop_zone, skip_phase. Die Config-Entry-ID unten identifiziert diese Anlage.",
     "settings_diagnostics_summary": "Diagnose (Rohzustand)",
     "settings_danger_title": "Gefahrenzone",
     "settings_danger_desc": "Das Entfernen einer Anlage löscht ihre Zonen und den Zeitplan. Das geschieht unter Einstellungen → Geräte & Dienste.",

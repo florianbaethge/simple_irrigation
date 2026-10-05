@@ -224,6 +224,32 @@
         }
       }
     },
+    "set_zone_duration": {
+      "name": "Zoneduur instellen",
+      "description": "Stelt in hoe lang een zone water geeft, in minuten, bijvoorbeeld op basis van een berekening buiten Simple Irrigation. Geef een modus op om de looptijd van de zone voor Eco, Normaal of Extra te wijzigen, of een slot-ID om de minuten in één schema vast te leggen. Een zone die nog niet is gestart neemt de nieuwe waarde over, ook in een run die al loopt.",
+      "fields": {
+        "zone_id": {
+          "name": "Zone-ID",
+          "description": "Interne zone UUID (sleutels onder zones in Diagnostiek downloaden voor deze integratie)."
+        },
+        "duration_min": {
+          "name": "Duur (minuten)",
+          "description": "0 tot 240. Bij 0 wordt de zone overgeslagen. Met een slot-ID mag de duur ontbreken: de vaste minuten vervallen en de zone volgt weer de modus."
+        },
+        "mode": {
+          "name": "Modus",
+          "description": "Welke looptijd van de zone wordt gewijzigd: Eco, Normaal of Extra. Niet samen met een slot-ID."
+        },
+        "slot_id": {
+          "name": "Slot-ID",
+          "description": "Optioneel. Legt de minuten alleen in dit schema vast, ongeacht de modus. Eén lid van een cyclus staat voor de hele cyclus. Niet samen met een modus."
+        },
+        "config_entry_id": {
+          "name": "Config entry ID",
+          "description": "Optioneel. Installatiedoel bij meerdere entries."
+        }
+      }
+    },
     "pause_until": {
       "name": "Pause tot",
       "description": "Pauzeert automatische geplande runs tot de opgegeven datum en tijd.",
@@ -561,6 +587,8 @@
     "schedule_edit_dialog_title": "Bewerk slot · {summary}",
     "schedule_start_time_title": "Starttijd",
     "schedule_run_order_title": "Uitvoeringsvolgorde",
+    "schedule_zone_minutes_label": "Minuten voor {zone} in dit schema. Leeg: volgens de modus.",
+    "schedule_badge_fixed_minutes": "Vaste minuten",
     "schedule_run_order_desc": "Zones worden in volgorde uitgevoerd. Faselabels tonen hoe runs groeperen: zones in dezelfde fase starten samen wanneer parallelle regels dit toestaan; exclusieve zones worden altijd alleen uitgevoerd. Uitgeschakelde zones worden bij runtime overgeslagen en worden niet in een fase weergegeven.",
     "schedule_phase_n": "Fase {n}",
     "schedule_up": "Omhoog",
@@ -613,7 +641,7 @@
     "settings_max_parallel_hint": "Exclusieve zones worden altijd alleen uitgevoerd, ongeacht deze limiet.",
     "settings_default_hint": "Het openen van de zijbalk-item springt rechtstreeks naar deze installatie.",
     "settings_automations_summary": "Serviceoproepen & ID's",
-    "settings_automations_body": "Gebruik deze services van automaties: set_mode, set_zone_enabled, pause_until, clear_pause, run_zone, run_schedule_slot, stop_all, stop_zone, skip_phase. De config entry id hieronder identificeert deze installatie.",
+    "settings_automations_body": "Gebruik deze services van automaties: set_mode, set_zone_enabled, set_zone_duration, pause_until, clear_pause, run_zone, run_schedule_slot, stop_all, stop_zone, skip_phase. De config entry id hieronder identificeert deze installatie.",
     "settings_diagnostics_summary": "Diagnostiek (onbewerkte run-status)",
     "settings_danger_title": "Gevaarzone",
     "settings_danger_desc": "Het verwijderen van een installatie verwijdert de zones en planning. Dit gebeurt via Instellingen → Apparaten & Services.",

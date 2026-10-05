@@ -2,6 +2,21 @@ import { css } from "lit";
 
 /** Shared stacked form layout: titles, helper text, full-width controls. */
 export const formLayoutStyles = css`
+  /* Minutes of one zone in a schedule: small enough to sit in the zone's row. */
+  .zone-min {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    flex: none;
+    font-size: 0.85rem;
+    color: var(--secondary-text-color);
+  }
+  .zone-min input[type="number"] {
+    width: 62px;
+    padding: 6px 8px;
+    text-align: right;
+  }
+
   .field-block {
     margin-bottom: 20px;
   }

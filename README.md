@@ -103,7 +103,7 @@ You can add **multiple** config entries for separate gardens or seasonal plans (
 ### Zones
 
 - **Outputs:** any mix of `switch`, `input_boolean`, `group` and `valve` entities. Most use `turn_on` / `turn_off`; valves use `open_valve` / `close_valve`. A zone can drive **several outputs** at once.
-- **Runtimes:** three values per zone — Eco / Normal / Extra. The installation’s active **mode** picks which one is used.
+- **Runtimes:** three values per zone — Eco / Normal / Extra. The installation’s active **mode** picks which one is used, unless a schedule fixes the zone's minutes (see *Cycles and slots*). A zone with 0 minutes is left out of the run; its valve is not opened.
 - **Exclusive:** the zone never runs in parallel with others (high-flow lines, shared supply, drip circuits).
 - **Issues filter:** zones whose output entity is missing or `unavailable` are flagged so you can spot broken wiring at a glance.
 - **Order:** on the **All** filter, drag a zone by its handle — with a mouse or a finger — or focus the handle and press the up or down arrow key. The order applies wherever zones are listed (Zones, Timetable, the dashboard card) and is the run order a new cycle starts with. Existing cycles keep their run order.
@@ -155,6 +155,7 @@ A **cycle** is a repeating watering cadence. The wizard offers:
 Why the split? A slot waters on chosen weekdays at **one time of day** and, optionally, only in **odd** or **even** ISO calendar weeks. That covers most cadences in one slot — but a true *every-2-days* rhythm needs two slots on alternating parity (odd weeks Mon/Wed/Fri/Sun, even weeks Tue/Thu/Sat), and every further start time needs the cadence's slots once more. Whatever takes more than one slot appears as a **cycle** with member rows and a **Detach into single slots** action; everything else is a plain, single slot. Either way, **every row expands to a 14-day run strip** so you can see exactly when it fires.
 
 - **Several start times a day:** fresh seed, pots in a heat wave and a greenhouse want water more than once a day. In the wizard's time step, **Add start time** gives a cycle up to eight start times. The whole cycle — zones, run order, conditions, Cycle & Soak — runs at each of them and stays one row to edit. This is not Cycle & Soak: that repeats the phases back to back with short rests, this spreads whole runs over the day. A start that falls into a run still under way is skipped, so the wizard warns when two start times are closer together than one run takes.
+- **Fixed minutes:** in a slot's run order — and in the wizard's zone step — every zone has a minutes field. Empty, the zone waters as long as the active mode says, and the field shows what that is. A number fixes it for this schedule, whatever the mode: the lawn gets twenty minutes in the morning and five in the evening without a second set of zones. The row carries a **Fixed minutes** badge, and all estimates count with it. An automation can set and clear the same field with `simple_irrigation.set_zone_duration`.
 - **Run order & phases:** the ordered zone list is grouped into **phases** by the *max parallel* limit and *exclusive* flags. The editor shows the phase breakdown live.
 - **Optimize cycles:** detects existing single-day slots that together form a known cadence and offers to merge them into one cycle — no re-entry, nothing runs differently.
 - **Run now:** *Run next slot now* (Overview), *Run this slot now* (a schedule row) and *Run zone now* (Zones) all use the same pre-start and shutdown pipeline as a scheduled run.
@@ -431,21 +432,31 @@ All services accept an optional `config_entry_id` when you run more than one Sim
 | `simple_irrigation.skip_phase` | End the running phase, or the Cycle & Soak rest the run is in, and go on to the next. Does nothing while idle |
 | `simple_irrigation.set_mode` | Set `eco` / `normal` / `extra` |
 | `simple_irrigation.set_zone_enabled` | Enable/disable a zone |
-| `simple_irrigation.set_zone_duration` | Set a zone's runtime (minutes) from your own calculation; applies to the next run (`zone_id`, `duration_min`, optional `mode`) |
+| `simple_irrigation.set_zone_duration` | Set how long a zone waters, from your own calculation: its runtime for a mode (`zone_id`, `duration_min`, `mode`), or its fixed minutes in one schedule (`zone_id`, `slot_id`, `duration_min`) |
 | `simple_irrigation.pause_until` | Pause automatic runs until a datetime (`until` field) |
 | `simple_irrigation.clear_pause` | Clear the pause |
 
-Example — feed a zone's runtime from a calculation done in Home Assistant (weather, soil moisture, ET…), for instance in a pre-start script, so schedule slots, guards and the hardware countdown keep working as usual:
+Example — feed a zone's runtime from a calculation done in Home Assistant (weather, soil moisture, ET…), so schedule slots, conditions and the hardware countdown keep working as usual:
 
 ```yaml
 action: simple_irrigation.set_zone_duration
 data:
   zone_id: "..."          # the zone's UUID, see Download diagnostics
-  duration_min: "{{ states('sensor.garden_duration') | int }}"
-  mode: active            # eco | normal | extra | active (current mode, default) | all
+  duration_min: "{{ states('sensor.lawn_minutes') | int }}"
+  mode: normal            # eco | normal | extra: which of the zone's runtimes to write
 ```
 
-`set_zone_duration` takes 1–1440 minutes. To skip a zone for one run use `set_zone_enabled` instead. The new runtime applies to the next run; a run already in progress keeps the duration it started with.
+The same service fixes a zone's minutes in **one** schedule when it is given a `slot_id` instead of a `mode` — the evening run gets its own figure, the morning run keeps its own:
+
+```yaml
+action: simple_irrigation.set_zone_duration
+data:
+  zone_id: "..."
+  slot_id: "..."          # any member of a cycle stands for the whole cycle
+  duration_min: 6         # leave out to remove the fixed minutes again
+```
+
+`set_zone_duration` takes 0–240 minutes, the same range as the panel; `0` leaves the zone out. A zone that has not started yet picks the new value up, also in a run that is already under way — which is what lets a pre-start script set it. A manual *Run zone now* takes its duration when it is started. With Cycle & Soak the minutes apply to every pass.
 
 Example — set mode from an automation:
 

@@ -22,6 +22,7 @@ from homeassistant.util import dt as dt_util
 from .const import (
     MAX_REPETITIONS,
     MAX_SOAK_MIN,
+    MAX_ZONE_DURATION_MIN,
     DOMAIN,
     GUARD_OPERATORS,
     MAX_SCRIPT_TIMEOUT_SEC,
@@ -34,7 +35,14 @@ from .const import (
     WEEK_PARITY_EVERY,
 )
 from .grouping import compute_phases
-from .models import Guard, Installation, ScheduleSlot, Zone, normalize_weekdays
+from .models import (
+    Guard,
+    Installation,
+    ScheduleSlot,
+    Zone,
+    normalize_weekdays,
+    parse_zone_minutes,
+)
 from .cycle import (
     CYCLE_KINDS,
     MAX_CYCLE_START_TIMES,
@@ -83,6 +91,7 @@ SLOT_SCRIPT_TIMEOUT_SCHEMA = vol.Any(
 # ("none"), so these are plain ranges rather than positive_int.
 SLOT_REPETITIONS_SCHEMA = vol.All(int, vol.Range(min=1, max=MAX_REPETITIONS))
 SLOT_SOAK_SCHEMA = vol.All(int, vol.Range(min=0, max=MAX_SOAK_MIN))
+ZONE_DURATION_SCHEMA = vol.All(int, vol.Range(min=0, max=MAX_ZONE_DURATION_MIN))
 
 
 def _cycle_member_ids(existing: list[ScheduleSlot], specs: list[dict[str, Any]]) -> list[str]:
@@ -118,6 +127,18 @@ def _apply_slot_cycle_soak(slot: ScheduleSlot, data: dict[str, Any]) -> None:
         slot.soak_between_phases_min = int(data["soak_between_phases_min"])
     if "soak_between_repetitions_min" in data:
         slot.soak_between_repetitions_min = int(data["soak_between_repetitions_min"])
+
+
+def _apply_slot_zone_minutes(slot: ScheduleSlot, data: dict[str, Any]) -> None:
+    """Take the payload's fixed minutes, and keep none for zones the slot lost.
+
+    Runs after the slot's zones are settled: minutes only mean something for a
+    zone the slot waters.
+    """
+    if "zone_minutes" in data:
+        slot.zone_minutes = parse_zone_minutes(data["zone_minutes"], slot.zone_ids_ordered)
+    else:
+        slot.prune_zone_minutes()
 
 
 def _copy_slot_script_overrides(src: ScheduleSlot, dst: ScheduleSlot) -> None:
@@ -491,9 +512,9 @@ class SimpleIrrigationPanelZoneView(HomeAssistantView):
                         vol.Optional("switch_entity_id"): cv.string,
                         vol.Optional("switch_entity_ids"): [cv.string],
                         vol.Optional("enabled"): cv.boolean,
-                        vol.Optional("duration_eco_min"): vol.All(int, vol.Range(min=0, max=240)),
-                        vol.Optional("duration_normal_min"): vol.All(int, vol.Range(min=0, max=240)),
-                        vol.Optional("duration_extra_min"): vol.All(int, vol.Range(min=0, max=240)),
+                        vol.Optional("duration_eco_min"): ZONE_DURATION_SCHEMA,
+                        vol.Optional("duration_normal_min"): ZONE_DURATION_SCHEMA,
+                        vol.Optional("duration_extra_min"): ZONE_DURATION_SCHEMA,
                         vol.Optional("exclusive"): cv.boolean,
                         vol.Optional("start_service"): vol.Any(cv.string, None),
                         vol.Optional("duration_field"): vol.Any(cv.string, None),
@@ -581,6 +602,7 @@ class SimpleIrrigationPanelZoneView(HomeAssistantView):
             inst.zones.pop(zid, None)
             for slot in inst.schedule_slots:
                 slot.zone_ids_ordered = [x for x in slot.zone_ids_ordered if x != zid]
+                slot.prune_zone_minutes()
             await coord.async_update_installation(inst)
             return self.json({"success": True})
 
@@ -685,6 +707,7 @@ class SimpleIrrigationPanelSlotView(HomeAssistantView):
                 vol.Optional("repetitions"): SLOT_REPETITIONS_SCHEMA,
                 vol.Optional("soak_between_phases_min"): SLOT_SOAK_SCHEMA,
                 vol.Optional("soak_between_repetitions_min"): SLOT_SOAK_SCHEMA,
+                vol.Optional("zone_minutes"): {cv.string: ZONE_DURATION_SCHEMA},
                 vol.Optional("cycle_id"): vol.Any(cv.string, None),
                 vol.Optional("cycle_kind"): vol.In(CYCLE_KINDS),
                 vol.Optional("cycle_meta"): vol.Schema(
@@ -749,6 +772,7 @@ class SimpleIrrigationPanelSlotView(HomeAssistantView):
             if script_err:
                 return self.json({"success": False, "error": script_err}, status_code=400)
             _apply_slot_cycle_soak(slot, data)
+            _apply_slot_zone_minutes(slot, data)
             inst.schedule_slots.append(slot)
             await coord.async_update_installation(inst)
             return self.json({"success": True, "slot_id": slot.slot_id})
@@ -830,10 +854,12 @@ class SimpleIrrigationPanelSlotView(HomeAssistantView):
                 if existing:
                     _copy_slot_script_overrides(existing[0], member)
                     _copy_slot_cycle_soak(existing[0], member)
+                    member.zone_minutes = dict(existing[0].zone_minutes)
                 script_err = _apply_slot_script_overrides(hass, member, data)
                 if script_err:
                     return self.json({"success": False, "error": script_err}, status_code=400)
                 _apply_slot_cycle_soak(member, data)
+                _apply_slot_zone_minutes(member, data)
             # Rebuild the slot list, replacing the previous group's members (matched
             # by the incoming id) in place; append at the end when brand new.
             result: list[ScheduleSlot] = []
@@ -901,6 +927,7 @@ class SimpleIrrigationPanelSlotView(HomeAssistantView):
             for new_slot in new_slots:
                 _copy_slot_script_overrides(slot, new_slot)
                 _copy_slot_cycle_soak(slot, new_slot)
+                new_slot.zone_minutes = dict(slot.zone_minutes)
             inst.schedule_slots[idx : idx + 1] = new_slots
             await coord.async_update_installation(inst)
             return self.json(
@@ -947,6 +974,7 @@ class SimpleIrrigationPanelSlotView(HomeAssistantView):
             if script_err:
                 return self.json({"success": False, "error": script_err}, status_code=400)
             _apply_slot_cycle_soak(slot, data)
+            _apply_slot_zone_minutes(slot, data)
             if "cycle_id" in data:
                 slot.cycle_id = str(data["cycle_id"]) if data["cycle_id"] else None
             if "cycle_kind" in data:

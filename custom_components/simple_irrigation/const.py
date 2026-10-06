@@ -74,6 +74,30 @@ MAX_GUARDS: Final = 10
 # rest between them. Long soaks are legitimate (clay takes an hour), so the
 # cap is generous; the repetition cap keeps a typo from watering all night.
 MAX_REPETITIONS: Final = 10
+# Longest a zone may run in one go, wherever the number comes from: the zone's
+# own runtimes, a slot's fixed minutes, the set_zone_duration service.
+MAX_ZONE_DURATION_MIN: Final = 240
+# Longest a supply output may lead or trail its zone, like the pre-start delay.
+MAX_SUPPLY_DELAY_SEC: Final = 3600
+
+# How many periods a season may be made of: spring, summer, autumn and some room.
+MAX_SEASON_PERIODS: Final = 6
+
+# Schedules that came due while something else ran, if the installation lets
+# them wait: how long at most by default, the longest that can be asked for,
+# and how many may line up. The last is a safety net, not a setting.
+DEFAULT_WAIT_MAX_MIN: Final = 120
+MAX_WAIT_MAX_MIN: Final = 720
+MAX_WAITING_RUNS: Final = 8
+
+# Why a schedule that was due did not run (``reason`` of the skipped event).
+SKIP_BUSY: Final = "busy"  # something was running and schedules do not wait
+SKIP_EXPIRED: Final = "expired"  # waited longer than it may
+SKIP_CONDITIONS: Final = "conditions"  # a condition was not met
+SKIP_PAUSED: Final = "paused"  # paused or switched off while it waited
+SKIP_STOPPED: Final = "stopped"  # Stop was pressed
+SKIP_ERROR: Final = "error"  # the run before it failed
+SKIP_QUEUE_FULL: Final = "queue_full"
 MAX_SOAK_MIN: Final = 240
 
 STORE_VERSION: Final = 1
@@ -120,6 +144,7 @@ EVENT_ZONE_STARTED: Final = f"{DOMAIN}_zone_started"
 EVENT_ZONE_FINISHED: Final = f"{DOMAIN}_zone_finished"
 EVENT_MODE_CHANGED: Final = f"{DOMAIN}_mode_changed"
 EVENT_PAUSE_UNTIL_CHANGED: Final = f"{DOMAIN}_pause_until_changed"
+EVENT_SCHEDULE_SKIPPED: Final = f"{DOMAIN}_schedule_skipped"
 
 SERVICE_RUN_ZONE: Final = "run_zone"
 SERVICE_RUN_ZONE_WITH_DURATION: Final = "run_zone_with_duration"
@@ -127,8 +152,10 @@ SERVICE_RUN_DUE_ZONES: Final = "run_due_zones"
 SERVICE_RUN_SCHEDULE_SLOT: Final = "run_schedule_slot"
 SERVICE_STOP_ALL: Final = "stop_all"
 SERVICE_STOP_ZONE: Final = "stop_zone"
+SERVICE_SKIP_PHASE: Final = "skip_phase"
 SERVICE_SET_MODE: Final = "set_mode"
 SERVICE_SET_ZONE_ENABLED: Final = "set_zone_enabled"
+SERVICE_SET_ZONE_DURATION: Final = "set_zone_duration"
 SERVICE_PAUSE_UNTIL: Final = "pause_until"
 SERVICE_CLEAR_PAUSE: Final = "clear_pause"
 

@@ -2,6 +2,21 @@ import { css } from "lit";
 
 /** Shared stacked form layout: titles, helper text, full-width controls. */
 export const formLayoutStyles = css`
+  /* Minutes of one zone in a schedule: small enough to sit in the zone's row. */
+  .zone-min {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    flex: none;
+    font-size: 0.85rem;
+    color: var(--secondary-text-color);
+  }
+  .zone-min input[type="number"] {
+    width: 62px;
+    padding: 6px 8px;
+    text-align: right;
+  }
+
   .field-block {
     margin-bottom: 20px;
   }
@@ -26,6 +41,12 @@ export const formLayoutStyles = css`
   .field-row ha-input {
     width: 100%;
     display: block;
+  }
+  .field-row.supply-delays {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: 12px;
   }
   .entity-picker-rows {
     display: flex;
@@ -99,6 +120,40 @@ export const formLayoutStyles = css`
   ha-entity-picker {
     display: block;
     width: 100%;
+  }
+  /* A season's periods: "from" and "to" side by side, one under the other
+     where they do not fit. */
+  .season-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    width: 100%;
+    margin-top: 10px;
+  }
+  .season-rows > button.btn-outline {
+    align-self: flex-start;
+  }
+  .season-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 16px;
+  }
+  .season-date {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .season-date-label {
+    min-width: 2.6em;
+    font-size: 0.875rem;
+    color: var(--secondary-text-color);
+  }
+  .season-date select.season-day {
+    width: 4.6em;
+  }
+  .season-date select.season-month {
+    width: 9.5em;
   }
   button.row-remove {
     flex-shrink: 0;

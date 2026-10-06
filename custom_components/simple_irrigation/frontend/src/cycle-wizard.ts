@@ -25,12 +25,14 @@ import { sharedStyles } from "./shared-styles";
 import { weekdayLong, weekdayShort, formatTimeLocalForDisplay } from "./date-format";
 import {
   anchorWeekParity,
-  firstRunDate,
   generateCycleSlots,
+  nextFire,
   mondayBasedWeekday,
   previewGaps,
   previewStrip,
   cycleIsExact,
+  MAX_CYCLE_START_TIMES,
+  normalizeStartTimes,
   type CycleKind,
   type CycleMeta,
   type CycleSlotSpec,
@@ -45,8 +47,46 @@ import {
   type ZonePhaseInput,
 } from "./schedule-phases";
 import { renderCycleSoakEditor } from "./cycle-soak-editor";
-import { durationForMode, parseTimeLocalToMinutes, minutesToTimeLocal } from "./timetable-model";
+import {
+  accordionStyles,
+  renderAccordion,
+  renderAccordionGroup,
+  type AccordionSection,
+} from "./accordion";
+import { renderInlineHelp } from "./inline-help";
+import {
+  cycleSoakSummary,
+  guardsSummary as slotGuardsSummary,
+  slotScriptsSummary,
+  slotSeasonSummary,
+  type Summary,
+} from "./summaries";
+import {
+  normalizeSeason,
+  seasonFor,
+  seasonsOverlap,
+  type Period,
+} from "./season";
+import {
+  renderSlotSeason,
+  seasonChoice,
+  type SeasonChoice,
+  type SlotSeason,
+} from "./season-editor";
+import {
+  durationForMode,
+  minutesToTimeLocal,
+  parseTimeLocalToMinutes,
+  slotZoneMinutes,
+} from "./timetable-model";
+import {
+  renderZoneMinutesInput,
+  zoneMinutesForSave,
+  zoneMinutesOf,
+  type ZoneMinutes,
+} from "./zone-minutes-input";
 import { formatDateTimeForDisplay } from "./date-format";
+import { orderedZoneIds } from "./zone-order";
 import type { HomeAssistant } from "./types";
 
 interface KindOption {
@@ -54,17 +94,16 @@ interface KindOption {
   kind: CycleKind;
   n?: number;
   multiAnchor: boolean;
-  twoTimes: boolean;
 }
 
 const KIND_OPTIONS: KindOption[] = [
-  { id: "daily", kind: "daily", multiAnchor: false, twoTimes: false },
-  { id: "every_2_days", kind: "every_n_days", n: 2, multiAnchor: false, twoTimes: false },
-  { id: "every_3_days", kind: "every_n_days", n: 3, multiAnchor: false, twoTimes: false },
-  { id: "n_per_week", kind: "n_per_week", multiAnchor: true, twoTimes: false },
-  { id: "weekly", kind: "weekly", multiAnchor: false, twoTimes: false },
-  { id: "biweekly", kind: "biweekly", multiAnchor: false, twoTimes: false },
-  { id: "custom", kind: "custom", multiAnchor: true, twoTimes: false },
+  { id: "daily", kind: "daily", multiAnchor: false },
+  { id: "every_2_days", kind: "every_n_days", n: 2, multiAnchor: false },
+  { id: "every_3_days", kind: "every_n_days", n: 3, multiAnchor: false },
+  { id: "n_per_week", kind: "n_per_week", multiAnchor: true },
+  { id: "weekly", kind: "weekly", multiAnchor: false },
+  { id: "biweekly", kind: "biweekly", multiAnchor: false },
+  { id: "custom", kind: "custom", multiAnchor: true },
 ];
 
 const TIME_PRESETS: Array<{ key: string; time: string }> = [
@@ -94,6 +133,7 @@ export class CycleWizard extends LitElement {
   static styles = [
     sharedStyles,
     formLayoutStyles,
+    accordionStyles,
     css`
       .progress {
         display: flex;
@@ -165,12 +205,21 @@ export class CycleWizard extends LitElement {
       }
       .time-fields {
         display: flex;
-        flex-wrap: wrap;
-        gap: 12px;
+        flex-direction: column;
+        gap: 8px;
+        align-items: flex-start;
       }
-      .time-fields input[type="time"] {
+      .time-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .time-row input[type="time"] {
         width: auto;
         min-width: 120px;
+      }
+      .add-time {
+        margin-top: 8px;
       }
       .zone-pick {
         display: flex;
@@ -212,10 +261,12 @@ export class CycleWizard extends LitElement {
 
   @state() private _step = 1;
   @state() private _optionId = "daily";
-  @state() private _times: string[] = ["19:00", "06:00"];
+  @state() private _times: string[] = ["19:00"];
   @state() private _anchor = 0;
   @state() private _weekDays: number[] = [0, 3];
   @state() private _zoneIds: string[] = [];
+  /** Fixed minutes per zone; a zone that is not in here follows the mode. */
+  @state() private _zoneMinutes: ZoneMinutes = {};
   @state() private _enabled = true;
   @state() private _label = "";
   @state() private _guards: Guard[] = [];
@@ -223,6 +274,13 @@ export class CycleWizard extends LitElement {
   @state() private _preStartScript: ScriptOverride = EMPTY_SCRIPT_OVERRIDE;
   @state() private _postRunScript: ScriptOverride = EMPTY_SCRIPT_OVERRIDE;
   @state() private _cycleSoak: CycleSoak = PLAIN_RUN;
+  // Own periods of the year; without them the cycle follows the installation.
+  @state() private _season: SlotSeason = { override: false, periods: [] };
+  @state() private _seasonChoice: SeasonChoice = "inherit";
+  // An entry of the cycle was edited on its own; saving here evens them out.
+  @state() private _membersDiffer = false;
+  // The accordion under "More options": at most one section open.
+  @state() private _openSection: string | null = null;
   @state() private _cycleId: string | null = null;
   @state() private _busy = false;
   @state() private _msg?: string;
@@ -243,7 +301,9 @@ export class CycleWizard extends LitElement {
     } else {
       this._optionId = opts?.optionId ?? "daily";
       this._cycleId = opts?.cycleId ?? null;
+      this._times = ["19:00"];
       this._zoneIds = this._defaultZoneIds();
+      this._zoneMinutes = {};
       this._enabled = true;
       this._label = "";
       this._guards = [];
@@ -251,9 +311,13 @@ export class CycleWizard extends LitElement {
       this._preStartScript = { ...EMPTY_SCRIPT_OVERRIDE };
       this._postRunScript = { ...EMPTY_SCRIPT_OVERRIDE };
       this._cycleSoak = { ...PLAIN_RUN };
+      this._season = { override: false, periods: [] };
+      this._seasonChoice = "inherit";
+      this._membersDiffer = false;
       this._syncDefaultsForOption();
     }
     this._step = opts?.step ?? 1;
+    this._openSection = null;
     this.open = true;
     this.requestUpdate();
   }
@@ -264,14 +328,21 @@ export class CycleWizard extends LitElement {
     const meta = (first.cycle_meta as CycleMeta) ?? {};
     const kind = String(first.cycle_kind ?? "custom");
     this._optionId =
-      kind === "every_n_days"
+      kind === "twice_daily"
+        ? "daily"
+        : kind === "every_n_days"
         ? meta.n === 3
           ? "every_3_days"
           : "every_2_days"
         : kind;
     this._label = String(meta.label ?? first.name ?? "");
-    const times = slots.map((s) => String(s.time_local ?? "06:00"));
-    this._times = [times[0] ?? "19:00", times[1] ?? "06:00"];
+    // The cycle's own start times. Not the union of what its entries say: one
+    // entry moved to another time on its own would turn "06:00" into "06:00
+    // and 07:00" for every watering day the moment this is saved.
+    const memberTimes = normalizeStartTimes(slots.map((s) => s.time_local));
+    const cycleTimes = normalizeStartTimes(meta.times);
+    this._times = cycleTimes.length ? cycleTimes : memberTimes;
+    if (!this._times.length) this._times = ["19:00"];
     this._anchor = Number(meta.anchor_weekday ?? 0);
     this._weekDays =
       Array.isArray(meta.week_days) && meta.week_days.length
@@ -280,6 +351,7 @@ export class CycleWizard extends LitElement {
     this._zoneIds = Array.isArray(first.zone_ids_ordered)
       ? [...(first.zone_ids_ordered as string[])]
       : this._defaultZoneIds();
+    this._zoneMinutes = zoneMinutesOf(first);
     this._enabled = Boolean(first.enabled ?? true);
     this._guards = normalizeGuards(first.guards);
     this._ignoreGlobalGuards = Boolean(first.ignore_global_guards ?? false);
@@ -287,6 +359,46 @@ export class CycleWizard extends LitElement {
     this._preStartScript = normalizeScriptOverride(first, "pre_start");
     this._postRunScript = normalizeScriptOverride(first, "post_run");
     this._cycleSoak = cycleSoakOf(first);
+    this._season = {
+      override: Boolean(first.override_season ?? false),
+      periods: normalizeSeason(first.season),
+    };
+    this._seasonChoice = seasonChoice(this._season);
+    this._membersDiffer = this._differ(slots, memberTimes);
+  }
+
+  /**
+   * Whether the entries of a cycle no longer look like one cycle: days or
+   * times that the cadence would not produce, or settings that differ from
+   * entry to entry. Saving the wizard writes one cadence and one set of
+   * settings to all of them, and whoever saves should know that first.
+   */
+  private _differ(slots: Array<Record<string, unknown>>, memberTimes: string[]): boolean {
+    const days = (s: { weekdays?: unknown; time_local?: unknown }): string =>
+      `${[...((s.weekdays as number[]) ?? [])].sort().join(",")}@${String(s.time_local ?? "")}`;
+    const have = slots.map(days).sort().join("|");
+    const want = this._slots().map(days).sort().join("|");
+    if (have !== want || memberTimes.join() !== this._times.join()) return true;
+    const settings = (s: Record<string, unknown>): string =>
+      JSON.stringify([
+        s.zone_ids_ordered,
+        zoneMinutesOf(s),
+        Boolean(s.override_season),
+        normalizeSeason(s.season),
+        cycleSoakOf(s),
+        normalizeGuards(s.guards),
+        Boolean(s.ignore_global_guards),
+        normalizeScriptOverride(s, "pre_start"),
+        normalizeScriptOverride(s, "post_run"),
+      ]);
+    return slots.some((s) => settings(s) !== settings(slots[0]));
+  }
+
+  /** The periods that decide for this cycle: its own, or the installation's. */
+  private _periods(): Period[] {
+    return this._season.override
+      ? this._season.periods
+      : normalizeSeason(this.installation?.season);
   }
 
   private _option(): KindOption {
@@ -301,14 +413,12 @@ export class CycleWizard extends LitElement {
   private _defaultZoneIds(): string[] {
     const zones = this.installation?.zones as Record<string, Record<string, unknown>> | undefined;
     if (!zones) return [];
-    return Object.entries(zones)
-      .filter(([, z]) => Boolean(z.enabled ?? true))
-      .map(([id]) => id);
+    return orderedZoneIds(this.installation).filter((id) => Boolean(zones[id]?.enabled ?? true));
   }
 
   private _meta(): CycleMeta {
     const opt = this._option();
-    const meta: CycleMeta = { label: this._label.trim(), times: this._times.slice(0, opt.twoTimes ? 2 : 1) };
+    const meta: CycleMeta = { label: this._label.trim(), times: normalizeStartTimes(this._times) };
     if (opt.n) meta.n = opt.n;
     if (opt.multiAnchor) meta.week_days = [...this._weekDays].sort((a, b) => a - b);
     else meta.anchor_weekday = this._anchor;
@@ -368,7 +478,9 @@ export class CycleWizard extends LitElement {
     const mode = this._mode();
     const minutes = programMinutes(phases, this._cycleSoak, (zid) => {
       const z = zones[zid];
-      return z && Boolean(z.enabled ?? true) ? durationForMode(z, mode) : 0;
+      return z && Boolean(z.enabled ?? true)
+        ? slotZoneMinutes(zid, z, mode, this._zoneMinutes)
+        : 0;
     });
     return Math.round(preStart + minutes);
   }
@@ -384,6 +496,7 @@ export class CycleWizard extends LitElement {
     if (this._step === 2) {
       const opt = this._option();
       if (opt.multiAnchor && this._weekDays.length === 0) return false;
+      if (this._hasDuplicateTime()) return false;
     }
     if (this._step === 3 && this._zoneIds.length === 0) return false;
     return true;
@@ -394,6 +507,7 @@ export class CycleWizard extends LitElement {
     const zones = this.installation?.zones as Record<string, Record<string, unknown>> | undefined;
     if (!zones) return false;
     const est = this._estimateMin();
+    const season = this._periods();
     const mine = this._slots().map((s) => ({
       days: new Set(s.weekdays),
       start: parseTimeLocalToMinutes(s.time_local),
@@ -403,6 +517,8 @@ export class CycleWizard extends LitElement {
     for (const slot of existing) {
       if (this._cycleId && String(slot.cycle_id ?? "") === this._cycleId) continue;
       if (!(slot.enabled ?? true)) continue;
+      // A summer and a spring schedule at the same hour never meet.
+      if (!seasonsOverlap(season, seasonFor(this.installation, slot))) continue;
       const days = new Set(
         Array.isArray(slot.weekdays) ? (slot.weekdays as number[]) : [Number(slot.weekday ?? 0)]
       );
@@ -419,11 +535,53 @@ export class CycleWizard extends LitElement {
     return false;
   }
 
+  /** When the cycle would first run: the next start time still ahead on a watering day. */
+  private _firstRun(slots: CycleSlotSpec[]): Date | null {
+    const now = new Date();
+    const season = this._periods();
+    let first: Date | null = null;
+    for (const slot of slots) {
+      const at = nextFire(slot, season, now);
+      if (at && (!first || at < first)) first = at;
+    }
+    return first;
+  }
+
+  /** Two of the cycle's own start times closer together than one run takes. */
+  private _ownTimesOverlap(): boolean {
+    const est = this._estimateMin();
+    const starts = normalizeStartTimes(this._times).map(parseTimeLocalToMinutes);
+    return starts.some((start, i) => i > 0 && start - starts[i - 1] < est);
+  }
+
+  private _hasDuplicateTime(): boolean {
+    return normalizeStartTimes(this._times).length !== this._times.length;
+  }
+
+  /** An hour later, or as far as midnight allows -- all times alike, so none collide. */
   private _shiftLater(): void {
-    this._times = this._times.map((tl) => {
-      const min = Math.min(23 * 60 + 59, parseTimeLocalToMinutes(tl) + 60);
-      return minutesToTimeLocal(min).padStart(5, "0");
-    });
+    const starts = this._times.map(parseTimeLocalToMinutes);
+    const by = Math.min(60, 23 * 60 + 59 - Math.max(...starts));
+    this._times = starts.map((start) => minutesToTimeLocal(start + by).padStart(5, "0"));
+  }
+
+  private _addStartTime(): void {
+    if (this._times.length >= MAX_CYCLE_START_TIMES) return;
+    const used = new Set(this._times);
+    const latest = Math.max(...this._times.map(parseTimeLocalToMinutes));
+    // Four hours after the latest; past midnight, the next free hour from there.
+    for (let hours = 4; hours < 28; hours++) {
+      const candidate = minutesToTimeLocal((latest + hours * 60) % (24 * 60)).padStart(5, "0");
+      if (!used.has(candidate)) {
+        this._times = normalizeStartTimes([...this._times, candidate]);
+        return;
+      }
+    }
+  }
+
+  private _removeStartTime(index: number): void {
+    if (this._times.length < 2) return;
+    this._times = this._times.filter((_time, i) => i !== index);
   }
 
   private async _create(): Promise<void> {
@@ -441,7 +599,9 @@ export class CycleWizard extends LitElement {
         cycle_kind: opt.kind,
         cycle_meta: this._meta() as Record<string, unknown>,
         zone_ids_ordered: this._zoneIds,
-        enabled: this._enabled,
+        // A new cycle starts switched on. An edited one says nothing: each
+        // of its entries keeps its own switch.
+        ...(this._cycleId ? {} : { enabled: this._enabled }),
         guards: guardsForSave(this._guards),
         ignore_global_guards: this._ignoreGlobalGuards,
         ...scriptOverrideForSave(this._preStartScript, "pre_start"),
@@ -449,6 +609,9 @@ export class CycleWizard extends LitElement {
         repetitions: this._cycleSoak.repetitions,
         soak_between_phases_min: this._cycleSoak.soakBetweenPhasesMin,
         soak_between_repetitions_min: this._cycleSoak.soakBetweenRepetitionsMin,
+        zone_minutes: zoneMinutesForSave(this._zoneMinutes, this._zoneIds),
+        override_season: this._season.override,
+        season: this._season.periods,
       });
       if (!res.success) {
         this._msg = formatApiError(res.error, this.hass);
@@ -532,51 +695,72 @@ export class CycleWizard extends LitElement {
     const slots = this._slots();
     const today = new Date();
     const start = today;
-    const strip = previewStrip(slots, start, today, 14);
+    const strip = previewStrip(slots, start, today, 14, this._periods());
     const gaps = previewGaps(slots, start);
     const uniqueGaps = [...new Set(gaps)];
-    const first = firstRunDate(slots, start);
+    const first = this._firstRun(slots);
     const exact = cycleIsExact(opt.kind, this._meta());
 
     return html`
       <div class="section-title">${t(this.hass, "config_panel.cycle_step_when")}</div>
       <span class="field-title">${t(this.hass, "config_panel.cycle_time_title")}</span>
-      <div class="chips" style="margin:6px 0">
-        ${TIME_PRESETS.map(
-          (p) => html`
-            <button
-              type="button"
-              class="chip ${this._times[0] === p.time ? "selected" : ""}"
-              @click=${() => {
-                this._times = [p.time, this._times[1]];
-                this.requestUpdate();
+      ${this._times.length === 1
+        ? html`<div class="chips" style="margin:6px 0">
+            ${TIME_PRESETS.map(
+              (p) => html`
+                <button
+                  type="button"
+                  class="chip ${this._times[0] === p.time ? "selected" : ""}"
+                  @click=${() => (this._times = [p.time])}
+                >
+                  ${t(this.hass, p.key)} ${formatTimeLocalForDisplay(this.hass, p.time)}
+                </button>
+              `
+            )}
+          </div>`
+        : nothing}
+      <div class="time-fields">
+        ${this._times.map(
+          (timeLocal, index) => html`<div class="time-row">
+            <input
+              type="time"
+              aria-label="${t(this.hass, "config_panel.cycle_time_title")} ${index + 1}"
+              .value=${timeLocal}
+              @input=${(e: Event) => {
+                const next = [...this._times];
+                next[index] = (e.target as HTMLInputElement).value || "06:00";
+                this._times = next;
               }}
-            >
-              ${t(this.hass, p.key)} ${formatTimeLocalForDisplay(this.hass, p.time)}
-            </button>
-          `
+            />
+            ${this._times.length > 1
+              ? html`<button
+                  type="button"
+                  class="iconbtn"
+                  title=${t(this.hass, "config_panel.cycle_remove_start_time")}
+                  aria-label=${t(this.hass, "config_panel.cycle_remove_start_time")}
+                  @click=${() => this._removeStartTime(index)}
+                >
+                  <ha-icon icon="mdi:trash-can-outline"></ha-icon>
+                </button>`
+              : nothing}
+          </div>`
         )}
       </div>
-      <div class="time-fields">
-        <input
-          type="time"
-          .value=${this._times[0]}
-          @input=${(e: Event) => {
-            this._times = [(e.target as HTMLInputElement).value || "06:00", this._times[1]];
-            this.requestUpdate();
-          }}
-        />
-        ${opt.twoTimes
-          ? html`<input
-              type="time"
-              .value=${this._times[1]}
-              @input=${(e: Event) => {
-                this._times = [this._times[0], (e.target as HTMLInputElement).value || "18:00"];
-                this.requestUpdate();
-              }}
-            />`
-          : nothing}
-      </div>
+      <button
+        type="button"
+        class="btn-outline add-time"
+        ?disabled=${this._times.length >= MAX_CYCLE_START_TIMES}
+        @click=${() => this._addStartTime()}
+      >
+        <ha-icon icon="mdi:plus"></ha-icon>
+        ${t(this.hass, "config_panel.cycle_add_start_time")}
+      </button>
+      <p class="hint">
+        ${t(this.hass, "config_panel.cycle_start_times_hint", { n: MAX_CYCLE_START_TIMES })}
+      </p>
+      ${this._hasDuplicateTime()
+        ? html`<p class="error">${t(this.hass, "config_panel.errors_duplicate_start_time")}</p>`
+        : nothing}
 
       ${opt.kind === "daily" || opt.kind === "twice_daily"
         ? nothing
@@ -590,7 +774,7 @@ export class CycleWizard extends LitElement {
       <div class="day-strip">
         ${strip.map(
           (d) => html`
-            <div class="day-cell ${d.run ? "run" : ""} ${d.isToday ? "today" : ""}">
+            <div class="day-cell ${d.run ? "run" : ""} ${d.off ? "off" : ""} ${d.isToday ? "today" : ""}">
               <span class="dc-dow">${weekdayShort(this.hass, mondayBasedWeekday(d.date))}</span>
               <span class="dc-dom">${d.date.getDate()}</span>
             </div>
@@ -604,21 +788,157 @@ export class CycleWizard extends LitElement {
       ${first
         ? html`<p class="preview-line">
             ${t(this.hass, "config_panel.cycle_preview_first_run", {
-              when: formatDateTimeForDisplay(this.hass, new Date(first.getFullYear(), first.getMonth(), first.getDate(), ...this._times[0].split(":").map(Number) as [number, number])),
+              when: formatDateTimeForDisplay(this.hass, first),
             })}
           </p>`
         : nothing}
     `;
   }
 
+  /** What only some cycles need: closed, each says whether it is in use. */
+  private _optionSections(): AccordionSection[] {
+    const globals = normalizeGuards(this.installation?.guards);
+    const section = (
+      id: string,
+      icon: string,
+      labelKey: string,
+      summary: Summary,
+      body: () => unknown
+    ): AccordionSection => ({
+      id,
+      icon,
+      label: t(this.hass, labelKey),
+      summary: summary.text,
+      tone: summary.tone,
+      body,
+    });
+    return [
+      section(
+        "conditions",
+        "mdi:shield-check-outline",
+        "config_panel.guards_section_title",
+        slotGuardsSummary(this.hass, this._guards, this._ignoreGlobalGuards, globals),
+        () => html`
+          ${renderGuardList(this.hass, GUARD_ENTITY_DOMAINS, this._guards, (next) => {
+            this._guards = next;
+            this.requestUpdate();
+          })}
+          ${globals.length
+            ? html`<div class="switch-row" style="margin-top:12px">
+                <ha-switch
+                  .checked=${this._ignoreGlobalGuards}
+                  @change=${(e: Event) => {
+                    this._ignoreGlobalGuards = Boolean(
+                      (e.target as HTMLInputElement & { checked: boolean }).checked
+                    );
+                    this.requestUpdate();
+                  }}
+                ></ha-switch>
+                <span class="switch-row-label"
+                  >${t(this.hass, "config_panel.schedule_ignore_global_guards")}</span
+                >
+              </div>`
+            : nothing}
+          ${renderInlineHelp(
+            this.hass,
+            "config_panel.guards_help_summary",
+            [
+              "config_panel.guards_section_desc",
+              "config_panel.schedule_ignore_global_guards_hint",
+            ],
+            "mdi:information-outline"
+          )}
+        `
+      ),
+      section(
+        "cycle_soak",
+        "mdi:repeat",
+        "config_panel.cycle_soak_section_title",
+        cycleSoakSummary(this.hass, this._cycleSoak),
+        () =>
+          renderCycleSoakEditor(
+            this.hass,
+            this._cycleSoak,
+            this._busy,
+            (next) => {
+              this._cycleSoak = next;
+            },
+            true
+          )
+      ),
+      section(
+        "season",
+        "mdi:calendar-range",
+        "config_panel.season_slot_summary",
+        slotSeasonSummary(this.hass, this._season.override, this._season.periods),
+        () =>
+          renderSlotSeason(
+            this.hass,
+            this._season,
+            this._seasonChoice,
+            this._busy,
+            (next, choice) => {
+              this._season = next;
+              this._seasonChoice = choice;
+            }
+          )
+      ),
+      section(
+        "scripts",
+        "mdi:script-text-outline",
+        "config_panel.schedule_scripts_section_title",
+        slotScriptsSummary(this.hass, this._preStartScript, this._postRunScript),
+        () => html`
+          ${renderScriptOverride(
+            this.hass,
+            SCRIPT_ENTITY_DOMAINS,
+            "pre_start",
+            this._preStartScript,
+            this._globalScript("pre_start"),
+            this._globalScriptTimeout("pre_start"),
+            this._busy,
+            (next) => {
+              this._preStartScript = next;
+            }
+          )}
+          ${renderScriptOverride(
+            this.hass,
+            SCRIPT_ENTITY_DOMAINS,
+            "post_run",
+            this._postRunScript,
+            this._globalScript("post_run"),
+            this._globalScriptTimeout("post_run"),
+            this._busy,
+            (next) => {
+              this._postRunScript = next;
+            }
+          )}
+          ${renderInlineHelp(
+            this.hass,
+            "config_panel.scripts_help_summary",
+            ["config_panel.schedule_scripts_section_desc"],
+            "mdi:information-outline"
+          )}
+        `
+      ),
+    ];
+  }
+
   private _renderStep3(): TemplateResult {
     const zones = this.installation?.zones as Record<string, Record<string, unknown>> | undefined;
-    const allIds = zones ? Object.keys(zones) : [];
+    const allIds = orderedZoneIds(this.installation);
     const pmap = phaseIndexByZoneId(this._zoneIds, this._zonesPhaseInput(), this._maxParallel());
     const est = this._estimateMin();
     const slots = this._slots();
-    const first = firstRunDate(slots, new Date());
+    const first = this._firstRun(slots);
     const conflict = this._conflicts();
+    // What becomes of a start that falls into a run still under way.
+    const then = t(
+      this.hass,
+      this.installation?.wait_when_busy
+        ? "config_panel.cycle_conflict_waits"
+        : "config_panel.cycle_conflict_skipped"
+    );
 
     return html`
       <div class="section-title">
@@ -633,6 +953,17 @@ export class CycleWizard extends LitElement {
           }}
         >
           ${t(this.hass, "config_panel.cycle_select_all")}
+        </button>
+        <button
+          type="button"
+          class="btn-outline"
+          style="margin-left:6px;margin-top:0;padding:4px 10px;font-size:0.8rem"
+          @click=${() => {
+            this._zoneIds = [];
+            this.requestUpdate();
+          }}
+        >
+          ${t(this.hass, "config_panel.cycle_select_none")}
         </button>
       </div>
       ${allIds.map((id) => {
@@ -656,13 +987,26 @@ export class CycleWizard extends LitElement {
             <div class="zone-pick-main">
               <div class="zone-pick-name">${this._zoneName(id)}</div>
               <div class="meta-line">
-                <span class="meta"
-                  ><ha-icon icon="mdi:timer-outline"></ha-icon>${t(
-                    this.hass,
-                    "config_panel.timetable_duration_min",
-                    { n: this._zoneDuration(id) }
-                  )}</span
-                >
+                ${checked
+                  ? renderZoneMinutesInput(
+                      this.hass,
+                      this._zoneName(id),
+                      this._zoneDuration(id),
+                      this._zoneMinutes[id],
+                      (minutes) => {
+                        const next = { ...this._zoneMinutes };
+                        if (minutes === undefined) delete next[id];
+                        else next[id] = minutes;
+                        this._zoneMinutes = next;
+                      }
+                    )
+                  : html`<span class="meta"
+                      ><ha-icon icon="mdi:timer-outline"></ha-icon>${t(
+                        this.hass,
+                        "config_panel.timetable_duration_min",
+                        { n: this._zoneDuration(id) }
+                      )}</span
+                    >`}
                 ${checked && phase
                   ? html`<span class="meta"
                       ><ha-icon icon="mdi:layers-triple-outline"></ha-icon>${excl
@@ -709,9 +1053,9 @@ export class CycleWizard extends LitElement {
       })}
 
       <div class="field-block" style="margin-top:14px">
-        <span class="field-title">${t(this.hass, "config_panel.schedule_slot_name")}</span>
         <div class="field-row">
           <ha-input
+            .label=${t(this.hass, "config_panel.schedule_slot_name")}
             .value=${this._label}
             @input=${(e: Event) => {
               this._label = (e.target as HTMLInputElement).value;
@@ -720,62 +1064,10 @@ export class CycleWizard extends LitElement {
         </div>
       </div>
 
-      ${renderCycleSoakEditor(this.hass, this._cycleSoak, this._busy, (next) => {
-        this._cycleSoak = next;
+      ${renderAccordionGroup(t(this.hass, "config_panel.acc_more_options"))}
+      ${renderAccordion(this._optionSections(), this._openSection, (id) => {
+        this._openSection = id;
       })}
-
-      <div class="field-block">
-        <span class="field-title">${t(this.hass, "config_panel.guards_section_title")}</span>
-        <p class="field-desc">${t(this.hass, "config_panel.guards_section_desc")}</p>
-        ${renderGuardList(this.hass, GUARD_ENTITY_DOMAINS, this._guards, (next) => {
-          this._guards = next;
-          this.requestUpdate();
-        })}
-        <div class="switch-row">
-          <ha-switch
-            .checked=${this._ignoreGlobalGuards}
-            @change=${(e: Event) => {
-              this._ignoreGlobalGuards = Boolean(
-                (e.target as HTMLInputElement & { checked: boolean }).checked
-              );
-              this.requestUpdate();
-            }}
-          ></ha-switch>
-          <span class="switch-row-label"
-            >${t(this.hass, "config_panel.schedule_ignore_global_guards")}</span
-          >
-        </div>
-        <p class="hint">${t(this.hass, "config_panel.schedule_ignore_global_guards_hint")}</p>
-      </div>
-
-      <div class="field-block">
-        <span class="field-title">${t(this.hass, "config_panel.schedule_scripts_section_title")}</span>
-        <p class="field-desc">${t(this.hass, "config_panel.schedule_scripts_section_desc")}</p>
-      </div>
-      ${renderScriptOverride(
-        this.hass,
-        SCRIPT_ENTITY_DOMAINS,
-        "pre_start",
-        this._preStartScript,
-        this._globalScript("pre_start"),
-        this._globalScriptTimeout("pre_start"),
-        this._busy,
-        (next) => {
-          this._preStartScript = next;
-        }
-      )}
-      ${renderScriptOverride(
-        this.hass,
-        SCRIPT_ENTITY_DOMAINS,
-        "post_run",
-        this._postRunScript,
-        this._globalScript("post_run"),
-        this._globalScriptTimeout("post_run"),
-        this._busy,
-        (next) => {
-          this._postRunScript = next;
-        }
-      )}
 
       <div class="summary-card">
         <strong>${t(this.hass, "config_panel.cycle_creates_title")}</strong>
@@ -807,23 +1099,20 @@ export class CycleWizard extends LitElement {
         ${first
           ? html`<p class="preview-line" style="margin-bottom:0">
               ${t(this.hass, "config_panel.cycle_preview_first_run", {
-                when: formatDateTimeForDisplay(
-                  this.hass,
-                  new Date(
-                    first.getFullYear(),
-                    first.getMonth(),
-                    first.getDate(),
-                    ...(this._times[0].split(":").map(Number) as [number, number])
-                  )
-                ),
+                when: formatDateTimeForDisplay(this.hass, first),
               })}
             </p>`
           : nothing}
       </div>
 
+      ${this._ownTimesOverlap()
+        ? html`<div class="warning" style="margin-top:10px">
+            ${t(this.hass, "config_panel.cycle_conflict_own_times", { n: est })} ${then}
+          </div>`
+        : nothing}
       ${conflict
         ? html`<div class="warning" style="display:flex;align-items:center;gap:10px;margin-top:10px">
-            <span>${t(this.hass, "config_panel.cycle_conflict_warning")}</span>
+            <span>${t(this.hass, "config_panel.cycle_conflict_warning")} ${then}</span>
             <button type="button" class="btn-outline" style="margin-top:0" @click=${() => this._shiftLater()}>
               ${t(this.hass, "config_panel.cycle_conflict_shift")}
             </button>
@@ -847,6 +1136,9 @@ export class CycleWizard extends LitElement {
           ${[1, 2, 3].map((n) => html`<span class="step ${this._step >= n ? "done" : ""}"></span>`)}
         </div>
         ${this._msg ? html`<div class="error">${this._msg}</div>` : nothing}
+        ${this._membersDiffer
+          ? html`<div class="warning">${t(this.hass, "config_panel.cycle_members_differ")}</div>`
+          : nothing}
         ${this._step === 1
           ? this._renderStep1()
           : this._step === 2

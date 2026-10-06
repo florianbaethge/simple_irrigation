@@ -43,6 +43,7 @@ from .models import Installation, ScheduleSlot, Zone
 from .program import soak_minutes
 from .water import planned_litres
 from .runtime import ScheduleSlotRunError, ZoneManualRunError
+from .season import next_slot_fire, slot_in_season
 from .time_util import parse_hh_mm, week_parity_matches
 
 _LOGGER = logging.getLogger(__name__)
@@ -56,6 +57,7 @@ CARD_ACTIONS = (
     "run_slot",
     "run_zones",
     "stop",
+    "skip_phase",
     "skip_today",
     "pause",
     "clear_pause",
@@ -157,11 +159,13 @@ def _cadence(slot: ScheduleSlot) -> dict[str, Any]:
 
 
 def _slot_zone_ids(inst: Installation, slot: ScheduleSlot) -> list[str]:
-    """Zone ids of a slot that would actually water (enabled, known)."""
+    """Zone ids of a slot that would actually water: known, enabled, with minutes to run."""
     return [
         zid
         for zid in slot.zone_ids_ordered
-        if zid in inst.zones and inst.zones[zid].enabled
+        if zid in inst.zones
+        and inst.zones[zid].enabled
+        and slot.duration_for(inst.zones[zid], inst.mode) > 0
     ]
 
 
@@ -182,9 +186,7 @@ def _slot_duration_min(inst: Installation, slot: ScheduleSlot) -> int:
     per_pass = 0
     for phase in phases:
         durations = [
-            inst.zones[zid].duration_for_mode(inst.mode)
-            for zid in phase
-            if zid in inst.zones
+            slot.duration_for(inst.zones[zid], inst.mode) for zid in phase if zid in inst.zones
         ]
         if durations:
             per_pass += max(durations)
@@ -203,7 +205,7 @@ def _slot_water_l(inst: Installation, slot: ScheduleSlot) -> float | None:
     total = 0.0
     known = False
     for zid in _slot_zone_ids(inst, slot):
-        litres = planned_litres(inst.zones[zid], inst.zones[zid].duration_for_mode(inst.mode))
+        litres = planned_litres(inst.zones[zid], slot.duration_for(inst.zones[zid], inst.mode))
         if litres is None:
             continue
         known = True
@@ -232,13 +234,13 @@ def _slot_payload(inst: Installation, slot: ScheduleSlot) -> dict[str, Any]:
     }
 
 
-def _slot_fires_on(slot: ScheduleSlot, day: date) -> bool:
-    """Whether an enabled slot fires on ``day`` (weekday + ISO-week parity)."""
+def _slot_fires_on(inst: Installation, slot: ScheduleSlot, day: date) -> bool:
+    """Whether an enabled slot fires on ``day`` (weekday, ISO-week parity, season)."""
     if not slot.enabled:
         return False
     if day.weekday() not in slot.weekdays:
         return False
-    return week_parity_matches(day, slot.week_parity)
+    return week_parity_matches(day, slot.week_parity) and slot_in_season(inst, slot, day)
 
 
 def _next_firings(
@@ -258,13 +260,22 @@ def _next_firings(
     today = now.astimezone(tz).date()
     pause_until = inst.pause_until
 
+    # Out of season nothing fires for months: start looking where the first
+    # schedule comes back, so the card says when that is instead of nothing.
+    openings = [
+        fire
+        for slot in inst.schedule_slots
+        if slot.enabled and (fire := next_slot_fire(inst, slot, now, tz)) is not None
+    ]
+    first_day = max(today, min(openings).astimezone(tz).date()) if openings else today
+
     firings: list[tuple[datetime, ScheduleSlot]] = []
     # Two ISO weeks is the longest gap an odd/even slot can have; three gives
     # head-room for a fully paused fortnight without an unbounded loop.
     for offset in range(21):
-        day = today + timedelta(days=offset)
+        day = first_day + timedelta(days=offset)
         for slot in inst.schedule_slots:
-            if not _slot_fires_on(slot, day):
+            if not _slot_fires_on(inst, slot, day):
                 continue
             parsed = parse_hh_mm(slot.time_local)
             if parsed is None:
@@ -323,7 +334,8 @@ def _week(hass: HomeAssistant, inst: Installation) -> dict[str, Any]:
             duration = _slot_duration_min(inst, slot)
             # A parity slot that does not fall in this ISO week is still drawn,
             # dashed, so the rhythm stays visible in a single week's view.
-            fires = week_parity_matches(day, slot.week_parity)
+            off_season = not slot_in_season(inst, slot, day)
+            fires = week_parity_matches(day, slot.week_parity) and not off_season
             fire_at = datetime.combine(
                 day, datetime.min.time().replace(hour=hour, minute=minute), tzinfo=tz
             )
@@ -335,6 +347,8 @@ def _week(hass: HomeAssistant, inst: Installation) -> dict[str, Any]:
                     "start_min": hour * 60 + minute,
                     "duration_min": duration,
                     "parity_only": not fires,
+                    # Out of season it is drawn the same way, and says why.
+                    "off_season": off_season,
                     "paused": paused,
                 }
             )
@@ -359,7 +373,13 @@ def _week(hass: HomeAssistant, inst: Installation) -> dict[str, Any]:
             }
         )
 
-    return {"days": days, "total_runs": total_runs, "total_min": total_min}
+    return {
+        "days": days,
+        "total_runs": total_runs,
+        "total_min": total_min,
+        # A run drawn dashed belongs to the other kind of week than this one.
+        "odd_week": monday.isocalendar()[1] % 2 == 1,
+    }
 
 
 def _entity_id(hass: HomeAssistant, entry_id: str, suffix: str, platform: str) -> str:
@@ -383,6 +403,7 @@ def _zones_payload(
     out: list[dict[str, Any]] = []
     for zone_id, zone in inst.zones.items():
         ends_at = run_state.zone_ends_at.get(zone_id)
+        started_at = run_state.zone_started_at.get(zone_id)
         next_run = run_state.next_run_per_zone.get(zone_id)
         last_run = run_state.last_run_per_zone.get(zone_id)
         out.append(
@@ -393,6 +414,8 @@ def _zones_payload(
                 "active": zone_id in active,
                 "queued": zone_id in queued,
                 "duration_min": zone.duration_for_mode(inst.mode),
+                "exclusive": zone.exclusive,
+                "started_at": started_at.isoformat() if started_at else None,
                 "ends_at": ends_at.isoformat() if ends_at else None,
                 "next_run": next_run.isoformat() if next_run else None,
                 "last_run": last_run.isoformat() if last_run else None,
@@ -447,6 +470,19 @@ def _snapshot(hass: HomeAssistant, entry_id: str, data: dict[str, Any]) -> dict[
                 current_slot_name = slot.name or ""
                 break
 
+    by_id = {slot.slot_id: slot for slot in inst.schedule_slots}
+    waiting = [
+        {
+            "slot_id": slot_id,
+            "name": by_id[slot_id].name or "",
+            "time": by_id[slot_id].time_local,
+            "due_at": run.due_at.isoformat(),
+        }
+        for run in rs.waiting_runs
+        for slot_id in run.slot_ids
+        if slot_id in by_id
+    ]
+
     return {
         "entry_id": entry_id,
         "name": inst.name,
@@ -475,6 +511,8 @@ def _snapshot(hass: HomeAssistant, entry_id: str, data: dict[str, Any]) -> dict[
         # Set while the run rests between Cycle & Soak passes; the card counts
         # it down in place of a zone.
         "soak_until": rs.soak_until.isoformat() if rs.soak_until else None,
+        # Schedules that came due during this run and take their turn after it.
+        "waiting": waiting,
         # Water, always in litres; the card converts to the user's unit system.
         "tracks_water": bool(inst.water_meter_entity_id.strip())
         or any(z.tracks_water for z in inst.zones.values()),
@@ -590,6 +628,9 @@ async def ws_action(
         if action == "stop":
             await runtime.async_stop_all()
 
+        elif action == "skip_phase":
+            await runtime.async_skip_to_next_phase()
+
         elif action == "run_next":
             slot_id = _next_slot_id(hass, inst)
             if slot_id is None:
@@ -628,9 +669,9 @@ async def ws_action(
                 )
                 return
             duration = msg.get("duration_min")
-            # Sequential on purpose: async_run_zone appends to the running
-            # manual run, which is what produces the "runs in sequence" the
-            # card promises before the user presses start.
+            # One call per zone, in the order picked: async_run_zone appends to
+            # the running manual run, which groups them into phases by the
+            # parallel limit -- the plan the card shows before start is pressed.
             for zone_id in zone_ids:
                 await runtime.async_run_zone(zone_id, duration_min=duration)
 

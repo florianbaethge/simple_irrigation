@@ -15,6 +15,7 @@ htmlcov/
 /dist/
 /build/
 custom_components/simple_irrigation/frontend/node_modules/
+custom_components/simple_irrigation/frontend/.parity/
 node_modules/
 scripts/node_modules/
 *.egg-info/

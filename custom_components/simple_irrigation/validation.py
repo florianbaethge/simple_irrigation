@@ -5,6 +5,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
+import voluptuous as vol
+
 from .const import (
     GUARD_BOOLEAN_OPERATORS,
     GUARD_NUMERIC_OPERATORS,
@@ -15,7 +17,7 @@ from .const import (
     OUTPUT_ENTITY_DOMAINS,
     SCRIPT_DOMAIN,
 )
-from .models import Guard
+from .models import Guard, Zone
 
 DURATION_UNITS = {"minutes", "seconds"}
 SERVICE_REF_PATTERN = re.compile(r"^[a-z0-9_]+\.[a-z0-9_]+$")
@@ -30,6 +32,9 @@ __all__ = [
     "parse_guard_list",
     "parse_zone_switch_entities",
     "validate_output_entity_id",
+    "not_bool",
+    "strict_int",
+    "validate_supply_against_zones",
     "validate_zone_payload",
     "validate_countdown_entity",
     "validate_pre_start_entities",
@@ -133,6 +138,43 @@ def parse_zone_switch_entities(user_input: dict[str, Any]) -> list[str]:
     return []
 
 
+def not_bool(value: Any) -> Any:
+    """Refuse true/false where a number is meant: Python counts them as 1 and 0."""
+    if isinstance(value, bool):
+        raise vol.Invalid("expected a number, not true/false")
+    return value
+
+
+def strict_int(value: Any) -> int:
+    """A whole number as it stands -- no bool, no text, nothing to coerce."""
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise vol.Invalid("expected a whole number")
+    return value
+
+
+def validate_supply_against_zones(
+    zone_id: str | None,
+    outputs: list[str],
+    supplies: list[str],
+    zones: dict[str, Zone],
+) -> str | None:
+    """An output is a zone's valve or a supply, never both. Return error key or None.
+
+    A supply that is also a valve would be closed by the zone that owns it
+    while the zone it supplies is still watering -- and the other way round.
+    """
+    if set(outputs) & set(supplies):
+        return "supply_is_zone_output"
+    for other_id, other in zones.items():
+        if other_id == zone_id:
+            continue
+        if set(supplies) & set(other.switch_entity_ids):
+            return "supply_is_zone_output"
+        if set(outputs) & set(other.supply_entity_ids):
+            return "supply_is_zone_output"
+    return None
+
+
 def validate_zone_payload(hass: Any, user_input: dict[str, Any]) -> str | None:
     """Validate zone add/update fields. Return error key or None."""
     name = (user_input.get("name") or "").strip()
@@ -195,6 +237,11 @@ def validate_zone_payload(hass: Any, user_input: dict[str, Any]) -> str | None:
         )
         if err:
             return err
+    # Supply outputs are outputs like any other. Whether they make sense
+    # together with the rest of the installation is the user's call.
+    err = validate_pre_start_entities(hass, user_input.get("supply_entity_ids"))
+    if err:
+        return err
 
     return None
 

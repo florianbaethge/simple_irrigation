@@ -7,6 +7,19 @@ import {
 } from "../data/api";
 import { renderNativeEntityField } from "../entity-input";
 import { renderInlineHelp } from "../inline-help";
+import { accordionStyles, renderAccordion, type AccordionSection } from "../accordion";
+import {
+  entitiesSummary,
+  guardListSummary,
+  noneSummary,
+  quietSummary,
+  saidSummary,
+  seasonSummary,
+  summaryEntityName,
+  type Summary,
+} from "../summaries";
+import { normalizeSeason, type Period } from "../season";
+import { renderSeasonEditor } from "../season-editor";
 import {
   GUARD_ENTITY_DOMAINS,
   guardsForSave,
@@ -41,6 +54,7 @@ export class ViewSettings extends LitElement {
   static styles = [
     sharedStyles,
     formLayoutStyles,
+    accordionStyles,
     css`
       .save-bar {
         position: sticky;
@@ -82,11 +96,20 @@ export class ViewSettings extends LitElement {
   @state() private _isDefault = false;
   @state() private _defaultConfirmOpen = false;
   @state() private _showRaw = false;
+  // The page is an accordion: every section closed to a line that says what
+  // is set, at most one of them open.
+  @state() private _openSection: string | null = null;
   private _defaultConfirmOtherName = "";
 
   private _name = "";
   private _mode = "normal";
+  // The mode as it was when this page loaded it. An automation or the card may
+  // have changed it since; saving something else here must not undo that.
+  private _loadedMode = "normal";
   private _maxParallel = 2;
+  @state() private _waitWhenBusy = false;
+  @state() private _season: Period[] = [];
+  private _waitMaxMin = 120;
   private _preStart: string[] = [];
   private _waterMeter = "";
   private _preStartDelaySec = 10;
@@ -106,8 +129,13 @@ export class ViewSettings extends LitElement {
     const inst = this.installation ?? {};
     this._name = String(inst.name ?? "");
     this._mode = String(inst.mode ?? "normal");
+    this._loadedMode = this._mode;
     this._maxParallel = Number(inst.max_parallel_zones ?? 2);
     this._isDefault = Boolean(inst.is_default ?? false);
+    this._waitWhenBusy = Boolean(inst.wait_when_busy ?? false);
+    this._season = normalizeSeason(inst.season);
+    const wm = Number(inst.wait_max_min ?? 120);
+    this._waitMaxMin = Number.isFinite(wm) ? Math.max(1, Math.min(720, Math.round(wm))) : 120;
     const ps = Array.isArray(inst.pre_start_switches)
       ? (inst.pre_start_switches as string[]).filter(Boolean)
       : [];
@@ -146,10 +174,22 @@ export class ViewSettings extends LitElement {
     }
   };
 
+  /**
+   * A number as it is being typed. An emptied field is not a value yet: it
+   * keeps what was there, instead of snapping to the minimum and having that
+   * written back under the cursor ("90" turning into "190").
+   */
+  private _typed(e: Event, min: number, max: number, current: number): number {
+    const raw = parseInt((e.target as HTMLInputElement).value, 10);
+    return Number.isNaN(raw) ? current : Math.max(min, Math.min(max, raw));
+  }
+
   private _markDirty(): void {
     if (!this._dirty) {
       this._dirty = true;
     }
+    // The section headers say what is set: they follow every keystroke.
+    this.requestUpdate();
   }
 
   private async _save(): Promise<void> {
@@ -170,8 +210,11 @@ export class ViewSettings extends LitElement {
         pre_start_script_timeout_sec: this._preStartScriptTimeoutSec,
         post_run_script: this._postRunScript.trim(),
         post_run_script_timeout_sec: this._postRunScriptTimeoutSec,
-        mode: this._mode,
+        ...(this._mode !== this._loadedMode ? { mode: this._mode } : {}),
         max_parallel_zones: this._maxParallel,
+        wait_when_busy: this._waitWhenBusy,
+        season: this._season,
+        wait_max_min: this._waitMaxMin,
         is_default: this._isDefault,
         guards: guardsForSave(this._guards),
         water_meter_entity_id: this._waterMeter.trim(),
@@ -224,6 +267,101 @@ export class ViewSettings extends LitElement {
     window.open("/config/integrations/integration/simple_irrigation", "_blank", "noopener");
   }
 
+  /** The settings as sections, each with the line it shows when closed. */
+  private _sections(bodies: Record<string, () => unknown>): AccordionSection[] {
+    const section = (
+      id: string,
+      icon: string,
+      labelKey: string,
+      summary: Summary
+    ): AccordionSection => ({
+      id,
+      icon,
+      label: t(this.hass, labelKey),
+      summary: summary.text,
+      tone: summary.tone,
+      body: bodies[id],
+    });
+    const outputs = this._preStart.filter(Boolean);
+    const scripts = [
+      this._preStartScript.trim()
+        ? `${t(this.hass, "config_panel.general_pre_start_script_title")}: ${summaryEntityName(this.hass, this._preStartScript.trim())}`
+        : "",
+      this._postRunScript.trim()
+        ? `${t(this.hass, "config_panel.general_post_run_script_title")}: ${summaryEntityName(this.hass, this._postRunScript.trim())}`
+        : "",
+    ].filter(Boolean);
+    const watering = [
+      t(this.hass, `config_panel.general_mode_${this._mode}`),
+      t(this.hass, "config_panel.sum_max_parallel", { n: this._maxParallel }),
+      this._waitWhenBusy ? t(this.hass, "config_panel.sum_schedules_wait") : "",
+    ].filter(Boolean);
+    return [
+      section(
+        "general",
+        "mdi:tag-outline",
+        "config_panel.settings_section_general",
+        saidSummary(
+          [this._name, this._isDefault ? t(this.hass, "config_panel.sum_default") : ""]
+            .filter(Boolean)
+            .join(" · ")
+        )
+      ),
+      section(
+        "pump",
+        "mdi:water-pump",
+        "config_panel.settings_section_pump",
+        outputs.length
+          ? saidSummary(
+              `${outputs.map((id) => summaryEntityName(this.hass, id)).join(", ")} · ${this._preStartDelaySec} s`
+            )
+          : noneSummary(this.hass)
+      ),
+      section(
+        "scripts",
+        "mdi:script-text-outline",
+        "config_panel.schedule_scripts_section_title",
+        scripts.length ? saidSummary(scripts.join(" · ")) : noneSummary(this.hass)
+      ),
+      section(
+        "watering",
+        "mdi:water-percent",
+        "config_panel.settings_section_watering",
+        saidSummary(watering.join(" · "))
+      ),
+      section(
+        "season",
+        "mdi:calendar-range",
+        "config_panel.settings_section_season",
+        seasonSummary(this.hass, this._season)
+      ),
+      section(
+        "water",
+        "mdi:water-outline",
+        "config_panel.settings_section_water",
+        entitiesSummary(this.hass, [this._waterMeter.trim()], noneSummary(this.hass))
+      ),
+      section(
+        "conditions",
+        "mdi:shield-check-outline",
+        "config_panel.settings_section_guards",
+        guardListSummary(this.hass, this._guards)
+      ),
+      section(
+        "automations",
+        "mdi:robot-outline",
+        "config_panel.settings_section_automations",
+        quietSummary(t(this.hass, "config_panel.settings_automations_summary"))
+      ),
+      section(
+        "manage",
+        "mdi:cog-outline",
+        "config_panel.settings_manage_title",
+        quietSummary(t(this.hass, "config_panel.settings_manage_desc"))
+      ),
+    ];
+  }
+
   protected render() {
     const domains = this.outputEntityDomains ?? ["switch", "input_boolean", "group", "valve"];
 
@@ -236,7 +374,8 @@ export class ViewSettings extends LitElement {
         <div class="card-content">
           ${this._msg ? html`<div class="error">${this._msg}</div>` : nothing}
 
-          <div class="section-title">${t(this.hass, "config_panel.settings_section_general")}</div>
+          ${renderAccordion(this._sections({
+            general: () => html`
           <div class="field-block">
             <span class="field-title">${t(this.hass, "config_panel.general_installation_name")}</span>
             <div class="field-row">
@@ -251,58 +390,22 @@ export class ViewSettings extends LitElement {
             </div>
             <p class="hint">${t(this.hass, "config_panel.settings_name_hint")}</p>
           </div>
-
-          <div class="section-title">${t(this.hass, "config_panel.settings_section_pump")}</div>
           <div class="field-block">
-            <span class="field-title">${t(this.hass, "config_panel.general_pre_start_script_title")}</span>
-            <div class="field-row">
-              ${renderNativeEntityField(
-                this.hass,
-                ["script"],
-                t(this.hass, "config_panel.general_pre_start_script_field"),
-                this._preStartScript,
-                (v) => {
-                  this._preStartScript = v;
-                  this._markDirty();
-                  this.requestUpdate();
-                },
-                { placeholderKey: "config_panel.entity_placeholder_script" }
-              )}
+            <div class="switch-row">
+              <ha-switch
+                .disabled=${this._busy}
+                .checked=${this._isDefault}
+                @change=${(e: Event) => {
+                  const tgt = e.target as HTMLInputElement & { checked: boolean };
+                  void this._onDefaultToggle(Boolean(tgt.checked));
+                }}
+              ></ha-switch>
+              <span class="switch-row-label">${t(this.hass, "config_panel.general_default_toggle_label")}</span>
             </div>
-            <details class="inline-help">
-              <summary>
-                <ha-icon class="inline-help-icon" icon="mdi:information-outline"></ha-icon>
-                ${t(this.hass, "config_panel.general_pre_start_script_title")}
-              </summary>
-              <p>${t(this.hass, "config_panel.general_pre_start_script_desc")}</p>
-            </details>
+            <p class="hint">${t(this.hass, "config_panel.settings_default_hint")}</p>
           </div>
-          ${this._preStartScript.trim()
-            ? html`<div class="field-block">
-                <span class="field-title">
-                  ${t(this.hass, "config_panel.general_pre_start_script_timeout_title")}
-                </span>
-                <div class="field-row">
-                  <ha-input
-                    type="number"
-                    .label=${t(this.hass, "config_panel.general_pre_start_script_timeout_field")}
-                    .value=${String(this._preStartScriptTimeoutSec)}
-                    min="1"
-                    max="3600"
-                    @input=${(e: Event) => {
-                      this._preStartScriptTimeoutSec = Math.max(
-                        1,
-                        Math.min(3600, parseInt((e.target as HTMLInputElement).value, 10) || 1)
-                      );
-                      this._markDirty();
-                    }}
-                  ></ha-input>
-                </div>
-                <p class="hint">
-                  ${t(this.hass, "config_panel.settings_pre_start_script_timeout_hint")}
-                </p>
-              </div>`
-            : nothing}
+          `,
+            pump: () => html`
           <div class="field-block">
             <span class="field-title">${t(this.hass, "config_panel.general_pre_start_title")}</span>
             <div class="field-row">
@@ -384,6 +487,55 @@ export class ViewSettings extends LitElement {
             </div>
             <p class="hint">${t(this.hass, "config_panel.settings_pre_start_delay_hint")}</p>
           </div>
+          `,
+            scripts: () => html`
+          <div class="field-block">
+            <span class="field-title">${t(this.hass, "config_panel.general_pre_start_script_title")}</span>
+            <div class="field-row">
+              ${renderNativeEntityField(
+                this.hass,
+                ["script"],
+                t(this.hass, "config_panel.general_pre_start_script_field"),
+                this._preStartScript,
+                (v) => {
+                  this._preStartScript = v;
+                  this._markDirty();
+                  this.requestUpdate();
+                },
+                { placeholderKey: "config_panel.entity_placeholder_script" }
+              )}
+            </div>
+            <details class="inline-help">
+              <summary>
+                <ha-icon class="inline-help-icon" icon="mdi:information-outline"></ha-icon>
+                ${t(this.hass, "config_panel.general_pre_start_script_title")}
+              </summary>
+              <p>${t(this.hass, "config_panel.general_pre_start_script_desc")}</p>
+            </details>
+          </div>
+          ${this._preStartScript.trim()
+            ? html`<div class="field-block">
+                <span class="field-title">
+                  ${t(this.hass, "config_panel.general_pre_start_script_timeout_title")}
+                </span>
+                <div class="field-row">
+                  <ha-input
+                    type="number"
+                    .label=${t(this.hass, "config_panel.general_pre_start_script_timeout_field")}
+                    .value=${String(this._preStartScriptTimeoutSec)}
+                    min="1"
+                    max="3600"
+                    @input=${(e: Event) => {
+                      this._preStartScriptTimeoutSec = this._typed(e, 1, 3600, this._preStartScriptTimeoutSec);
+                      this._markDirty();
+                    }}
+                  ></ha-input>
+                </div>
+                <p class="hint">
+                  ${t(this.hass, "config_panel.settings_pre_start_script_timeout_hint")}
+                </p>
+              </div>`
+            : nothing}
           <div class="field-block">
             <span class="field-title">${t(this.hass, "config_panel.general_post_run_script_title")}</span>
             <div class="field-row">
@@ -421,10 +573,7 @@ export class ViewSettings extends LitElement {
                     min="1"
                     max="3600"
                     @input=${(e: Event) => {
-                      this._postRunScriptTimeoutSec = Math.max(
-                        1,
-                        Math.min(3600, parseInt((e.target as HTMLInputElement).value, 10) || 1)
-                      );
+                      this._postRunScriptTimeoutSec = this._typed(e, 1, 3600, this._postRunScriptTimeoutSec);
                       this._markDirty();
                     }}
                   ></ha-input>
@@ -434,8 +583,8 @@ export class ViewSettings extends LitElement {
                 </p>
               </div>`
             : nothing}
-
-          <div class="section-title">${t(this.hass, "config_panel.settings_section_watering")}</div>
+          `,
+            watering: () => html`
           <div class="field-block">
             <span class="field-title">${t(this.hass, "config_panel.general_watering_mode")}</span>
             <div class="field-row">
@@ -465,18 +614,52 @@ export class ViewSettings extends LitElement {
                 min="1"
                 max="16"
                 @input=${(e: Event) => {
-                  this._maxParallel = Math.max(
-                    1,
-                    Math.min(16, parseInt((e.target as HTMLInputElement).value, 10) || 1)
-                  );
+                  this._maxParallel = this._typed(e, 1, 16, this._maxParallel);
                   this._markDirty();
                 }}
               ></ha-input>
             </div>
             <p class="hint">${t(this.hass, "config_panel.settings_max_parallel_hint")}</p>
           </div>
-
-          <div class="section-title">${t(this.hass, "config_panel.settings_section_water")}</div>
+          <div class="field-block">
+            <div class="switch-row">
+              <ha-switch
+                .checked=${this._waitWhenBusy}
+                @change=${(e: Event) => {
+                  this._waitWhenBusy = Boolean((e.target as HTMLInputElement).checked);
+                  this._markDirty();
+                }}
+              ></ha-switch>
+              <span class="switch-row-label">${t(this.hass, "config_panel.settings_wait_toggle")}</span>
+            </div>
+            <p class="hint">${t(this.hass, "config_panel.settings_wait_hint")}</p>
+            ${this._waitWhenBusy
+              ? html`<div class="field-row">
+                  <ha-input
+                    type="number"
+                    .label=${t(this.hass, "config_panel.settings_wait_max_field")}
+                    .value=${String(this._waitMaxMin)}
+                    min="1"
+                    max="720"
+                    @input=${(e: Event) => {
+                      this._waitMaxMin = this._typed(e, 1, 720, this._waitMaxMin);
+                      this._markDirty();
+                    }}
+                  ></ha-input>
+                </div>`
+              : nothing}
+          </div>
+          `,
+            season: () => html`
+          <div class="field-block">
+            ${renderSeasonEditor(this.hass, this._season, this._busy, (next) => {
+              this._season = next;
+              this._markDirty();
+            })}
+            <p class="hint">${t(this.hass, "config_panel.settings_season_hint")}</p>
+          </div>
+          `,
+            water: () => html`
           <div class="field-block">
             <div class="field-row">
               ${renderNativeEntityField(
@@ -499,8 +682,8 @@ export class ViewSettings extends LitElement {
               "mdi:water-outline"
             )}
           </div>
-
-          <div class="section-title">${t(this.hass, "config_panel.settings_section_guards")}</div>
+          `,
+            conditions: () => html`
           <div class="field-block">
             <span class="field-title">${t(this.hass, "config_panel.guards_section_title")}</span>
             <p class="field-desc">${t(this.hass, "config_panel.guards_section_desc")}</p>
@@ -515,24 +698,8 @@ export class ViewSettings extends LitElement {
             )}
             <p class="hint">${t(this.hass, "config_panel.settings_guards_hint")}</p>
           </div>
-
-          <div class="section-title">${t(this.hass, "config_panel.general_default_section")}</div>
-          <div class="field-block">
-            <div class="switch-row">
-              <ha-switch
-                .disabled=${this._busy}
-                .checked=${this._isDefault}
-                @change=${(e: Event) => {
-                  const tgt = e.target as HTMLInputElement & { checked: boolean };
-                  void this._onDefaultToggle(Boolean(tgt.checked));
-                }}
-              ></ha-switch>
-              <span class="switch-row-label">${t(this.hass, "config_panel.general_default_toggle_label")}</span>
-            </div>
-            <p class="hint">${t(this.hass, "config_panel.settings_default_hint")}</p>
-          </div>
-
-          <div class="section-title">${t(this.hass, "config_panel.settings_section_automations")}</div>
+          `,
+            automations: () => html`
           <details class="inline-help">
             <summary>
               <ha-icon class="inline-help-icon" icon="mdi:robot-outline"></ha-icon>
@@ -556,12 +723,16 @@ export class ViewSettings extends LitElement {
               ? html`<pre class="raw">${JSON.stringify(this.runState ?? {}, null, 2)}</pre>`
               : nothing}
           </details>
-
-          <div class="section-title">${t(this.hass, "config_panel.settings_manage_title")}</div>
+          `,
+            manage: () => html`
           <p class="hint">${t(this.hass, "config_panel.settings_manage_desc")}</p>
           <button type="button" class="btn-outline" @click=${() => this._openIntegrationPage()}>
             ${t(this.hass, "config_panel.settings_open_integration")}
           </button>
+          `,
+          }), this._openSection, (id) => {
+            this._openSection = id;
+          })}
         </div>
 
         <div class="save-bar">

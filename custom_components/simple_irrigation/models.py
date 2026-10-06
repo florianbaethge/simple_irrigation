@@ -4,12 +4,17 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 from .const import (
+    DEFAULT_WAIT_MAX_MIN,
     MAX_REPETITIONS,
+    MAX_SEASON_PERIODS,
     MAX_SOAK_MIN,
+    MAX_SUPPLY_DELAY_SEC,
+    MAX_WAIT_MAX_MIN,
+    MAX_ZONE_DURATION_MIN,
     GUARD_BOOLEAN_OPERATORS,
     GUARD_NUMERIC_OPERATORS,
     GUARD_OP_ABOVE,
@@ -90,6 +95,74 @@ def parse_guards(raw: Any) -> list[Guard]:
     return out
 
 
+_DAYS_IN_MONTH = (31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31)
+
+
+def _parse_month_day(raw: Any) -> tuple[int, int] | None:
+    """``"MM-DD"`` as (month, day); None for anything that is no day of the year."""
+    parts = str(raw or "").strip().split("-")
+    if len(parts) != 2:
+        return None
+    try:
+        month, day = int(parts[0]), int(parts[1])
+    except ValueError:
+        return None
+    if not 1 <= month <= 12 or not 1 <= day <= _DAYS_IN_MONTH[month - 1]:
+        return None
+    return month, day
+
+
+@dataclass(frozen=True)
+class Period:
+    """A stretch of the year, the same every year, both days included.
+
+    Held as (month, day). ``start`` after ``end`` runs across New Year. The
+    29th of February needs no rule of its own: in a year without one, a period
+    ending on it ends on the 28th and one starting on it starts on 1 March.
+    """
+
+    start: tuple[int, int]
+    end: tuple[int, int]
+
+    def contains(self, day: date) -> bool:
+        """Whether ``day`` lies in this period."""
+        month_day = (day.month, day.day)
+        if self.start <= self.end:
+            return self.start <= month_day <= self.end
+        return month_day >= self.start or month_day <= self.end
+
+    def to_dict(self) -> dict[str, str]:
+        """Serialize to JSON-compatible dict."""
+        return {
+            "from": f"{self.start[0]:02d}-{self.start[1]:02d}",
+            "to": f"{self.end[0]:02d}-{self.end[1]:02d}",
+        }
+
+    @staticmethod
+    def from_dict(data: Any) -> Period | None:
+        """Deserialize one period; None when it names no two days of the year."""
+        if not isinstance(data, dict):
+            return None
+        start, end = _parse_month_day(data.get("from")), _parse_month_day(data.get("to"))
+        if start is None or end is None:
+            return None
+        return Period(start, end)
+
+
+def parse_season(raw: Any) -> list[Period]:
+    """A season from a payload or the store: its usable periods, no more than six."""
+    out: list[Period] = []
+    if not isinstance(raw, (list, tuple)):
+        return out
+    for item in raw:
+        period = Period.from_dict(item)
+        if period is None:
+            _LOGGER.warning("Dropping unusable season period: %r", item)
+        elif period not in out:
+            out.append(period)
+    return out[:MAX_SEASON_PERIODS]
+
+
 @dataclass
 class Zone:
     """One irrigation zone (circuit)."""
@@ -121,6 +194,17 @@ class Zone:
     # empty to take it from the entity's unit_of_measurement.
     countdown_entity_id: str = ""
     countdown_unit: str = ""
+    # --- Supply --------------------------------------------------------------
+    # Outputs that must be open for this zone to get water: a valve further up
+    # the line, a pump. Pre-start outputs of its own, in other words -- on while
+    # the zone waters rather than for the whole run, and shared with any other
+    # zone that names the same output.
+    supply_entity_ids: list[str] = field(default_factory=list)
+    # Seconds between the supply opening and the zone opening; None takes the
+    # installation's pre-start delay.
+    supply_lead_sec: int | None = None
+    # Seconds the supply stays open after the zone has closed.
+    supply_trail_sec: int = 0
 
     @property
     def tracks_water(self) -> bool:
@@ -134,6 +218,18 @@ class Zone:
         if mode == "extra":
             return self.duration_extra_min
         return self.duration_normal_min
+
+    def set_duration_for_mode(self, mode: str, minutes: int) -> bool:
+        """Set the runtime ``mode`` uses; whether that changed anything."""
+        attr = {
+            "eco": "duration_eco_min",
+            "normal": "duration_normal_min",
+            "extra": "duration_extra_min",
+        }[mode]
+        if getattr(self, attr) == minutes:
+            return False
+        setattr(self, attr, minutes)
+        return True
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize to JSON-compatible dict."""
@@ -156,6 +252,9 @@ class Zone:
             "flow_rate_lpm": self.flow_rate_lpm,
             "countdown_entity_id": self.countdown_entity_id,
             "countdown_unit": self.countdown_unit,
+            "supply_entity_ids": list(self.supply_entity_ids),
+            "supply_lead_sec": self.supply_lead_sec,
+            "supply_trail_sec": self.supply_trail_sec,
         }
 
     @staticmethod
@@ -189,7 +288,27 @@ class Zone:
             flow_rate_lpm=_non_negative_float(data.get("flow_rate_lpm")),
             countdown_entity_id=str(data.get("countdown_entity_id") or "").strip(),
             countdown_unit=str(data.get("countdown_unit") or "").strip(),
+            supply_entity_ids=parse_entity_ids(data.get("supply_entity_ids")),
+            supply_lead_sec=parse_supply_lead(data.get("supply_lead_sec")),
+            supply_trail_sec=_clamp_int(data.get("supply_trail_sec"), 0, 0, MAX_SUPPLY_DELAY_SEC),
         )
+
+
+def parse_entity_ids(raw: Any) -> list[str]:
+    """Entity ids from a payload or the store: trimmed, each once, in order."""
+    if not isinstance(raw, (list, tuple)):
+        return []
+    return list(dict.fromkeys(s for s in (str(x).strip() for x in raw) if s))
+
+
+def parse_supply_lead(raw: Any) -> int | None:
+    """A zone's supply lead in seconds; ``None`` means "the installation's delay"."""
+    if raw in (None, ""):
+        return None
+    try:
+        return max(0, min(MAX_SUPPLY_DELAY_SEC, int(raw)))
+    except (TypeError, ValueError):
+        return None
 
 
 def normalize_weekdays(raw: Any) -> list[int]:
@@ -262,6 +381,30 @@ class ScheduleSlot:
     repetitions: int = 1
     soak_between_phases_min: int = 0
     soak_between_repetitions_min: int = 0
+    # --- Fixed minutes -------------------------------------------------------
+    # How long a zone waters in this slot, whatever the mode says. A zone that
+    # is not in here follows the mode, which is how every slot starts out.
+    zone_minutes: dict[str, int] = field(default_factory=dict)
+    # --- Season --------------------------------------------------------------
+    # When in the year this slot waters by itself. Without the flag it follows
+    # the installation's season; with it, its own periods stand in for that --
+    # and none at all means the whole year, whatever the installation says.
+    override_season: bool = False
+    season: list[Period] = field(default_factory=list)
+
+    def duration_for(self, zone: Zone, mode: str) -> int:
+        """Minutes ``zone`` waters in this slot: its fixed minutes, else the mode's."""
+        fixed = self.zone_minutes.get(zone.zone_id)
+        return fixed if fixed is not None else zone.duration_for_mode(mode)
+
+    def prune_zone_minutes(self) -> None:
+        """Forget the fixed minutes of zones that are no longer in the slot.
+
+        Left behind, they would come back to life when the zone is added again.
+        """
+        self.zone_minutes = {
+            zid: m for zid, m in self.zone_minutes.items() if zid in self.zone_ids_ordered
+        }
 
     @property
     def cycle_soak(self) -> bool:
@@ -298,6 +441,9 @@ class ScheduleSlot:
             "repetitions": self.repetitions,
             "soak_between_phases_min": self.soak_between_phases_min,
             "soak_between_repetitions_min": self.soak_between_repetitions_min,
+            "zone_minutes": dict(self.zone_minutes),
+            "override_season": self.override_season,
+            "season": [p.to_dict() for p in self.season],
         }
 
     @staticmethod
@@ -346,7 +492,31 @@ class ScheduleSlot:
             soak_between_repetitions_min=_clamp_int(
                 data.get("soak_between_repetitions_min"), 0, 0, MAX_SOAK_MIN
             ),
+            zone_minutes=parse_zone_minutes(
+                data.get("zone_minutes"), data.get("zone_ids_ordered", [])
+            ),
+            override_season=bool(data.get("override_season", False)),
+            season=parse_season(data.get("season")),
         )
+
+
+def parse_zone_minutes(raw: Any, zone_ids: list[str]) -> dict[str, int]:
+    """A slot's fixed minutes from a payload or the store, for its own zones only.
+
+    Minutes outside 0..MAX_ZONE_DURATION_MIN are brought into range; an entry
+    that is no number, or for a zone the slot does not water, is left out.
+    """
+    out: dict[str, int] = {}
+    if not isinstance(raw, dict):
+        return out
+    for zone_id, minutes in raw.items():
+        if zone_id not in zone_ids or isinstance(minutes, bool):
+            continue
+        try:
+            out[str(zone_id)] = max(0, min(MAX_ZONE_DURATION_MIN, int(minutes)))
+        except (TypeError, ValueError):
+            continue
+    return out
 
 
 def _non_negative_float(raw: Any) -> float:
@@ -365,6 +535,30 @@ def _clamp_int(raw: Any, default: int, lo: int, hi: int) -> int:
     except (TypeError, ValueError):
         return default
     return max(lo, min(hi, value))
+
+
+def _zones_in_saved_order(zones: dict[str, Zone], saved: Any) -> dict[str, Zone]:
+    """``zones`` in the order the store's ``zone_order`` list names them.
+
+    The order is saved as a list of its own because the key order of a JSON
+    object is a courtesy, not a promise -- a store that went through a tool that
+    sorts keys still loads the way the user arranged it. Entries that match no
+    zone are ignored; zones the list does not name follow in the order they have.
+    """
+    if not isinstance(saved, list):
+        return zones
+    ordered = {zone_id: zones[zone_id] for zone_id in map(str, saved) if zone_id in zones}
+    ordered.update(zones)
+    return ordered
+
+
+def parse_wait_max(raw: Any) -> int:
+    """Minutes a schedule may wait, 1..720; anything else is the default."""
+    try:
+        minutes = int(raw)
+    except (TypeError, ValueError):
+        return DEFAULT_WAIT_MAX_MIN
+    return minutes if 1 <= minutes <= MAX_WAIT_MAX_MIN else DEFAULT_WAIT_MAX_MIN
 
 
 @dataclass
@@ -390,8 +584,30 @@ class Installation:
     water_meter_entity_id: str = ""
     # Conditions applied to every scheduled run unless a slot opts out.
     guards: list[Guard] = field(default_factory=list)
+    # A schedule that comes due while something else runs is skipped, unless it
+    # may wait for its turn -- and then for no longer than this many minutes.
+    wait_when_busy: bool = False
+    wait_max_min: int = DEFAULT_WAIT_MAX_MIN
+    # When in the year schedules water by themselves; empty is the whole year.
+    # A slot may bring its own. Manual runs do not ask.
+    season: list[Period] = field(default_factory=list)
+    # In the order they are listed in, which is also the run order a new cycle
+    # starts with. A slot's own ``zone_ids_ordered`` decides how that slot waters.
     zones: dict[str, Zone] = field(default_factory=dict)
     schedule_slots: list[ScheduleSlot] = field(default_factory=list)
+
+    def set_zone_order(self, order: list[str]) -> bool:
+        """Put the zones in ``order`` if it names every one of them exactly once.
+
+        Anything else was built from a zone list that has changed since -- a zone
+        added or deleted in another tab -- and is refused rather than repaired.
+        """
+        if len(order) != len(self.zones) or set(order) != set(self.zones):
+            return False
+        ordered = {zone_id: self.zones[zone_id] for zone_id in order}
+        self.zones.clear()
+        self.zones.update(ordered)
+        return True
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize to JSON-compatible dict."""
@@ -411,7 +627,11 @@ class Installation:
             "is_default": self.is_default,
             "water_meter_entity_id": self.water_meter_entity_id,
             "guards": [g.to_dict() for g in self.guards],
+            "wait_when_busy": self.wait_when_busy,
+            "wait_max_min": self.wait_max_min,
+            "season": [p.to_dict() for p in self.season],
             "zones": {k: v.to_dict() for k, v in self.zones.items()},
+            "zone_order": list(self.zones),
             "schedule_slots": [s.to_dict() for s in self.schedule_slots],
         }
 
@@ -428,6 +648,7 @@ class Installation:
         if isinstance(zones_data, dict):
             for zid, zd in zones_data.items():
                 zones[zid] = Zone.from_dict(zd)
+        zones = _zones_in_saved_order(zones, data.get("zone_order"))
 
         slots_raw = data.get("schedule_slots") or []
         schedule_slots = [ScheduleSlot.from_dict(s) for s in slots_raw]
@@ -452,9 +673,28 @@ class Installation:
             is_default=bool(data.get("is_default", False)),
             water_meter_entity_id=str(data.get("water_meter_entity_id") or "").strip(),
             guards=parse_guards(data.get("guards")),
+            wait_when_busy=bool(data.get("wait_when_busy", False)),
+            wait_max_min=parse_wait_max(data.get("wait_max_min")),
+            season=parse_season(data.get("season")),
             zones=zones,
             schedule_slots=schedule_slots,
         )
+
+
+@dataclass
+class WaitingRun:
+    """Schedules that came due in the same minute while something else ran.
+
+    Only the request is kept, not a plan: zones, minutes and conditions are
+    worked out when its turn comes, so what changed meanwhile counts.
+    """
+
+    slot_ids: list[str]
+    due_at: datetime
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize for the UI payload; a waiting run is never restored."""
+        return {"slot_ids": list(self.slot_ids), "due_at": self.due_at.isoformat()}
 
 
 @dataclass
@@ -488,9 +728,16 @@ class RunState:
     # countdown without polling. Written by to_dict() for the panel payload but
     # deliberately never read back in from_dict() — see there.
     zone_ends_at: dict[str, datetime] = field(default_factory=dict)
+    # When those zones opened. A zone does not always run for its mode's time --
+    # a manual run brings its own -- so progress is start to end, not a guess.
+    # Volatile exactly like ``zone_ends_at``.
+    zone_started_at: dict[str, datetime] = field(default_factory=dict)
     # End of the Cycle & Soak pause the run is resting in, so the UI can count
     # it down; None while watering. Volatile exactly like ``zone_ends_at``.
     soak_until: datetime | None = None
+    # Schedules waiting for the run in flight to finish, oldest first. Volatile
+    # exactly like ``zone_ends_at``: a restart ends the run and with it the wait.
+    waiting_runs: list[WaitingRun] = field(default_factory=list)
     # --- Water ---------------------------------------------------------------
     # Litres per zone: running total (what the water sensors report), the last
     # run, and whether that came from a meter ("measured") or a flow rate
@@ -542,7 +789,11 @@ class RunState:
             "zone_ends_at": {
                 k: v.isoformat() for k, v in self.zone_ends_at.items()
             },
+            "zone_started_at": {
+                k: v.isoformat() for k, v in self.zone_started_at.items()
+            },
             "soak_until": self.soak_until.isoformat() if self.soak_until else None,
+            "waiting_runs": [w.to_dict() for w in self.waiting_runs],
             "water_total_l": {k: round(v, 3) for k, v in self.water_total_l.items()},
             "water_last_run_l": {k: round(v, 3) for k, v in self.water_last_run_l.items()},
             "water_source": dict(self.water_source),
@@ -621,7 +872,7 @@ class RunState:
             last_run_water_l=_opt_float(data.get("last_run_water_l")),
             last_run_water_source=str(data.get("last_run_water_source") or ""),
             water_total_installation_l=_opt_float(data.get("water_total_installation_l")) or 0.0,
-            # zone_ends_at and soak_until are intentionally NOT restored. They only
+            # zone_ends_at, zone_started_at, soak_until and waiting_runs are intentionally NOT restored. They only
             # mean something while this process is watering; after a restart no
             # zone is running any more and a recovered end time would render a
             # phantom countdown.

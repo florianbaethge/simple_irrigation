@@ -44,7 +44,12 @@ def next_slot_fire_local(
     """Next occurrence of weekday at time_local in tz, strictly after ``after`` (aware).
 
     With ``week_parity`` "odd"/"even" only days in matching ISO calendar weeks
-    qualify, so the occurrence may be up to two weeks out.
+    qualify, so the occurrence is usually up to two weeks out -- and three where
+    a year with 53 weeks puts two odd weeks next to each other (2026/27, 2032/33).
+
+    "After" is meant in real time, not by the clock on the wall: in the hour a
+    change of the clocks repeats, 02:30 comes round twice, and only the first
+    time is the slot's.
     """
     parsed = parse_hh_mm(time_local)
     if parsed is None:
@@ -55,14 +60,16 @@ def next_slot_fire_local(
         after = after.replace(tzinfo=dt.timezone.utc)
     loc = after.astimezone(tz)
 
-    for i in range(15):
+    # Aware datetimes that share a tzinfo compare by wall clock; timestamps do not.
+    after_ts = after.timestamp()
+    for i in range(23):
         d = loc.date() + timedelta(days=i)
         if d.weekday() != weekday:
             continue
         if not week_parity_matches(d, week_parity):
             continue
         cand = datetime.combine(d, time(hour, minute, tzinfo=tz))
-        if cand > loc:
+        if cand.timestamp() > after_ts:
             return cand
 
     return None
@@ -81,6 +88,6 @@ def next_slot_fire_local_any(
         nxt = next_slot_fire_local(after, weekday, time_local, tz, week_parity)
         if nxt is None:
             continue
-        if best is None or nxt < best:
+        if best is None or nxt.timestamp() < best.timestamp():
             best = nxt
     return best

@@ -56,6 +56,10 @@ export interface ZoneRow {
   active: boolean;
   queued: boolean;
   duration_min: number;
+  /** Whether the zone always waters on its own, whatever the parallel limit. */
+  exclusive: boolean;
+  /** When the zone opened and when it is due to close; null unless it waters. */
+  started_at: string | null;
   ends_at: string | null;
   next_run: string | null;
   last_run: string | null;
@@ -103,6 +107,8 @@ export interface WeekRun {
   start_min: number;
   duration_min: number;
   parity_only: boolean;
+  /** Dashed like a parity-only run, but because the day is out of season. */
+  off_season?: boolean;
   paused: boolean;
 }
 
@@ -116,6 +122,8 @@ export interface WeekDay {
 }
 
 export interface Week {
+  /** Whether the week shown is an odd ISO week. */
+  odd_week?: boolean;
   days: WeekDay[];
   total_runs: number;
   total_min: number;
@@ -142,6 +150,8 @@ export interface Snapshot {
   run_ends_at: string | null;
   /** End of the Cycle & Soak rest the run is in; null while a zone waters. */
   soak_until: string | null;
+  /** Schedules that came due during this run and take their turn after it. */
+  waiting?: { slot_id: string; name: string; time: string; due_at: string }[];
   /** Water, always in litres; the card converts to the unit system. */
   tracks_water: boolean;
   run_water_l: number | null;

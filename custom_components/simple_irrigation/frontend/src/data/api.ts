@@ -24,6 +24,14 @@ export const saveZone = (
 ): Promise<{ success: boolean; error?: string; zone_id?: string }> =>
   hass.callApi("POST", "simple_irrigation/panel/zone", { entry_id: entryId, ...body });
 
+/** Save the order of all zones; the backend refuses a list that misses or adds one. */
+export const saveZoneOrder = (
+  hass: HomeAssistant,
+  entryId: string,
+  zoneOrder: string[]
+): Promise<{ success: boolean; error?: string }> =>
+  saveZone(hass, entryId, { action: "reorder", zone_order: zoneOrder });
+
 export const saveSlot = (
   hass: HomeAssistant,
   entryId: string,
@@ -39,7 +47,8 @@ export const upsertCycle = (
     cycle_kind: string;
     cycle_meta: Record<string, unknown>;
     zone_ids_ordered: string[];
-    enabled: boolean;
+    /** All entries on or off; left out, each entry keeps its own switch. */
+    enabled?: boolean;
     guards?: Guard[];
     ignore_global_guards?: boolean;
     /** Script overrides — `override_<phase>_script`, `<phase>_script`, `…_timeout_sec`. */

@@ -65,6 +65,13 @@ stop_zone:
       selector:
         text: {}
 
+skip_phase:
+  fields:
+    config_entry_id:
+      required: false
+      selector:
+        text: {}
+
 set_mode:
   fields:
     mode:
@@ -90,6 +97,36 @@ set_zone_enabled:
       required: true
       selector:
         boolean: {}
+    config_entry_id:
+      required: false
+      selector:
+        text: {}
+
+set_zone_duration:
+  fields:
+    zone_id:
+      required: true
+      selector:
+        text: {}
+    duration_min:
+      required: false
+      selector:
+        number:
+          min: 0
+          max: 240
+          mode: box
+    mode:
+      required: false
+      selector:
+        select:
+          options:
+            - eco
+            - normal
+            - extra
+    slot_id:
+      required: false
+      selector:
+        text: {}
     config_entry_id:
       required: false
       selector:

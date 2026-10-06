@@ -7,6 +7,7 @@
  * can only express a 2-week cycle.
  */
 
+import { firstDueDay, inSeason, nextDayInSeason, type Period } from "./season";
 import { isoWeekNumber, type WeekParity } from "./timetable-model";
 
 export type CycleKind =
@@ -31,6 +32,12 @@ export interface CycleSlotSpec {
   time_local: string;
   week_parity: WeekParity;
 }
+
+/** A cadence before it has a time of day. */
+type CadenceSlot = Omit<CycleSlotSpec, "time_local">;
+
+/** Start times a cycle may have on a watering day (`MAX_CYCLE_START_TIMES` in cycle.py). */
+export const MAX_CYCLE_START_TIMES = 8;
 
 /** Round half up (matches JS Math.round and Python `round_half_up`). */
 export function roundHalfUp(x: number): number {
@@ -60,15 +67,24 @@ export function anchorWeekParity(anchorWeekday: number, today: Date): Exclude<We
   return "odd";
 }
 
-function times(meta: CycleMeta | undefined): string[] {
-  const raw = meta?.times;
-  const out: string[] = [];
-  if (Array.isArray(raw)) {
-    for (const x of raw) {
-      const s = String(x).trim();
-      if (s) out.push(s);
-    }
+/** `raw` as `HH:MM` strings, each once and in the order of the clock. */
+export function normalizeStartTimes(raw: unknown): string[] {
+  const minutes = new Set<number>();
+  for (const value of Array.isArray(raw) ? raw : []) {
+    const m = /^(\d{1,2}):(\d{1,2})$/.exec(String(value).trim());
+    if (!m) continue;
+    const h = Number(m[1]);
+    const min = Number(m[2]);
+    if (h <= 23 && min <= 59) minutes.add(h * 60 + min);
   }
+  return [...minutes]
+    .sort((x, y) => x - y)
+    .slice(0, MAX_CYCLE_START_TIMES)
+    .map((t) => `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`);
+}
+
+function times(meta: CycleMeta | undefined): string[] {
+  const out = normalizeStartTimes(meta?.times);
   return out.length ? out : ["06:00"];
 }
 
@@ -102,9 +118,8 @@ function weekDays(meta: CycleMeta | undefined): number[] {
 function everyNDaysSlots(
   n: number,
   a: number,
-  timeLocal: string,
   p0: Exclude<WeekParity, "every">
-): CycleSlotSpec[] {
+): CadenceSlot[] {
   const runs = Math.max(1, roundHalfUp(14 / n));
   const offsets: number[] = [];
   for (let k = 0; k < runs; k++) offsets.push(roundHalfUp((k * 14) / runs));
@@ -131,51 +146,51 @@ function everyNDaysSlots(
   const sameSet =
     weekA.length === weekB.length && weekA.every((v, i) => v === weekB[i]);
   if (weekA.length && weekB.length && sameSet) {
-    return [{ weekdays: weekA, time_local: timeLocal, week_parity: "every" }];
+    return [{ weekdays: weekA, week_parity: "every" }];
   }
-  const out: CycleSlotSpec[] = [];
-  if (weekA.length) out.push({ weekdays: weekA, time_local: timeLocal, week_parity: p0 });
-  if (weekB.length)
-    out.push({ weekdays: weekB, time_local: timeLocal, week_parity: oppositeParity(p0) });
+  const out: CadenceSlot[] = [];
+  if (weekA.length) out.push({ weekdays: weekA, week_parity: p0 });
+  if (weekB.length) out.push({ weekdays: weekB, week_parity: oppositeParity(p0) });
   return out;
 }
 
+/**
+ * Slot specs for a cycle: its cadence, once for every start time. A slot waters
+ * on its weekdays at one time of day, so "every 2 days at 06:00 and 18:00" is
+ * four of them.
+ */
 export function generateCycleSlots(
   kind: CycleKind,
   meta: CycleMeta | undefined,
   anchorParity: Exclude<WeekParity, "every"> = "odd"
 ): CycleSlotSpec[] {
   const ts = times(meta);
-  const a = anchor(meta);
-  const allDays = [0, 1, 2, 3, 4, 5, 6];
+  return cadenceSlots(kind, meta, anchorParity).flatMap((slot) =>
+    ts.map((time_local) => ({ ...slot, time_local }))
+  );
+}
 
+function cadenceSlots(
+  kind: CycleKind,
+  meta: CycleMeta | undefined,
+  anchorParity: Exclude<WeekParity, "every">
+): CadenceSlot[] {
+  const a = anchor(meta);
   switch (kind) {
     case "daily":
-      return [{ weekdays: allDays, time_local: ts[0], week_parity: "every" }];
-    case "twice_daily": {
-      const t2 = ts.length > 1 ? ts[1] : ts[0];
-      return [
-        { weekdays: allDays, time_local: ts[0], week_parity: "every" },
-        { weekdays: allDays, time_local: t2, week_parity: "every" },
-      ];
-    }
+    // `twice_daily` is how releases before 1.13 spelled "daily, two times".
+    case "twice_daily":
+      return [{ weekdays: [0, 1, 2, 3, 4, 5, 6], week_parity: "every" }];
     case "weekly":
-      return [{ weekdays: [a], time_local: ts[0], week_parity: "every" }];
+      return [{ weekdays: [a], week_parity: "every" }];
     case "biweekly":
-      return [{ weekdays: [a], time_local: ts[0], week_parity: anchorParity }];
-    case "n_per_week": {
-      const days = weekDays(meta);
-      return [
-        { weekdays: days.length ? days : [a], time_local: ts[0], week_parity: "every" },
-      ];
-    }
+      return [{ weekdays: [a], week_parity: anchorParity }];
     case "every_n_days":
-      return everyNDaysSlots(nValue(meta), a, ts[0], anchorParity);
+      return everyNDaysSlots(nValue(meta), a, anchorParity);
     default: {
+      // n_per_week, custom (or unknown): the chosen weekdays.
       const days = weekDays(meta);
-      return [
-        { weekdays: days.length ? days : [a], time_local: ts[0], week_parity: "every" },
-      ];
+      return [{ weekdays: days.length ? days : [a], week_parity: "every" }];
     }
   }
 }
@@ -195,25 +210,57 @@ export function weekParityMatches(d: Date, parity: WeekParity): boolean {
 export interface PreviewDay {
   date: Date;
   run: boolean;
+  /** The rhythm would fire, but the day is out of season. */
+  off: boolean;
   isToday: boolean;
 }
 
-/** 14-day strip starting at `start`; a day runs when any slot fires on it. */
+/**
+ * 14-day strip starting at `start`; a day runs when any slot fires on it and
+ * the day is in `season` (no periods: the whole year).
+ */
 export function previewStrip(
   slots: CycleSlotSpec[],
   start: Date,
   today: Date,
-  days = 14
+  days = 14,
+  season: Period[] = []
 ): PreviewDay[] {
   const out: PreviewDay[] = [];
   const tKey = today.toDateString();
   for (let i = 0; i < days; i++) {
     const d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
     const wd = mondayBasedWeekday(d);
-    const run = slots.some((s) => s.weekdays.includes(wd) && weekParityMatches(d, s.week_parity));
-    out.push({ date: d, run, isToday: d.toDateString() === tKey });
+    const due = slots.some((s) => s.weekdays.includes(wd) && weekParityMatches(d, s.week_parity));
+    const open = inSeason(season, d);
+    out.push({ date: d, run: due && open, off: due && !open, isToday: d.toDateString() === tKey });
   }
   return out;
+}
+
+/**
+ * When a slot fires next, strictly after `now`, inside `season`. What the
+ * scheduler works out as next_slot_fire: the rhythm decides the day, the
+ * season may push it months out, and today counts while its time is ahead.
+ */
+export function nextFire(
+  slot: { weekdays: number[]; week_parity: WeekParity; time_local: string },
+  season: Period[],
+  now: Date
+): Date | null {
+  const due = (d: Date): boolean =>
+    slot.weekdays.includes(mondayBasedWeekday(d)) && weekParityMatches(d, slot.week_parity);
+  const [hour, minute] = slot.time_local.split(":").map(Number);
+  let from = now;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const day = firstDueDay(season, from, due);
+    if (!day) return null;
+    const at = new Date(day.getFullYear(), day.getMonth(), day.getDate(), hour || 0, minute || 0);
+    if (at > now) return at;
+    // Today's time has passed: the next day it is due.
+    from = new Date(day.getFullYear(), day.getMonth(), day.getDate() + 1);
+  }
+  return null;
 }
 
 /** Day-gaps between consecutive fires over a 28-day window from `start`. */
@@ -233,12 +280,24 @@ export function previewGaps(slots: CycleSlotSpec[], start: Date, days = 28): num
   return gaps;
 }
 
-/** First date on/after `start` on which any slot fires (null if none within 28 days). */
-export function firstRunDate(slots: CycleSlotSpec[], start: Date, days = 28): Date | null {
+/**
+ * First date on/after `start` on which any slot fires in `season` (null if none
+ * within 28 days of the season being open).
+ */
+export function firstRunDate(
+  slots: CycleSlotSpec[],
+  start: Date,
+  days = 28,
+  season: Period[] = []
+): Date | null {
+  const from = nextDayInSeason(season, start) ?? start;
   for (let i = 0; i < days; i++) {
-    const d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
+    const d = new Date(from.getFullYear(), from.getMonth(), from.getDate() + i);
     const wd = mondayBasedWeekday(d);
-    if (slots.some((s) => s.weekdays.includes(wd) && weekParityMatches(d, s.week_parity))) {
+    if (
+      inSeason(season, d) &&
+      slots.some((s) => s.weekdays.includes(wd) && weekParityMatches(d, s.week_parity))
+    ) {
       return d;
     }
   }

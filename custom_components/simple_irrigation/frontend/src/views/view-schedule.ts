@@ -39,13 +39,59 @@ import {
   type CycleSoak,
   type ZonePhaseInput,
 } from "../schedule-phases";
-import { durationForMode, plannedLitres } from "../timetable-model";
+import {
+  durationForMode,
+  minutesToTimeLocal,
+  parseTimeLocalToMinutes,
+  plannedLitres,
+  slotZoneMinutes,
+} from "../timetable-model";
 import { renderCycleSoakEditor } from "../cycle-soak-editor";
+import {
+  accordionStyles,
+  renderAccordion,
+  renderAccordionGroup,
+  type AccordionSection,
+} from "../accordion";
+import { renderInlineHelp } from "../inline-help";
+import {
+  cycleSoakSummary,
+  guardsSummary,
+  slotScriptsSummary,
+  slotSeasonSummary,
+  whenSummary,
+  zonesSummary,
+  type Summary,
+} from "../summaries";
+import {
+  formatMonthDay,
+  formatSeason,
+  inSeason,
+  monthDay,
+  nextDayInSeason,
+  normalizeSeason,
+  type Period,
+} from "../season";
+import {
+  renderSlotSeason,
+  seasonChoice,
+  type SeasonChoice,
+  type SlotSeason,
+} from "../season-editor";
 import { formatVolumeNumber, litresToUnit, volumeUnit } from "../units";
 import {
+  renderZoneMinutesInput,
+  zoneMinutesForSave,
+  zoneMinutesOf,
+  type ZoneMinutes,
+} from "../zone-minutes-input";
+import { orderedZoneIds } from "../zone-order";
+import {
+  anchorWeekParity,
+  generateCycleSlots,
   mondayBasedWeekday,
+  nextFire,
   previewStrip,
-  weekParityMatches,
   type CycleMeta,
 } from "../cycle";
 import type { CycleWizard } from "../cycle-wizard";
@@ -72,6 +118,12 @@ interface SlotRow {
   cycle_kind: string;
   cycle_meta: CycleMeta | null;
   cycle_soak: CycleSoak;
+  /** Fixed minutes per zone; a zone that is not in here follows the mode. */
+  zone_minutes: ZoneMinutes;
+  /** Own periods of the year, standing in for the installation's season. */
+  season: SlotSeason;
+  /** What the editor's season picker shows; settled when the row is read. */
+  season_choice: SeasonChoice;
 }
 
 interface CycleGroup {
@@ -86,6 +138,10 @@ interface CleanupProposal {
   optionId: string;
   meta: CycleMeta;
   zoneIds: string[];
+  zoneMinutes: ZoneMinutes;
+  season: SlotSeason;
+  /** The slot the others are folded into: its settings become the cycle's. */
+  model: SlotRow;
   memberIds: string[];
   label: string;
 }
@@ -103,11 +159,12 @@ export class ViewSchedule extends LitElement {
   entryId!: string;
   installation!: Record<string, unknown>;
   runState?: Record<string, unknown>;
-  onSaved?: () => void;
+  onSaved?: () => void | Promise<void>;
 
   static styles = [
     sharedStyles,
     formLayoutStyles,
+    accordionStyles,
     css`
       .card-header .header-actions .btn,
       .card-header .header-actions .btn-outline {
@@ -130,14 +187,23 @@ export class ViewSchedule extends LitElement {
       .member-line {
         display: flex;
         align-items: center;
-        gap: 8px 12px;
-        flex-wrap: wrap;
+        gap: 8px;
         padding: 8px 0;
         border-top: 1px solid var(--divider-color);
         font-size: 0.85rem;
       }
       .member-line:first-of-type {
         border-top: none;
+        margin-top: 6px;
+      }
+      /* The text may wrap; the edit button keeps its place at the end. */
+      .member-text {
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 4px 12px;
       }
       .detach-line {
         margin-top: 10px;
@@ -175,20 +241,49 @@ export class ViewSchedule extends LitElement {
         letter-spacing: 0.04em;
         color: var(--secondary-text-color);
       }
+      .zones li:not(.phase-sep) {
+        flex-wrap: nowrap;
+      }
+      .zones .zone-name {
+        flex: 1 1 0;
+        min-width: 3.5em;
+      }
       .zone-actions {
         display: flex;
-        gap: 6px;
+        gap: 2px;
         margin-left: auto;
       }
-      .zone-actions .btn-outline {
-        margin-top: 0;
-        padding: 5px 10px;
-        font-size: 0.8rem;
+      .iconbtn.small {
+        width: 34px;
+        height: 34px;
       }
-      .weekday-chips {
+      .iconbtn.small ha-icon {
+        --mdc-icon-size: 18px;
+      }
+      .when-row {
         display: flex;
         flex-wrap: wrap;
-        gap: 8px;
+        gap: 10px;
+      }
+      .when-row input[type="time"] {
+        flex: 0 0 8.5em;
+        width: auto;
+      }
+      .when-row select.field-select {
+        flex: 1 1 10em;
+        width: auto;
+      }
+      /* Seven days in one row, on a phone too. */
+      .weekday-chips {
+        display: grid;
+        grid-template-columns: repeat(7, minmax(0, 1fr));
+        gap: 6px;
+        max-width: 420px;
+      }
+      .weekday-chips .chip.day {
+        min-width: 0;
+        padding-left: 0;
+        padding-right: 0;
       }
       .weekday-presets {
         display: flex;
@@ -202,17 +297,7 @@ export class ViewSchedule extends LitElement {
         text-align: center;
         justify-content: center;
       }
-      .drawer-actions {
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
-        padding-top: 12px;
-      }
-      .drawer-actions .btn-outline {
-        width: 100%;
-        min-height: 46px;
-        margin-top: 0;
-      }
+
     `,
   ];
 
@@ -220,6 +305,8 @@ export class ViewSchedule extends LitElement {
   @state() private _msg?: string;
   @state() private _expanded = new Set<string>();
   @state() private _slotEditDraft: SlotRow | null = null;
+  // The editor's accordion: at most one section open.
+  @state() private _openSection: string | null = "when";
   @state() private _addZonePick = "";
   @state() private _cleanupProposals: CleanupProposal[] | null = null;
   private _consumedEditSlotKey: string | null = null;
@@ -235,6 +322,10 @@ export class ViewSchedule extends LitElement {
       const o = raw as Record<string, unknown>;
       const wds = normalizeWeekdays(o.weekdays);
       const rid = o.cycle_id ? String(o.cycle_id) : null;
+      const season: SlotSeason = {
+        override: Boolean(o.override_season ?? false),
+        periods: normalizeSeason(o.season),
+      };
       return {
         slot_id: String(o.slot_id ?? ""),
         weekdays: wds.length ? wds : normalizeWeekdays([o.weekday ?? 0]),
@@ -252,8 +343,16 @@ export class ViewSchedule extends LitElement {
         cycle_kind: String(o.cycle_kind ?? "custom"),
         cycle_meta: (o.cycle_meta as CycleMeta) ?? null,
         cycle_soak: cycleSoakOf(o),
+        zone_minutes: zoneMinutesOf(o),
+        season,
+        season_choice: seasonChoice(season),
       };
     });
+  }
+
+  /** The periods that decide for a slot: its own, or the installation's. */
+  private _seasonOf(s: SlotRow | undefined): Period[] {
+    return s?.season.override ? s.season.periods : normalizeSeason(this.installation?.season);
   }
 
   /**
@@ -302,6 +401,8 @@ export class ViewSchedule extends LitElement {
       pre_start_script: { ...s.pre_start_script },
       post_run_script: { ...s.post_run_script },
       cycle_soak: { ...s.cycle_soak },
+      zone_minutes: { ...s.zone_minutes },
+      season: { override: s.season.override, periods: s.season.periods.map((p) => ({ ...p })) },
     };
   }
 
@@ -328,7 +429,13 @@ export class ViewSchedule extends LitElement {
 
   /** "~120 L" for one run of the slot, from the zones' flow rates. */
   private _renderWaterMeta(s: SlotRow): TemplateResult | typeof nothing {
-    const litres = plannedLitres(s.zone_ids_ordered, this._zonesMap(), this._mode(), s.cycle_soak.repetitions);
+    const litres = plannedLitres(
+      s.zone_ids_ordered,
+      this._zonesMap(),
+      this._mode(),
+      s.cycle_soak.repetitions,
+      s.zone_minutes
+    );
     if (litres === null) return nothing;
     const unit = volumeUnit(this.hass);
     return html`<span class="meta"
@@ -337,6 +444,69 @@ export class ViewSchedule extends LitElement {
         u: unit,
       })}</span
     >`;
+  }
+
+  /** "Tue 06:00" for a run this week, "1 Apr 06:00" for one further out. */
+  private _nextLabel(next: Date): string {
+    const time = formatTimeLocalForDisplay(
+      this.hass,
+      `${next.getHours()}:${String(next.getMinutes()).padStart(2, "0")}`
+    );
+    const soon = next.getTime() - Date.now() < 7 * 86400000;
+    const day = soon
+      ? weekdayShort(this.hass, mondayBasedWeekday(next))
+      : formatMonthDay(this.hass, monthDay(next.getMonth() + 1, next.getDate()));
+    return `${day} ${time}`;
+  }
+
+  /** Read-only chip on a row that brings its own season. */
+  private _renderSeasonMeta(s: SlotRow | undefined): TemplateResult | typeof nothing {
+    if (!s?.season.override) return nothing;
+    // "All year" only says something where the installation has a season.
+    if (!s.season.periods.length && !normalizeSeason(this.installation?.season).length) {
+      return nothing;
+    }
+    return html`<span class="meta"
+      ><ha-icon icon="mdi:calendar-range"></ha-icon>${s.season.periods.length
+        ? formatSeason(this.hass, s.season.periods)
+        : t(this.hass, "config_panel.season_choice_all_year")}</span
+    >`;
+  }
+
+  /**
+   * A badge for a row whose own season is closed today, with the day it comes
+   * back. Rows that follow the installation share one line above the list.
+   */
+  private _renderOffSeasonBadge(s: SlotRow | undefined): TemplateResult | typeof nothing {
+    if (!s?.season.override) return nothing;
+    const periods = s.season.periods;
+    const today = new Date();
+    if (inSeason(periods, today)) return nothing;
+    const opens = nextDayInSeason(periods, today);
+    return html`<span class="badge"
+      >${t(this.hass, "config_panel.season_badge_off", {
+        date: opens
+          ? formatMonthDay(this.hass, monthDay(opens.getMonth() + 1, opens.getDate()))
+          : "",
+      })}</span
+    >`;
+  }
+
+  /** One line for every row that follows the installation while its season is closed. */
+  private _renderInstallationOffSeason(): TemplateResult | typeof nothing {
+    const periods = normalizeSeason(this.installation?.season);
+    const today = new Date();
+    if (inSeason(periods, today) || !this._slots().some((s) => !s.season.override)) {
+      return nothing;
+    }
+    const opens = nextDayInSeason(periods, today);
+    return html`<p class="hint">
+      ${t(this.hass, "config_panel.overview_season_opens", {
+        date: opens
+          ? formatMonthDay(this.hass, monthDay(opens.getMonth() + 1, opens.getDate()))
+          : "",
+      })}
+    </p>`;
   }
 
   /** Read-only chip on a row that waters in passes with rests in between. */
@@ -408,7 +578,7 @@ export class ViewSchedule extends LitElement {
     return out;
   }
 
-  private _estimateMin(zoneIds: string[], cs: CycleSoak): number {
+  private _estimateMin(zoneIds: string[], cs: CycleSoak, fixed: ZoneMinutes): number {
     const zones = this._zonesMap();
     if (!zones) return 0;
     const phases = computePhases(zoneIds, this._zonesPhaseInput(), this._maxParallel(), true);
@@ -416,9 +586,15 @@ export class ViewSchedule extends LitElement {
     const mode = this._mode();
     const minutes = programMinutes(phases, cs, (zid) => {
       const z = zones[zid];
-      return z && Boolean(z.enabled ?? true) ? durationForMode(z, mode) : 0;
+      return z && Boolean(z.enabled ?? true) ? slotZoneMinutes(zid, z, mode, fixed) : 0;
     });
     return Math.round(preStart + minutes);
+  }
+
+  /** A badge for a slot that fixes the minutes of at least one of its zones. */
+  private _renderFixedMinutesBadge(s: SlotRow | undefined): TemplateResult | typeof nothing {
+    if (!s || !s.zone_ids_ordered.some((id) => id in s.zone_minutes)) return nothing;
+    return html`<span class="badge">${t(this.hass, "config_panel.schedule_badge_fixed_minutes")}</span>`;
   }
 
   private _phaseCount(zoneIds: string[]): number {
@@ -427,19 +603,13 @@ export class ViewSchedule extends LitElement {
 
   private _nextFire(members: SlotRow[]): Date | null {
     const now = new Date();
-    for (let i = 0; i < 21; i++) {
-      const day = new Date(now.getFullYear(), now.getMonth(), now.getDate() + i);
-      const wd = mondayBasedWeekday(day);
-      for (const m of members) {
-        if (!m.enabled) continue;
-        if (!m.weekdays.includes(wd)) continue;
-        if (!weekParityMatches(day, m.week_parity)) continue;
-        const [h, mi] = m.time_local.split(":").map(Number);
-        const cand = new Date(day.getFullYear(), day.getMonth(), day.getDate(), h || 0, mi || 0);
-        if (cand > now) return cand;
-      }
+    let first: Date | null = null;
+    for (const m of members) {
+      if (!m.enabled) continue;
+      const at = nextFire(m, this._seasonOf(m), now);
+      if (at && (!first || at < first)) first = at;
     }
-    return null;
+    return first;
   }
 
   // ---- api helpers --------------------------------------------------------
@@ -579,22 +749,60 @@ export class ViewSchedule extends LitElement {
     this._wizard?.start({ step: 1 });
   }
 
-  private _openWizardEdit(g: CycleGroup): void {
+  /**
+   * The installation as the backend has it now. Editors open on that: an
+   * automation may have set a slot's minutes since the list was loaded, and
+   * saving a dialog built from the old list would put the old ones back.
+   */
+  private async _reload(): Promise<void> {
+    await this.onSaved?.();
+    await new Promise((resolve) => setTimeout(resolve));
+  }
+
+  private async _openWizardEdit(g: CycleGroup): Promise<void> {
     this._msg = undefined;
+    await this._reload();
     const slots = (this.installation?.schedule_slots as Array<Record<string, unknown>>).filter(
       (s) => String(s.cycle_id ?? "") === g.cycle_id
     );
-    this._wizard?.start({ seedFromSlots: slots, step: 1 });
+    if (slots.length) this._wizard?.start({ seedFromSlots: slots, step: 1 });
+  }
+
+  private async _openSlotEdit(slotId: string): Promise<void> {
+    this._addZonePick = "";
+    await this._reload();
+    const slot = this._slots().find((s) => s.slot_id === slotId);
+    this._openSection = "when";
+    if (slot) this._slotEditDraft = this._cloneSlot(slot);
   }
 
   // ---- cleanup ------------------------------------------------------------
 
-  /** Detect ungrouped slots with matching time+zones that form a known cadence. */
+  /**
+   * Ungrouped slots that are one schedule written out day by day: the same
+   * time, zones and settings throughout, and days that a cadence of the wizard
+   * produces exactly. Only then does folding them into a cycle change nothing
+   * about what waters when.
+   */
   private _analyzeCleanup(): CleanupProposal[] {
     const { custom } = this._groupsAndCustom();
     const buckets = new Map<string, SlotRow[]>();
     for (const s of custom) {
-      const key = `${s.time_local}||${s.zone_ids_ordered.join(",")}`;
+      // Everything a cycle's entries share. Two slots that differ in any of it
+      // are two schedules, however alike their days look.
+      const key = JSON.stringify([
+        s.time_local,
+        s.zone_ids_ordered,
+        zoneMinutesForSave(s.zone_minutes, s.zone_ids_ordered),
+        s.season.override ? s.season.periods : null,
+        guardsForSave(s.guards),
+        s.ignore_global_guards,
+        s.pre_start_script,
+        s.post_run_script,
+        s.cycle_soak,
+        s.enabled,
+        s.name,
+      ]);
       if (!buckets.has(key)) buckets.set(key, []);
       buckets.get(key)!.push(s);
     }
@@ -602,31 +810,42 @@ export class ViewSchedule extends LitElement {
     for (const list of buckets.values()) {
       if (list.length < 2) continue;
       const parities = new Set(list.map((s) => s.week_parity));
-      const time = list[0].time_local;
-      const zoneIds = list[0].zone_ids_ordered;
+      const model = list[0];
+      const time = model.time_local;
+      const zoneIds = model.zone_ids_ordered;
+      const zoneMinutes = zoneMinutesForSave(model.zone_minutes, zoneIds);
+      const season = model.season;
       const memberIds = list.map((s) => s.slot_id);
+      const shared = { zoneIds, zoneMinutes, season, model, memberIds, label: model.name };
 
       if (parities.size === 1 && parities.has("every")) {
-        // Merge weekday union into a single every-week cycle.
-        const union = normalizeWeekdays(list.flatMap((s) => s.weekdays));
+        // Every week throughout: the days simply add up. A day named twice
+        // would water twice today and once afterwards -- not the same thing.
+        const all = list.flatMap((s) => s.weekdays);
+        const union = normalizeWeekdays(all);
+        if (union.length !== all.length) continue;
         const optionId = union.length === 7 ? "daily" : union.length === 1 ? "weekly" : "n_per_week";
         const meta: CycleMeta = { times: [time] };
         if (optionId === "weekly") meta.anchor_weekday = union[0];
         else if (optionId === "n_per_week") meta.week_days = union;
-        proposals.push({ optionId, meta, zoneIds, memberIds, label: list[0].name });
-      } else if (
-        list.length === 2 &&
-        parities.has("odd") &&
-        parities.has("even")
-      ) {
-        // Complementary parity pair → every-2-days.
-        proposals.push({
-          optionId: "every_2_days",
-          meta: { times: [time], n: 2, anchor_weekday: normalizeWeekdays(list[0].weekdays)[0] ?? 0 },
-          zoneIds,
-          memberIds,
-          label: list[0].name,
-        });
+        proposals.push({ optionId, meta, ...shared });
+      } else if (list.length === 2 && parities.has("odd") && parities.has("even")) {
+        // An odd-week and an even-week slot are "every 2 days" only if their
+        // days are the ones that rhythm has, in the weeks it has them. Any
+        // other pair -- Monday in odd weeks, Friday in even ones -- is not.
+        const have = list.map((s) => `${s.weekdays.join(",")}/${s.week_parity}`).sort().join("|");
+        const today = new Date();
+        for (let anchor = 0; anchor < 7; anchor++) {
+          const meta: CycleMeta = { times: [time], n: 2, anchor_weekday: anchor };
+          const want = generateCycleSlots("every_n_days", meta, anchorWeekParity(anchor, today))
+            .map((spec) => `${spec.weekdays.join(",")}/${spec.week_parity}`)
+            .sort()
+            .join("|");
+          if (want === have) {
+            proposals.push({ optionId: "every_2_days", meta, ...shared });
+            break;
+          }
+        }
       }
     }
     return proposals;
@@ -650,12 +869,24 @@ export class ViewSchedule extends LitElement {
         const opt = p.optionId;
         const kind =
           opt === "every_2_days" ? "every_n_days" : opt === "every_3_days" ? "every_n_days" : opt;
+        const m = p.model;
         const res = await upsertCycle(this.hass, this.entryId, {
           cycle_id: null,
           cycle_kind: kind,
-          cycle_meta: p.meta as Record<string, unknown>,
+          cycle_meta: { ...p.meta, label: p.label } as Record<string, unknown>,
           zone_ids_ordered: p.zoneIds,
-          enabled: true,
+          zone_minutes: p.zoneMinutes,
+          override_season: p.season.override,
+          season: p.season.periods,
+          // The slots were alike in all of this; the cycle is what they were.
+          enabled: m.enabled,
+          guards: guardsForSave(m.guards),
+          ignore_global_guards: m.ignore_global_guards,
+          ...scriptOverrideForSave(m.pre_start_script, "pre_start"),
+          ...scriptOverrideForSave(m.post_run_script, "post_run"),
+          repetitions: m.cycle_soak.repetitions,
+          soak_between_phases_min: m.cycle_soak.soakBetweenPhasesMin,
+          soak_between_repetitions_min: m.cycle_soak.soakBetweenRepetitionsMin,
         });
         if (!res.success) {
           this._msg = formatApiError(res.error, this.hass);
@@ -779,6 +1010,9 @@ export class ViewSchedule extends LitElement {
       repetitions: d.cycle_soak.repetitions,
       soak_between_phases_min: d.cycle_soak.soakBetweenPhasesMin,
       soak_between_repetitions_min: d.cycle_soak.soakBetweenRepetitionsMin,
+      zone_minutes: zoneMinutesForSave(d.zone_minutes, d.zone_ids_ordered),
+      override_season: d.season.override,
+      season: d.season.periods,
     });
     if (ok) this._closeEditDialog();
   }
@@ -838,9 +1072,22 @@ export class ViewSchedule extends LitElement {
     this._expanded = next;
   }
 
-  private _renderMemberLine(m: SlotRow): TemplateResult {
+  /** "06:00–06:40": when a run starts and, by the active mode's durations, ends. */
+  private _timeRange(timeLocal: string, estMin: number): string {
+    const start = formatTimeLocalForDisplay(this.hass, timeLocal);
+    if (!(estMin > 0)) return start;
+    const end = (parseTimeLocalToMinutes(timeLocal) + estMin) % (24 * 60);
+    return `${start}–${formatTimeLocalForDisplay(this.hass, minutesToTimeLocal(end))}`;
+  }
+
+  /**
+   * One slot of a row, with its own edit button. `single`: the row is that one
+   * slot -- on a phone its drawer already says and does the same.
+   */
+  private _renderMemberLine(m: SlotRow, single = false): TemplateResult {
     return html`
-      <div class="member-line">
+      <div class="member-line ${single ? "hide-narrow" : ""}">
+        <div class="member-text">
         ${m.week_parity !== "every"
           ? html`<span class="badge badge-primary badge-dot">${this._parityLabel(m.week_parity)}</span>`
           : nothing}
@@ -874,15 +1121,13 @@ export class ViewSchedule extends LitElement {
                 n: m.zone_ids_ordered.length,
               })}</span
         >
+        </div>
         <button
           type="button"
           class="iconbtn"
-          style="margin-left:auto;width:34px;height:34px"
+          style="width:34px;height:34px"
           aria-label=${t(this.hass, "config_panel.schedule_edit")}
-          @click=${() => {
-            this._addZonePick = "";
-            this._slotEditDraft = this._cloneSlot(m);
-          }}
+          @click=${() => this._openSlotEdit(m.slot_id)}
         >
           <ha-icon icon="mdi:pencil"></ha-icon>
         </button>
@@ -890,12 +1135,51 @@ export class ViewSchedule extends LitElement {
     `;
   }
 
+  /** On a phone a row has one button: the chevron that opens the rest. */
+  private _renderNarrowChevron(id: string, expanded: boolean): TemplateResult {
+    return html`<button
+      type="button"
+      class="iconbtn only-narrow"
+      aria-expanded=${expanded ? "true" : "false"}
+      aria-label=${t(this.hass, "config_panel.cycle_expand")}
+      @click=${() => this._toggleExpand(id)}
+    >
+      <ha-icon icon=${expanded ? "mdi:chevron-up" : "mdi:chevron-down"}></ha-icon>
+    </button>`;
+  }
+
+  /** What a wide row shows beside its name, for a phone: details and the two actions. */
+  private _renderNarrowDrawer(
+    extras: TemplateResult,
+    runDisabled: boolean,
+    onRun: () => void,
+    onEdit: () => void
+  ): TemplateResult {
+    return html`<div class="only-narrow">
+      <div class="meta-line">${extras}</div>
+      <div class="drawer-actions">
+        <button type="button" class="btn-outline" ?disabled=${runDisabled} @click=${onRun}>
+          <ha-icon icon="mdi:play"></ha-icon>
+          ${t(this.hass, "config_panel.schedule_run_now_short")}
+        </button>
+        <button type="button" class="btn-outline" @click=${onEdit}>
+          <ha-icon icon="mdi:pencil"></ha-icon>
+          ${t(this.hass, "config_panel.schedule_edit")}
+        </button>
+      </div>
+    </div>`;
+  }
+
   private _renderCycleRow(g: CycleGroup): TemplateResult {
     const allEnabled = g.members.every((m) => m.enabled);
     const anyEnabled = g.members.some((m) => m.enabled);
     const expanded = this._expanded.has(g.cycle_id);
     const zoneIds = g.members[0]?.zone_ids_ordered ?? [];
-    const est = this._estimateMin(zoneIds, g.members[0]?.cycle_soak ?? cycleSoakOf(undefined));
+    const est = this._estimateMin(
+      zoneIds,
+      g.members[0]?.cycle_soak ?? cycleSoakOf(undefined),
+      g.members[0]?.zone_minutes ?? {}
+    );
     const phases = this._phaseCount(zoneIds);
     const times = [...new Set(g.members.map((m) => m.time_local))].sort();
     const next = this._nextFire(g.members);
@@ -909,7 +1193,29 @@ export class ViewSchedule extends LitElement {
       week_parity: m.week_parity,
     }));
     const today = new Date();
-    const strip = previewStrip(specs, today, today, 14);
+    const strip = previewStrip(specs, today, today, 14, this._seasonOf(g.members[0]));
+    const first = g.members[0];
+    // In the row on a wide screen, behind the chevron on a phone.
+    const extras = html`
+      ${first
+        ? html`${this._renderGuardMeta(first.guards, first.ignore_global_guards)}${this._renderScriptMeta(
+            first
+          )}${this._renderCycleSoakMeta(first)}${this._renderSeasonMeta(first)}${this._renderWaterMeta(
+            first
+          )}`
+        : nothing}
+      <span class="meta"
+        ><ha-icon icon="mdi:format-list-bulleted"></ha-icon>${t(this.hass, "config_panel.cycle_slots_n", {
+          n: g.members.length,
+        })}</span
+      >
+    `;
+    const runCycle = (): void => {
+      const m = g.members.find((x) => x.enabled) ?? g.members[0];
+      this._runSlotNow(m.slot_id);
+    };
+    const runDisabled =
+      this._busy || this._runtimeBusy() || !anyEnabled || zoneIds.length === 0;
 
     return html`
       <div class="compact-row ${accent}">
@@ -927,6 +1233,8 @@ export class ViewSchedule extends LitElement {
             <div class="compact-row-title">
               <span class="ellipsis">${label}</span>
               <span class="badge badge-primary">${this._cycleBadge(g.kind, g.meta)}</span>
+              ${this._renderFixedMinutesBadge(g.members[0])}
+              ${this._renderOffSeasonBadge(g.members[0])}
               ${!anyEnabled
                 ? html`<span class="badge">${t(this.hass, "config_panel.cycle_paused_n", {
                     n: g.members.length,
@@ -940,9 +1248,9 @@ export class ViewSchedule extends LitElement {
             </div>
             <div class="meta-line">
               <span class="meta"
-                ><ha-icon icon="mdi:clock-outline"></ha-icon>${times
-                  .map((tl) => formatTimeLocalForDisplay(this.hass, tl))
-                  .join(", ")}</span
+                ><ha-icon icon="mdi:clock-outline"></ha-icon>${times.length === 1
+                  ? this._timeRange(times[0], est)
+                  : times.map((tl) => formatTimeLocalForDisplay(this.hass, tl)).join(", ")}</span
               >
               <span class="meta"
                 ><ha-icon icon="mdi:vector-square"></ha-icon>${t(
@@ -951,33 +1259,16 @@ export class ViewSchedule extends LitElement {
                   { z: zoneIds.length, p: phases, m: est }
                 )}</span
               >
-              ${g.members[0]
-                ? html`${this._renderGuardMeta(
-                    g.members[0].guards,
-                    g.members[0].ignore_global_guards
-                  )}${this._renderScriptMeta(g.members[0])}${this._renderCycleSoakMeta(
-                    g.members[0]
-                  )}${this._renderWaterMeta(g.members[0])}`
-                : nothing}
+              <span class="meta-extra hide-narrow">${extras}</span>
               ${next
                 ? html`<span class="meta"
-                    ><ha-icon icon="mdi:skip-next-outline"></ha-icon>${weekdayShort(
-                      this.hass,
-                      mondayBasedWeekday(next)
-                    )}
-                    ${formatTimeLocalForDisplay(this.hass, `${next.getHours()}:${String(next.getMinutes()).padStart(2, "0")}`)}</span
+                    ><ha-icon icon="mdi:skip-next-outline"></ha-icon>${this._nextLabel(next)}</span
                   >`
                 : nothing}
-              <span class="meta"
-                ><ha-icon icon="mdi:format-list-bulleted"></ha-icon>${t(
-                  this.hass,
-                  "config_panel.cycle_slots_n",
-                  { n: g.members.length }
-                )}</span
-              >
             </div>
           </div>
-          <div class="icon-group" role="group">
+          ${this._renderNarrowChevron(g.cycle_id, expanded)}
+          <div class="icon-group hide-narrow" role="group">
             <button
               type="button"
               title=${t(this.hass, "config_panel.schedule_run_slot_now")}
@@ -1011,9 +1302,11 @@ export class ViewSchedule extends LitElement {
         </div>
         ${expanded
           ? html`<div class="compact-row-detail">
-              <div class="day-strip" style="margin-top:10px">
+              ${this._renderNarrowDrawer(extras, runDisabled, runCycle, () => this._openWizardEdit(g))}
+              <div class="detail-caption">${t(this.hass, "config_panel.cycle_preview_title")}</div>
+              <div class="day-strip">
                 ${strip.map(
-                  (d) => html`<div class="day-cell ${d.run ? "run" : ""} ${d.isToday ? "today" : ""}">
+                  (d) => html`<div class="day-cell ${d.run ? "run" : ""} ${d.off ? "off" : ""} ${d.isToday ? "today" : ""}">
                     <span class="dc-dow">${weekdayShort(this.hass, mondayBasedWeekday(d.date))}</span>
                     <span class="dc-dom">${d.date.getDate()}</span>
                   </div>`
@@ -1036,7 +1329,7 @@ export class ViewSchedule extends LitElement {
   }
 
   private _renderCustomRow(s: SlotRow): TemplateResult {
-    const est = this._estimateMin(s.zone_ids_ordered, s.cycle_soak);
+    const est = this._estimateMin(s.zone_ids_ordered, s.cycle_soak, s.zone_minutes);
     const phases = this._phaseCount(s.zone_ids_ordered);
     const accent = s.enabled ? "" : "inactive";
     const expanded = this._expanded.has(s.slot_id);
@@ -1046,8 +1339,15 @@ export class ViewSchedule extends LitElement {
       [{ weekdays: s.weekdays, time_local: s.time_local, week_parity: s.week_parity }],
       today,
       today,
-      14
+      14,
+      this._seasonOf(s)
     );
+    const extras = html`
+      ${this._renderGuardMeta(s.guards, s.ignore_global_guards)} ${this._renderScriptMeta(s)}
+      ${this._renderCycleSoakMeta(s)} ${this._renderSeasonMeta(s)} ${this._renderWaterMeta(s)}
+    `;
+    const runDisabled =
+      this._busy || this._runtimeBusy() || !s.enabled || s.zone_ids_ordered.length === 0;
     return html`
       <div class="compact-row ${accent}">
         <div class="compact-row-header">
@@ -1064,11 +1364,13 @@ export class ViewSchedule extends LitElement {
             <div class="compact-row-title">
               <span class="ellipsis"
                 >${s.name ? s.name + " · " : ""}${weekdaysSummary(this.hass, s.weekdays)}
-                ${formatTimeLocalForDisplay(this.hass, s.time_local)}</span
+                ${this._timeRange(s.time_local, est)}</span
               >
               ${s.week_parity !== "every"
                 ? html`<span class="badge badge-primary badge-dot">${this._parityLabel(s.week_parity)}</span>`
                 : nothing}
+              ${this._renderFixedMinutesBadge(s)}
+              ${this._renderOffSeasonBadge(s)}
             </div>
             <div class="meta-line">
               <span class="meta"
@@ -1078,27 +1380,21 @@ export class ViewSchedule extends LitElement {
                   { z: s.zone_ids_ordered.length, p: phases, m: est }
                 )}</span
               >
-              ${this._renderGuardMeta(s.guards, s.ignore_global_guards)}
-              ${this._renderScriptMeta(s)}
-              ${this._renderCycleSoakMeta(s)}
-              ${this._renderWaterMeta(s)}
+              <span class="meta-extra hide-narrow">${extras}</span>
               ${next
                 ? html`<span class="meta"
-                    ><ha-icon icon="mdi:skip-next-outline"></ha-icon>${weekdayShort(
-                      this.hass,
-                      mondayBasedWeekday(next)
-                    )}
-                    ${formatTimeLocalForDisplay(this.hass, `${next.getHours()}:${String(next.getMinutes()).padStart(2, "0")}`)}</span
+                    ><ha-icon icon="mdi:skip-next-outline"></ha-icon>${this._nextLabel(next)}</span
                   >`
                 : nothing}
             </div>
           </div>
-          <div class="icon-group" role="group">
+          ${this._renderNarrowChevron(s.slot_id, expanded)}
+          <div class="icon-group hide-narrow" role="group">
             <button
               type="button"
               title=${t(this.hass, "config_panel.schedule_run_slot_now")}
               aria-label=${t(this.hass, "config_panel.schedule_run_slot_now")}
-              ?disabled=${this._busy || this._runtimeBusy() || !s.enabled || s.zone_ids_ordered.length === 0}
+              ?disabled=${runDisabled}
               @click=${() => this._runSlotNow(s.slot_id)}
             >
               <ha-icon icon="mdi:play"></ha-icon>
@@ -1107,10 +1403,7 @@ export class ViewSchedule extends LitElement {
               type="button"
               title=${t(this.hass, "config_panel.schedule_edit")}
               aria-label=${t(this.hass, "config_panel.schedule_edit")}
-              @click=${() => {
-                this._addZonePick = "";
-                this._slotEditDraft = this._cloneSlot(s);
-              }}
+              @click=${() => this._openSlotEdit(s.slot_id)}
             >
               <ha-icon icon="mdi:pencil"></ha-icon>
             </button>
@@ -1127,15 +1420,22 @@ export class ViewSchedule extends LitElement {
         </div>
         ${expanded
           ? html`<div class="compact-row-detail">
-              <div class="day-strip" style="margin-top:10px">
+              ${this._renderNarrowDrawer(
+                extras,
+                runDisabled,
+                () => this._runSlotNow(s.slot_id),
+                () => this._openSlotEdit(s.slot_id)
+              )}
+              <div class="detail-caption">${t(this.hass, "config_panel.cycle_preview_title")}</div>
+              <div class="day-strip">
                 ${strip.map(
-                  (d) => html`<div class="day-cell ${d.run ? "run" : ""} ${d.isToday ? "today" : ""}">
+                  (d) => html`<div class="day-cell ${d.run ? "run" : ""} ${d.off ? "off" : ""} ${d.isToday ? "today" : ""}">
                     <span class="dc-dow">${weekdayShort(this.hass, mondayBasedWeekday(d.date))}</span>
                     <span class="dc-dom">${d.date.getDate()}</span>
                   </div>`
                 )}
               </div>
-              ${this._renderMemberLine(s)}
+              ${this._renderMemberLine(s, true)}
             </div>`
           : nothing}
       </div>
@@ -1145,47 +1445,202 @@ export class ViewSchedule extends LitElement {
   private _addZoneOptionsForDraft(draft: SlotRow): string[] {
     const zones = this._zonesMap();
     if (!zones) return [];
-    return Object.keys(zones).filter((id) => !draft.zone_ids_ordered.includes(id));
+    return orderedZoneIds(this.installation).filter(
+      (id) => !draft.zone_ids_ordered.includes(id)
+    );
+  }
+
+  // ---- slot editor ---------------------------------------------------------
+
+  /** The sections of the slot editor, each with the line it shows when closed. */
+  private _slotSections(draft: SlotRow): AccordionSection[] {
+    const section = (
+      id: string,
+      icon: string,
+      labelKey: string,
+      summary: Summary,
+      body: () => unknown
+    ): AccordionSection => ({
+      id,
+      icon,
+      label: t(this.hass, labelKey),
+      summary: summary.text,
+      tone: summary.tone,
+      body,
+    });
+    const watering = draft.zone_ids_ordered.filter((zid) => this._zonesMap()?.[zid]);
+    return [
+      section(
+        "when",
+        "mdi:clock-outline",
+        "config_panel.acc_when",
+        whenSummary(this.hass, draft.weekdays, draft.week_parity, draft.time_local),
+        () => this._renderWhenBody(draft)
+      ),
+      section(
+        "zones",
+        "mdi:sprinkler-variant",
+        "config_panel.acc_zones",
+        zonesSummary(
+          this.hass,
+          watering.map((zid) => this._zoneName(zid)),
+          this._estimateMin(draft.zone_ids_ordered, draft.cycle_soak, draft.zone_minutes)
+        ),
+        () => this._renderZonesBody(draft)
+      ),
+    ];
+  }
+
+  /** What only some schedules need: closed, each says whether it is in use. */
+  private _slotOptionSections(draft: SlotRow): AccordionSection[] {
+    const section = (
+      id: string,
+      icon: string,
+      labelKey: string,
+      summary: Summary,
+      body: () => unknown
+    ): AccordionSection => ({
+      id,
+      icon,
+      label: t(this.hass, labelKey),
+      summary: summary.text,
+      tone: summary.tone,
+      body,
+    });
+    return [
+      section(
+        "conditions",
+        "mdi:shield-check-outline",
+        "config_panel.guards_section_title",
+        guardsSummary(this.hass, draft.guards, draft.ignore_global_guards, this._globalGuards()),
+        () => this._renderGuardBody(draft)
+      ),
+      section(
+        "cycle_soak",
+        "mdi:repeat",
+        "config_panel.cycle_soak_section_title",
+        cycleSoakSummary(this.hass, draft.cycle_soak),
+        () =>
+          renderCycleSoakEditor(
+            this.hass,
+            draft.cycle_soak,
+            this._busy,
+            (next) => {
+              draft.cycle_soak = next;
+              this.requestUpdate();
+            },
+            true
+          )
+      ),
+      section(
+        "season",
+        "mdi:calendar-range",
+        "config_panel.season_slot_summary",
+        slotSeasonSummary(this.hass, draft.season.override, draft.season.periods),
+        () =>
+          renderSlotSeason(
+            this.hass,
+            draft.season,
+            draft.season_choice,
+            this._busy,
+            (next, choice) => {
+              draft.season = next;
+              draft.season_choice = choice;
+              this.requestUpdate();
+            }
+          )
+      ),
+      section(
+        "scripts",
+        "mdi:script-text-outline",
+        "config_panel.schedule_scripts_section_title",
+        slotScriptsSummary(this.hass, draft.pre_start_script, draft.post_run_script),
+        () => this._renderScriptBody(draft)
+      ),
+    ];
+  }
+
+  private _renderWhenBody(draft: SlotRow): TemplateResult {
+    return html`
+      <div class="field-block">
+        ${this._renderWeekdayPicker(draft.weekdays, (n) => {
+          draft.weekdays = n;
+          this.requestUpdate();
+        })}
+      </div>
+      <div class="when-row">
+        <input
+          type="time"
+          aria-label=${t(this.hass, "config_panel.schedule_start_time_title")}
+          .value=${draft.time_local}
+          @input=${(e: Event) => {
+            draft.time_local = (e.target as HTMLInputElement).value;
+            this.requestUpdate();
+          }}
+        />
+        <select
+          class="field-select"
+          aria-label=${t(this.hass, "config_panel.schedule_week_parity_title")}
+          @change=${(e: Event) => {
+            draft.week_parity = (e.target as HTMLSelectElement).value as WeekParity;
+            this.requestUpdate();
+          }}
+        >
+          ${WEEK_PARITIES.map(
+            (p) =>
+              html`<option value=${p} .selected=${draft.week_parity === p}>
+                ${this._parityLabel(p)}
+              </option>`
+          )}
+        </select>
+      </div>
+    `;
   }
 
   /**
-   * "Runs then and then — but only if x AND y AND z", so this sits below the
-   * timing fields rather than above them.
+   * "Runs then and then — but only if x AND y AND z": the slot's own
+   * conditions, on top of the installation's unless it opts out of those.
    */
-  private _renderGuardSection(draft: SlotRow): TemplateResult {
+  private _renderGuardBody(draft: SlotRow): TemplateResult {
     const globals = this._globalGuards();
     return html`
-      <div class="field-block">
-        <span class="field-title">${t(this.hass, "config_panel.guards_section_title")}</span>
-        <p class="field-desc">${t(this.hass, "config_panel.guards_section_desc")}</p>
-        ${renderGuardList(this.hass, GUARD_ENTITY_DOMAINS, draft.guards, (next) => {
-          draft.guards = next;
-          this.requestUpdate();
-        })}
-        <div class="switch-row">
-          <ha-switch
-            .disabled=${this._busy}
-            .checked=${draft.ignore_global_guards}
-            @change=${(e: Event) => {
-              draft.ignore_global_guards = Boolean(
-                (e.target as HTMLInputElement & { checked: boolean }).checked
-              );
-              this.requestUpdate();
-            }}
-          ></ha-switch>
-          <span class="switch-row-label"
-            >${t(this.hass, "config_panel.schedule_ignore_global_guards")}</span
-          >
-        </div>
-        <p class="hint">${t(this.hass, "config_panel.schedule_ignore_global_guards_hint")}</p>
-        ${globals.length && !draft.ignore_global_guards
-          ? html`<p class="hint">
-              ${t(this.hass, "config_panel.schedule_guards_inherited", {
-                list: globals.map((g) => guardLabel(this.hass, g)).join(", "),
-              })}
-            </p>`
-          : nothing}
-      </div>
+      ${renderGuardList(this.hass, GUARD_ENTITY_DOMAINS, draft.guards, (next) => {
+        draft.guards = next;
+        this.requestUpdate();
+      })}
+      ${globals.length
+        ? html`<div class="switch-row" style="margin-top:12px">
+              <ha-switch
+                .disabled=${this._busy}
+                .checked=${draft.ignore_global_guards}
+                @change=${(e: Event) => {
+                  draft.ignore_global_guards = Boolean(
+                    (e.target as HTMLInputElement & { checked: boolean }).checked
+                  );
+                  this.requestUpdate();
+                }}
+              ></ha-switch>
+              <span class="switch-row-label"
+                >${t(this.hass, "config_panel.schedule_ignore_global_guards")}</span
+              >
+            </div>
+            ${draft.ignore_global_guards
+              ? nothing
+              : html`<p class="hint">
+                  ${t(this.hass, "config_panel.schedule_guards_inherited", {
+                    list: globals.map((g) => guardLabel(this.hass, g)).join(", "),
+                  })}
+                </p>`}`
+        : nothing}
+      ${renderInlineHelp(
+        this.hass,
+        "config_panel.guards_help_summary",
+        [
+          "config_panel.guards_section_desc",
+          "config_panel.schedule_ignore_global_guards_hint",
+        ],
+        "mdi:information-outline"
+      )}
     `;
   }
 
@@ -1194,12 +1649,8 @@ export class ViewSchedule extends LitElement {
    * per-zone script would have no single point in the pipeline to run at. Keep
    * zones that need different preparation in different slots.
    */
-  private _renderScriptSection(draft: SlotRow): TemplateResult {
+  private _renderScriptBody(draft: SlotRow): TemplateResult {
     return html`
-      <div class="field-block">
-        <span class="field-title">${t(this.hass, "config_panel.schedule_scripts_section_title")}</span>
-        <p class="field-desc">${t(this.hass, "config_panel.schedule_scripts_section_desc")}</p>
-      </div>
       ${renderScriptOverride(
         this.hass,
         SCRIPT_ENTITY_DOMAINS,
@@ -1226,136 +1677,149 @@ export class ViewSchedule extends LitElement {
           this.requestUpdate();
         }
       )}
+      ${renderInlineHelp(
+        this.hass,
+        "config_panel.scripts_help_summary",
+        ["config_panel.schedule_scripts_section_desc"],
+        "mdi:information-outline"
+      )}
+    `;
+  }
+
+  private _renderZonesBody(draft: SlotRow): TemplateResult {
+    const zones = this._zonesMap();
+    const addZoneOpts = this._addZoneOptionsForDraft(draft);
+    const pmap = phaseIndexByZoneId(
+      draft.zone_ids_ordered,
+      this._zonesPhaseInput(),
+      this._maxParallel()
+    );
+    const move = (idx: number, by: number): void => {
+      const a = draft.zone_ids_ordered;
+      const to = idx + by;
+      if (to < 0 || to >= a.length) return;
+      [a[to], a[idx]] = [a[idx], a[to]];
+      this.requestUpdate();
+    };
+    return html`
+      <ul class="zones">
+        ${draft.zone_ids_ordered.map((zid, idx) => {
+          const pnum = pmap.get(zid);
+          const prevP = idx > 0 ? pmap.get(draft.zone_ids_ordered[idx - 1]) : undefined;
+          const showPhase = pnum !== undefined && pnum !== prevP;
+          const name = this._zoneName(zid);
+          return html`
+            ${showPhase
+              ? html`<li class="phase-sep">
+                  <span>${t(this.hass, "config_panel.schedule_phase_n", { n: pnum ?? 0 })}</span>
+                </li>`
+              : nothing}
+            <li>
+              <span class="zone-name ellipsis">${name}</span>
+              ${renderZoneMinutesInput(
+                this.hass,
+                name,
+                durationForMode(this._zonesMap()?.[zid], this._mode()),
+                draft.zone_minutes[zid],
+                (minutes) => {
+                  if (minutes === undefined) delete draft.zone_minutes[zid];
+                  else draft.zone_minutes[zid] = minutes;
+                  // The rows are reused by position: without this the
+                  // typed number stays in its row when the zones move.
+                  this.requestUpdate();
+                }
+              )}
+              <span class="zone-actions">
+                <button
+                  type="button"
+                  class="iconbtn small"
+                  ?disabled=${idx === 0}
+                  aria-label="${name}: ${t(this.hass, "config_panel.schedule_up")}"
+                  title=${t(this.hass, "config_panel.schedule_up")}
+                  @click=${() => move(idx, -1)}
+                >
+                  <ha-icon icon="mdi:arrow-up"></ha-icon>
+                </button>
+                <button
+                  type="button"
+                  class="iconbtn small"
+                  ?disabled=${idx === draft.zone_ids_ordered.length - 1}
+                  aria-label="${name}: ${t(this.hass, "config_panel.schedule_down")}"
+                  title=${t(this.hass, "config_panel.schedule_down")}
+                  @click=${() => move(idx, 1)}
+                >
+                  <ha-icon icon="mdi:arrow-down"></ha-icon>
+                </button>
+                <button
+                  type="button"
+                  class="iconbtn small danger"
+                  aria-label="${name}: ${t(this.hass, "config_panel.schedule_remove")}"
+                  title=${t(this.hass, "config_panel.schedule_remove")}
+                  @click=${() => {
+                    draft.zone_ids_ordered = draft.zone_ids_ordered.filter((x) => x !== zid);
+                    this.requestUpdate();
+                  }}
+                >
+                  <ha-icon icon="mdi:close"></ha-icon>
+                </button>
+              </span>
+            </li>
+          `;
+        })}
+      </ul>
+      ${addZoneOpts.length
+        ? html`<div class="action-row">
+            <select
+              class="field-select"
+              aria-label=${t(this.hass, "config_panel.schedule_choose_zone")}
+              @change=${(e: Event) => {
+                // Picking a zone adds it: no second button to find.
+                const select = e.target as HTMLSelectElement;
+                const zid = select.value;
+                if (zid && !draft.zone_ids_ordered.includes(zid)) {
+                  draft.zone_ids_ordered = [...draft.zone_ids_ordered, zid];
+                }
+                select.value = "";
+                this.requestUpdate();
+              }}
+            >
+              <option value="">${t(this.hass, "config_panel.schedule_add_zone")}</option>
+              ${addZoneOpts.map((id) => html`<option value=${id}>${this._zoneName(id)}</option>`)}
+            </select>
+          </div>`
+        : zones && Object.keys(zones).length > 0
+          ? nothing
+          : html`<p class="hint">${t(this.hass, "config_panel.schedule_create_zones_first")}</p>`}
     `;
   }
 
   private _renderEditDialog(draft: SlotRow): TemplateResult {
-    const zones = this._zonesMap();
-    const addZoneOpts = this._addZoneOptionsForDraft(draft);
+    const toggle = (id: string | null): void => {
+      this._openSection = id;
+    };
     return html`
-      <div class="field-block">
-        <span class="field-title">${t(this.hass, "config_panel.schedule_name_optional_title")}</span>
-        <div class="field-row">
-          <ha-input
-            .value=${draft.name}
-            @input=${(e: Event) => {
-              draft.name = (e.target as HTMLInputElement).value;
-            }}
-          ></ha-input>
-        </div>
-      </div>
-      <div class="field-block">
-        <span class="field-title">${t(this.hass, "config_panel.schedule_weekdays_title")}</span>
-        ${this._renderWeekdayPicker(draft.weekdays, (n) => {
-          draft.weekdays = n;
-          this.requestUpdate();
-        })}
-      </div>
-      <div class="field-block">
-        <span class="field-title">${t(this.hass, "config_panel.schedule_week_parity_title")}</span>
-        <select
-          class="field-select"
+      <div class="acc-lead">
+        <ha-input
+          .label=${t(this.hass, "config_panel.schedule_name_optional_title")}
+          .value=${draft.name}
+          @input=${(e: Event) => {
+            draft.name = (e.target as HTMLInputElement).value;
+          }}
+        ></ha-input>
+        <ha-switch
+          aria-label=${t(this.hass, "config_panel.schedule_slot_enabled")}
+          title=${t(this.hass, "config_panel.schedule_slot_enabled")}
+          .disabled=${this._busy}
+          .checked=${draft.enabled}
           @change=${(e: Event) => {
-            draft.week_parity = (e.target as HTMLSelectElement).value as WeekParity;
+            draft.enabled = Boolean((e.target as HTMLInputElement & { checked: boolean }).checked);
             this.requestUpdate();
           }}
-        >
-          ${WEEK_PARITIES.map(
-            (p) => html`<option value=${p} ?selected=${draft.week_parity === p}>${this._parityLabel(p)}</option>`
-          )}
-        </select>
+        ></ha-switch>
       </div>
-      <div class="field-block">
-        <span class="field-title">${t(this.hass, "config_panel.schedule_start_time_title")}</span>
-        <div class="field-row">
-          <input
-            type="time"
-            .value=${draft.time_local}
-            @input=${(e: Event) => {
-              draft.time_local = (e.target as HTMLInputElement).value;
-            }}
-          />
-        </div>
-      </div>
-      ${this._renderGuardSection(draft)}
-      ${this._renderScriptSection(draft)}
-      <div class="field-block">
-        <div class="switch-row">
-          <ha-switch
-            .disabled=${this._busy}
-            .checked=${draft.enabled}
-            @change=${(e: Event) => {
-              draft.enabled = Boolean((e.target as HTMLInputElement & { checked: boolean }).checked);
-              this.requestUpdate();
-            }}
-          ></ha-switch>
-          <span class="switch-row-label">${t(this.hass, "config_panel.schedule_slot_enabled")}</span>
-        </div>
-      </div>
-      <div class="field-block">
-        <span class="field-title">${t(this.hass, "config_panel.schedule_run_order_title")}</span>
-        <ul class="zones">
-          ${(() => {
-            const pmap = phaseIndexByZoneId(draft.zone_ids_ordered, this._zonesPhaseInput(), this._maxParallel());
-            return draft.zone_ids_ordered.map((zid, idx) => {
-              const pnum = pmap.get(zid);
-              const prevP = idx > 0 ? pmap.get(draft.zone_ids_ordered[idx - 1]) : undefined;
-              const showPhase = pnum !== undefined && pnum !== prevP;
-              return html`
-                ${showPhase
-                  ? html`<li class="phase-sep"><span>${t(this.hass, "config_panel.schedule_phase_n", { n: pnum ?? 0 })}</span></li>`
-                  : nothing}
-                <li>
-                  <span>${idx + 1}. ${this._zoneName(zid)}</span>
-                  <span class="zone-actions">
-                    <button type="button" class="btn-outline" @click=${() => {
-                      if (idx > 0) {
-                        const a = draft.zone_ids_ordered;
-                        [a[idx - 1], a[idx]] = [a[idx], a[idx - 1]];
-                        this.requestUpdate();
-                      }
-                    }}>${t(this.hass, "config_panel.schedule_up")}</button>
-                    <button type="button" class="btn-outline" @click=${() => {
-                      const a = draft.zone_ids_ordered;
-                      if (idx < a.length - 1) {
-                        [a[idx + 1], a[idx]] = [a[idx], a[idx + 1]];
-                        this.requestUpdate();
-                      }
-                    }}>${t(this.hass, "config_panel.schedule_down")}</button>
-                    <button type="button" class="btn-outline" @click=${() => {
-                      draft.zone_ids_ordered = draft.zone_ids_ordered.filter((x) => x !== zid);
-                      this.requestUpdate();
-                    }}>${t(this.hass, "config_panel.schedule_remove")}</button>
-                  </span>
-                </li>
-              `;
-            });
-          })()}
-        </ul>
-        ${addZoneOpts.length
-          ? html`<div class="action-row">
-              <select class="field-select" .value=${this._addZonePick} @change=${(e: Event) => {
-                this._addZonePick = (e.target as HTMLSelectElement).value;
-              }}>
-                <option value="">${t(this.hass, "config_panel.schedule_choose_zone")}</option>
-                ${addZoneOpts.map((id) => html`<option value=${id}>${this._zoneName(id)}</option>`)}
-              </select>
-              <button type="button" class="btn-outline" ?disabled=${!this._addZonePick} @click=${() => {
-                if (this._addZonePick && !draft.zone_ids_ordered.includes(this._addZonePick)) {
-                  draft.zone_ids_ordered = [...draft.zone_ids_ordered, this._addZonePick];
-                  this._addZonePick = "";
-                  this.requestUpdate();
-                }
-              }}>${t(this.hass, "config_panel.schedule_add_to_list")}</button>
-            </div>`
-          : zones && Object.keys(zones).length > 0
-            ? html`<p class="hint">${t(this.hass, "config_panel.schedule_all_zones_in_slot")}</p>`
-            : html`<p class="hint">${t(this.hass, "config_panel.schedule_create_zones_first")}</p>`}
-      </div>
-      ${renderCycleSoakEditor(this.hass, draft.cycle_soak, this._busy, (next) => {
-        draft.cycle_soak = next;
-        this.requestUpdate();
-      })}
+      ${renderAccordion(this._slotSections(draft), this._openSection, toggle)}
+      ${renderAccordionGroup(t(this.hass, "config_panel.acc_more_options"))}
+      ${renderAccordion(this._slotOptionSections(draft), this._openSection, toggle)}
     `;
   }
 
@@ -1393,6 +1857,7 @@ export class ViewSchedule extends LitElement {
                 </button>
               </div>`
             : html`
+                ${this._renderInstallationOffSeason()}
                 ${groups.map((g) => this._renderCycleRow(g))}
                 ${custom.map((s) => this._renderCustomRow(s))}
               `}
@@ -1421,7 +1886,9 @@ export class ViewSchedule extends LitElement {
 
       <ha-dialog
         .open=${draft !== null}
-        header-title=${draft ? t(this.hass, "config_panel.schedule_edit") : ""}
+        header-title=${draft
+          ? draft.name || t(this.hass, "config_panel.schedule_edit")
+          : ""}
         @closed=${() => this._closeEditDialog()}
       >
         ${draft ? this._renderEditDialog(draft) : nothing}
@@ -1429,16 +1896,26 @@ export class ViewSchedule extends LitElement {
           <div class="dialog-footer-row">
             <div class="dialog-footer-lead">
               ${draft
-                ? html`
-                    <button type="button" class="btn-danger" ?disabled=${this._busy} @click=${() => this._deleteSlotDraft()}>
-                      ${t(this.hass, "config_panel.schedule_delete_slot")}
-                    </button>
-                    ${draft.weekdays.length > 1
-                      ? html`<button type="button" class="btn-outline" ?disabled=${this._busy} @click=${() => this._splitSlotDraft()}>
-                          ${t(this.hass, "config_panel.schedule_split_slot")}
-                        </button>`
-                      : nothing}
-                  `
+                ? html`<details class="more-menu">
+                    <summary
+                      aria-label=${t(this.hass, "config_panel.general_more")}
+                      title=${t(this.hass, "config_panel.general_more")}
+                    >
+                      <ha-icon icon="mdi:dots-vertical"></ha-icon>
+                    </summary>
+                    <div class="more-pop">
+                      ${draft.weekdays.length > 1
+                        ? html`<button type="button" ?disabled=${this._busy} @click=${() => this._splitSlotDraft()}>
+                            <ha-icon icon="mdi:call-split"></ha-icon>
+                            ${t(this.hass, "config_panel.schedule_split_slot")}
+                          </button>`
+                        : nothing}
+                      <button type="button" class="danger" ?disabled=${this._busy} @click=${() => this._deleteSlotDraft()}>
+                        <ha-icon icon="mdi:trash-can-outline"></ha-icon>
+                        ${t(this.hass, "config_panel.schedule_delete_slot")}
+                      </button>
+                    </div>
+                  </details>`
                 : nothing}
             </div>
             <div class="dialog-footer-actions">

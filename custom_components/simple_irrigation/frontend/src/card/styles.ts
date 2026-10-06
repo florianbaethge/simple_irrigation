@@ -432,6 +432,15 @@ export const cardStyles = css`
     margin-top: 16px;
     flex-wrap: wrap;
   }
+  .runbtns {
+    display: flex;
+    flex: none;
+    gap: 8px;
+    margin-left: auto;
+  }
+  .btn.inline.icon {
+    padding: 9px 10px;
+  }
 
   /* ---- status: edge states --------------------------------------------- */
 
@@ -811,6 +820,19 @@ export const cardStyles = css`
   .chip ha-icon {
     --mdc-icon-size: 16px;
     flex: none;
+  }
+  /* The place a picked zone has in the run. */
+  .chip .order {
+    flex: none;
+    min-width: 16px;
+    height: 16px;
+    border-radius: 8px;
+    background: var(--si-prifg);
+    color: var(--si-pri);
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 16px;
+    text-align: center;
   }
 
   .rrow {
@@ -1219,9 +1241,12 @@ export const cardStyles = css`
     display: none;
   }
   :host([data-narrow]) .rlaunch .btn,
-  :host([data-narrow]) .runfoot .btn {
-    margin-left: 0;
+  :host([data-narrow]) .runbtns {
     width: 100%;
+    margin-left: 0;
+  }
+  :host([data-narrow]) .runbtns .btn {
+    flex: 1;
   }
   :host([data-narrow]) .rlaunch,
   :host([data-narrow]) .runfoot {

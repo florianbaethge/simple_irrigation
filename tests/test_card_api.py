@@ -32,6 +32,7 @@ from custom_components.simple_irrigation.models import (
     Installation,
     RunState,
     ScheduleSlot,
+    WaitingRun,
     Zone,
 )
 
@@ -342,6 +343,17 @@ def test_week_keeps_off_rhythm_runs_visible_but_uncounted() -> None:
     assert week["total_runs"] == 0
 
 
+def test_week_says_which_kind_of_week_it_is() -> None:
+    """The card labels dashed runs as the other kind's: "even weeks only" in an odd week."""
+    with _freeze():
+        assert _week(_hass(), _installation())["odd_week"] is False  # ISO week 34
+    with patch(
+        "custom_components.simple_irrigation.card_api.dt_util.now",
+        return_value=NOW + timedelta(days=7),
+    ):
+        assert _week(_hass(), _installation())["odd_week"] is True
+
+
 def test_week_marks_days_a_pause_covers() -> None:
     inst = _installation(pause_until=NOW + timedelta(days=2))
     hass = _hass()
@@ -402,6 +414,18 @@ def test_snapshot_has_no_phase_counter_while_idle() -> None:
     assert snap["phase_total"] is None
 
 
+def test_snapshot_uses_the_saved_zone_order() -> None:
+    """The Lovelace card should match the order chosen in the panel."""
+    inst = _installation()
+    assert inst.set_zone_order(["z3", "z1", "z2"])
+    hass = _hass()
+    with _freeze(), patch(
+        "custom_components.simple_irrigation.card_api._entity_id", return_value=""
+    ):
+        snap = _snapshot(hass, "e1", _coordinator(inst, RunState()))
+    assert [zone["zone_id"] for zone in snap["zones"]] == ["z3", "z1", "z2"]
+
+
 def test_snapshot_counts_only_issues_on_enabled_zones() -> None:
     """A deliberately disabled zone with a dead valve is not a problem to report."""
     inst = _installation()
@@ -433,6 +457,22 @@ def test_snapshot_marks_queued_zones_from_the_upcoming_phases() -> None:
     assert by_id["z2"]["queued"] and by_id["z3"]["queued"]
 
 
+def test_snapshot_names_the_schedules_waiting_behind_the_run() -> None:
+    """One the card can label; a schedule deleted meanwhile is left out."""
+    rs = RunState(
+        run_state=RUN_STATE_RUNNING,
+        active_zone_ids=["z1"],
+        waiting_runs=[WaitingRun(["evening", "gone"], NOW)],
+    )
+    with _freeze(), patch(
+        "custom_components.simple_irrigation.card_api._entity_id", return_value=""
+    ):
+        snap = _snapshot(_hass(), "e1", _coordinator(_installation(), rs))
+    assert snap["waiting"] == [
+        {"slot_id": "evening", "name": "Evening beds", "time": "19:30", "due_at": NOW.isoformat()}
+    ]
+
+
 def test_snapshot_is_json_serializable() -> None:
     """It goes over the websocket verbatim; a stray datetime would 500 the card."""
     import json
@@ -448,6 +488,7 @@ def test_snapshot_is_json_serializable() -> None:
         active_script="script.mower_go_home",
         active_script_started_at=NOW,
         active_script_timeout_sec=300,
+        waiting_runs=[WaitingRun(["evening"], NOW)],
     )
     hass = _hass()
     with _freeze(), patch(

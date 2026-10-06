@@ -1,9 +1,26 @@
 import { LitElement, html, css, nothing, type TemplateResult } from "lit";
 import { state } from "lit/decorators.js";
 import { keyed } from "lit/directives/keyed.js";
-import { runZoneNow, saveZone, stopZone } from "../data/api";
+import { repeat } from "lit/directives/repeat.js";
+import { styleMap } from "lit/directives/style-map.js";
+import { runZoneNow, saveZone, saveZoneOrder, stopZone } from "../data/api";
 import { renderNativeEntityField } from "../entity-input";
 import { renderInlineHelp } from "../inline-help";
+import {
+  accordionStyles,
+  renderAccordion,
+  renderAccordionGroup,
+  type AccordionSection,
+} from "../accordion";
+import {
+  entitiesSummary,
+  missingSummary,
+  noneSummary,
+  quietSummary,
+  saidSummary,
+  summaryEntityName,
+  type Summary,
+} from "../summaries";
 import { durationForMode } from "../timetable-model";
 import {
   formatRateNumber,
@@ -17,6 +34,7 @@ import { t } from "../i18n";
 import { formLayoutStyles } from "../form-layout-styles";
 import { sharedStyles } from "../shared-styles";
 import { slotInclusionCountPerZone } from "../timetable-model";
+import { orderedZoneIds } from "../zone-order";
 import type { HomeAssistant } from "../types";
 
 const defaultDomains = ["switch", "input_boolean", "group", "valve"];
@@ -75,6 +93,45 @@ const zoneStartPresets: Record<
 
 type ZoneFilter = "all" | "enabled" | "issues";
 
+/** Distance from the top or bottom edge at which a drag starts scrolling the list. */
+const DRAG_SCROLL_EDGE_PX = 56;
+const DRAG_SCROLL_STEP_PX = 10;
+
+/** A zone row being dragged to a new place in the list. */
+interface ZoneDrag {
+  zoneId: string;
+  pointerId: number;
+  from: number;
+  to: number;
+  /** How far the row has travelled since it was grabbed, list scrolling included. */
+  dy: number;
+  clientY: number;
+  startY: number;
+  scroller: Element;
+  startScroll: number;
+  /** Top and height of every row when the drag began, in list order. */
+  tops: number[];
+  heights: number[];
+  gap: number;
+}
+
+/** The element that scrolls `el`, found across shadow roots and slots. */
+function scrollParent(el: Element): Element {
+  let node: Node | null = el;
+  while (node) {
+    if (node instanceof Element) {
+      const overflow = getComputedStyle(node).overflowY;
+      if ((overflow === "auto" || overflow === "scroll") && node.scrollHeight > node.clientHeight) {
+        return node;
+      }
+      node = node.assignedSlot ?? node.parentNode;
+    } else {
+      node = node instanceof ShadowRoot ? node.host : node.parentNode;
+    }
+  }
+  return document.scrollingElement ?? document.documentElement;
+}
+
 interface ZoneRow {
   zone_id: string;
   name: string;
@@ -92,6 +149,11 @@ interface ZoneRow {
   flow_rate_lpm: number;
   countdown_entity_id: string;
   countdown_unit: string;
+  /** Outputs that must be open for the zone to get water. */
+  supply_entity_ids: string[];
+  /** Seconds between supply and zone; null takes the installation's delay. */
+  supply_lead_sec: number | null;
+  supply_trail_sec: number;
 }
 
 export class ViewZones extends LitElement {
@@ -109,37 +171,60 @@ export class ViewZones extends LitElement {
   installation!: Record<string, unknown>;
   runState?: Record<string, unknown>;
   outputEntityDomains?: string[];
-  onSaved?: () => void;
+  onSaved?: () => void | Promise<void>;
 
   static styles = [
     sharedStyles,
     formLayoutStyles,
+    accordionStyles,
     css`
-      .drawer-actions {
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
-        padding-top: 12px;
-      }
-      .drawer-actions .btn-outline {
-        width: 100%;
-        min-height: 46px;
-        margin-top: 0;
-      }
       .compact-row.running {
         border-left-color: var(--primary-color);
         background: color-mix(in srgb, var(--primary-color) 6%, var(--card-background-color));
       }
-      .out-line {
-        margin: 8px 0 0;
-        font-size: 0.8rem;
+      /* Tucked into the row's left padding so the name keeps its width on phones. */
+      .drag-handle {
+        flex: 0 0 auto;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 28px;
+        height: 40px;
+        margin: 0 -6px 0 -8px;
+        padding: 0;
+        border: none;
+        border-radius: 8px;
+        background: transparent;
         color: var(--secondary-text-color);
+        cursor: grab;
+        /* The handle is the one place a touch moves a row instead of the page. */
+        touch-action: none;
+        user-select: none;
+        -webkit-user-select: none;
+        -webkit-touch-callout: none;
       }
-      /* Local reset: form-layout adds align-self/margin to .btn-outline. */
-      .card-header .header-actions .btn-outline,
-      .card-header .header-actions .btn {
-        margin-top: 0;
-        align-self: center;
+      .drag-handle:hover {
+        color: var(--primary-text-color);
+      }
+      .drag-handle:focus-visible {
+        outline: 2px solid var(--primary-color);
+        outline-offset: -2px;
+      }
+      .drag-handle ha-icon {
+        --mdc-icon-size: 20px;
+        pointer-events: none;
+      }
+      .compact-row.dragging {
+        position: relative;
+        z-index: 2;
+        transition: none;
+        box-shadow: 0 6px 18px rgba(0, 0, 0, 0.28);
+      }
+      .compact-row.dragging .drag-handle {
+        cursor: grabbing;
+      }
+      .compact-row.shifting {
+        transition: transform 0.15s ease;
       }
     `,
   ];
@@ -150,6 +235,13 @@ export class ViewZones extends LitElement {
   @state() private _editDraft: ZoneRow | null = null;
   @state() private _filter: ZoneFilter = "all";
   @state() private _expanded = new Set<string>();
+  @state() private _drag?: ZoneDrag;
+  // The editor's accordion: at most one section open.
+  @state() private _openSection: string | null = "outputs";
+  /** The order on screen while a reorder is being saved; the installation's otherwise. */
+  @state() private _orderDraft?: string[];
+  private _orderSaving = false;
+  private _dragScrollFrame?: number;
   private _new: ZoneRow = this._blankZone();
   private _tick?: number;
 
@@ -161,6 +253,7 @@ export class ViewZones extends LitElement {
   disconnectedCallback(): void {
     super.disconnectedCallback();
     this._clearTick();
+    this._endDrag();
   }
 
   updated(): void {
@@ -198,17 +291,27 @@ export class ViewZones extends LitElement {
       flow_rate_lpm: 0,
       countdown_entity_id: "",
       countdown_unit: "",
+      supply_entity_ids: [""],
+      supply_lead_sec: null,
+      supply_trail_sec: 0,
     };
   }
 
   private _cloneZone(z: ZoneRow): ZoneRow {
-    return { ...z, switch_entity_ids: [...z.switch_entity_ids] };
+    return {
+      ...z,
+      switch_entity_ids: [...z.switch_entity_ids],
+      supply_entity_ids: [...z.supply_entity_ids],
+    };
   }
 
   private _zonesFromInstallation(): ZoneRow[] {
-    const z = this.installation?.zones as Record<string, Record<string, unknown>> | undefined;
-    if (!z) return [];
-    return Object.entries(z).map(([zone_id, o]) => {
+    const zones = this.installation?.zones as Record<string, Record<string, unknown>> | undefined;
+    if (!zones) return [];
+    // A draft outlives a reload for a moment; skip a zone deleted in the meantime.
+    const ids = this._zoneOrder().filter((id) => id in zones);
+    return ids.map((zone_id) => {
+      const o = zones[zone_id];
       const raw = (o as Record<string, unknown>).switch_entity_ids;
       let ids: string[] = [];
       if (Array.isArray(raw)) ids = raw.map((x) => String(x)).filter(Boolean);
@@ -231,8 +334,172 @@ export class ViewZones extends LitElement {
         flow_rate_lpm: Math.max(0, Number(o.flow_rate_lpm ?? 0) || 0),
         countdown_entity_id: String(o.countdown_entity_id ?? ""),
         countdown_unit: String(o.countdown_unit ?? ""),
+        // One empty row, so the section opens on a picker rather than a button.
+        supply_entity_ids:
+          Array.isArray(o.supply_entity_ids) && o.supply_entity_ids.length
+            ? (o.supply_entity_ids as unknown[]).map(String)
+            : [""],
+        supply_lead_sec: typeof o.supply_lead_sec === "number" ? o.supply_lead_sec : null,
+        supply_trail_sec: Number(o.supply_trail_sec ?? 0) || 0,
       };
     });
+  }
+
+  private _zoneOrder(): string[] {
+    return this._orderDraft ?? orderedZoneIds(this.installation);
+  }
+
+  /**
+   * Show `order` at once and save it. A move made while a save is under way is
+   * not lost: the draft holds the latest order, and the loop sends it as soon
+   * as the request before it has returned.
+   */
+  private async _commitZoneOrder(order: string[]): Promise<void> {
+    this._orderDraft = order;
+    if (this._orderSaving) return;
+    this._orderSaving = true;
+    this._msg = undefined;
+    let sent: string[] | undefined;
+    try {
+      while (this._orderDraft !== sent) {
+        sent = this._orderDraft;
+        const res = await saveZoneOrder(this.hass, this.entryId, sent);
+        if (!res.success) throw res.error;
+        // Reload before dropping the draft, so the list never shows the old order.
+        if (this._orderDraft === sent) await this.onSaved?.();
+      }
+    } catch (e) {
+      this._msg = formatApiError(e, this.hass);
+      // The zones changed under the drag: show what is really there.
+      void this.onSaved?.();
+    } finally {
+      this._orderSaving = false;
+      this._orderDraft = undefined;
+    }
+  }
+
+  /** One step up or down, from an arrow key on the handle. */
+  private async _moveZone(zoneId: string, offset: -1 | 1): Promise<void> {
+    const order = [...this._zoneOrder()];
+    const from = order.indexOf(zoneId);
+    const to = from + offset;
+    if (from < 0 || to < 0 || to >= order.length) return;
+    [order[from], order[to]] = [order[to], order[from]];
+    void this._commitZoneOrder(order);
+    // The row moved in the DOM and took the focus with it into nowhere.
+    await this.updateComplete;
+    this.renderRoot
+      .querySelector<HTMLElement>(`.drag-handle[data-zone-id="${zoneId}"]`)
+      ?.focus();
+  }
+
+  private _onHandleKeydown(e: KeyboardEvent, zoneId: string): void {
+    if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+    e.preventDefault();
+    if (!this._drag) void this._moveZone(zoneId, e.key === "ArrowUp" ? -1 : 1);
+  }
+
+  private _onDragKeydown = (e: KeyboardEvent): void => {
+    if (e.key === "Escape") this._endDrag();
+  };
+
+  private _onHandlePointerDown(e: PointerEvent, zoneId: string): void {
+    if (e.button !== 0 || this._drag) return;
+    const handle = e.currentTarget as HTMLElement;
+    const rows = [...this.renderRoot.querySelectorAll<HTMLElement>(".compact-row")];
+    const from = this._zoneOrder().indexOf(zoneId);
+    if (from < 0 || rows.length !== this._zoneOrder().length) return;
+    // No text selection and no focus ring from the press that starts a drag.
+    e.preventDefault();
+    handle.setPointerCapture(e.pointerId);
+    const rects = rows.map((row) => row.getBoundingClientRect());
+    const scroller = scrollParent(this);
+    this._drag = {
+      zoneId,
+      pointerId: e.pointerId,
+      from,
+      to: from,
+      dy: 0,
+      clientY: e.clientY,
+      startY: e.clientY,
+      scroller,
+      startScroll: scroller.scrollTop,
+      tops: rects.map((r) => r.top),
+      heights: rects.map((r) => r.height),
+      gap: rects.length > 1 ? rects[1].top - rects[0].bottom : 0,
+    };
+    this._dragScrollFrame = requestAnimationFrame(() => this._dragAutoScroll());
+    window.addEventListener("keydown", this._onDragKeydown);
+  }
+
+  private _onHandlePointerMove(e: PointerEvent): void {
+    if (!this._drag || e.pointerId !== this._drag.pointerId) return;
+    this._trackDrag(e.clientY);
+  }
+
+  /** Where the dragged row is now, and which place in the list that makes. */
+  private _trackDrag(clientY: number): void {
+    const d = this._drag;
+    if (!d) return;
+    const { from, tops, heights } = d;
+    const last = tops.length - 1;
+    const travelled = clientY - d.startY + (d.scroller.scrollTop - d.startScroll);
+    const dy = Math.max(
+      tops[0] - tops[from],
+      Math.min(tops[last] + heights[last] - tops[from] - heights[from], travelled)
+    );
+    // A neighbour gives way once the dragged row's leading edge is past its
+    // middle. Comparing middles would leave the first and last place out of
+    // reach, since the row cannot be dragged beyond the ends of the list.
+    const top = tops[from] + dy;
+    const bottom = top + heights[from];
+    const middle = (i: number) => tops[i] + heights[i] / 2;
+    let to = from;
+    if (dy > 0) while (to < last && bottom > middle(to + 1)) to++;
+    else while (to > 0 && top < middle(to - 1)) to--;
+    this._drag = { ...d, clientY, dy, to };
+  }
+
+  /** Scroll the list while the pointer rests near its top or bottom edge. */
+  private _dragAutoScroll(): void {
+    const d = this._drag;
+    if (!d) return;
+    const box = d.scroller.getBoundingClientRect();
+    const top = Math.max(box.top, 0);
+    const bottom = Math.min(box.bottom, window.innerHeight);
+    const before = d.scroller.scrollTop;
+    if (d.clientY < top + DRAG_SCROLL_EDGE_PX) d.scroller.scrollTop -= DRAG_SCROLL_STEP_PX;
+    else if (d.clientY > bottom - DRAG_SCROLL_EDGE_PX) d.scroller.scrollTop += DRAG_SCROLL_STEP_PX;
+    if (d.scroller.scrollTop !== before) this._trackDrag(d.clientY);
+    this._dragScrollFrame = requestAnimationFrame(() => this._dragAutoScroll());
+  }
+
+  private _onHandlePointerUp(e: PointerEvent): void {
+    const d = this._drag;
+    if (!d || e.pointerId !== d.pointerId) return;
+    this._endDrag();
+    if (d.to === d.from) return;
+    const order = [...this._zoneOrder()];
+    order.splice(d.to, 0, ...order.splice(d.from, 1));
+    void this._commitZoneOrder(order);
+  }
+
+  private _endDrag(): void {
+    if (this._dragScrollFrame !== undefined) cancelAnimationFrame(this._dragScrollFrame);
+    this._dragScrollFrame = undefined;
+    window.removeEventListener("keydown", this._onDragKeydown);
+    this._drag = undefined;
+  }
+
+  /** The offset that shows a row where it would land if the drag ended now. */
+  private _dragStyle(index: number): Record<string, string> {
+    const d = this._drag;
+    if (!d) return {};
+    if (index === d.from) return { transform: `translateY(${d.dy}px)` };
+    const step = d.heights[d.from] + d.gap;
+    if (index > d.from && index <= d.to) return { transform: `translateY(${-step}px)` };
+    if (index < d.from && index >= d.to) return { transform: `translateY(${step}px)` };
+    return {};
   }
 
   /** "~120 L" for one run of the zone in the active mode; "" without a rate. */
@@ -437,16 +704,39 @@ export class ViewZones extends LitElement {
     }
   }
 
+  /**
+   * Only "enabled" travels. The rest of the row may be older than what an
+   * automation has written since, and sending it along would write that back.
+   */
   private async _toggleZoneEnabled(z: ZoneRow, enabled: boolean): Promise<void> {
     if (this._busy) return;
-    await this._saveZone("update", z.zone_id, { ...z, enabled }, { keepDialogs: true });
+    await this._saveZone("update", z.zone_id, undefined, { keepDialogs: true, fields: { enabled } });
+  }
+
+  /**
+   * Open the editor on what the backend has now, not on what the list was
+   * loaded with: an automation may have set a runtime in the meantime, and
+   * saving the dialog would put the old one back.
+   */
+  private _openAdd(): void {
+    this._openSection = "outputs";
+    this._addDialogOpen = true;
+  }
+
+  private async _openEdit(zoneId: string): Promise<void> {
+    this._msg = undefined;
+    await this.onSaved?.();
+    await new Promise((resolve) => setTimeout(resolve));
+    const zone = this._zonesFromInstallation().find((z) => z.zone_id === zoneId);
+    this._openSection = "outputs";
+    if (zone) this._editDraft = this._cloneZone(zone);
   }
 
   private async _saveZone(
     action: "add" | "update" | "delete",
     zoneId: string | undefined,
     zone?: ZoneRow,
-    opts?: { keepDialogs?: boolean }
+    opts?: { keepDialogs?: boolean; fields?: Record<string, unknown> }
   ): Promise<void> {
     this._busy = true;
     this._msg = undefined;
@@ -454,7 +744,9 @@ export class ViewZones extends LitElement {
     try {
       const body: Record<string, unknown> = { action };
       if (zoneId) body.zone_id = zoneId;
-      if (zone && action !== "delete") {
+      if (opts?.fields) {
+        body.zone = opts.fields;
+      } else if (zone && action !== "delete") {
         body.zone = {
           name: zone.name,
           switch_entity_ids: zone.switch_entity_ids.filter(Boolean),
@@ -471,6 +763,9 @@ export class ViewZones extends LitElement {
           flow_rate_lpm: zone.flow_rate_lpm,
           countdown_entity_id: zone.countdown_entity_id.trim(),
           countdown_unit: zone.countdown_entity_id.trim() ? zone.countdown_unit : "",
+          supply_entity_ids: zone.supply_entity_ids.map((id) => id.trim()).filter(Boolean),
+          supply_lead_sec: zone.supply_lead_sec,
+          supply_trail_sec: zone.supply_trail_sec,
         };
       }
       const res = await saveZone(this.hass, this.entryId, body);
@@ -491,7 +786,8 @@ export class ViewZones extends LitElement {
     }
   }
 
-  private _renderZoneFields(z: ZoneRow): TemplateResult {
+  /** The zone editor's sections, each with the line it shows when closed. */
+  private _zoneSections(z: ZoneRow): { basics: AccordionSection[]; options: AccordionSection[] } {
     const modeInput = (
       key: "duration_eco_min" | "duration_normal_min" | "duration_extra_min",
       labelKey: string
@@ -504,25 +800,51 @@ export class ViewZones extends LitElement {
         max="240"
         @input=${(e: Event) => {
           z[key] = parseInt((e.target as HTMLInputElement).value, 10) || 0;
+          // The section's header says the three runtimes: it follows.
+          this.requestUpdate();
         }}
       ></ha-input>
     `;
-    return html`
-      <div class="section-title">${t(this.hass, "config_panel.zones_field_name_title")}</div>
-      <div class="field-block">
-        <div class="field-row">
-          <ha-input
-            .label=${t(this.hass, "config_panel.zones_field_zone_name")}
-            .value=${z.name}
-            @input=${(e: Event) => {
-              z.name = (e.target as HTMLInputElement).value;
-              this.requestUpdate();
-            }}
-          ></ha-input>
-        </div>
-      </div>
-      <div class="field-block">
-        <span class="field-title">${t(this.hass, "config_panel.zones_outputs_title")}</span>
+    const section = (
+      id: string,
+      icon: string,
+      labelKey: string,
+      summary: Summary,
+      body: () => unknown
+    ): AccordionSection => ({
+      id,
+      icon,
+      label: t(this.hass, labelKey),
+      summary: summary.text,
+      tone: summary.tone,
+      body,
+    });
+    const unit = volumeUnit(this.hass);
+    const water: Summary = z.water_meter_entity_id
+      ? saidSummary(summaryEntityName(this.hass, z.water_meter_entity_id))
+      : z.flow_rate_lpm > 0
+        ? saidSummary(
+            t(this.hass, "config_panel.sum_flow_rate", {
+              n: formatRateNumber(litresToUnit(z.flow_rate_lpm, unit)),
+              unit,
+            })
+          )
+        : quietSummary(t(this.hass, "config_panel.sum_not_tracked"));
+    const customStart = Boolean(
+      z.start_service || z.duration_field || z.duration_unit || z.start_entity_id
+    );
+    return {
+      basics: [
+        section(
+          "outputs",
+          "mdi:valve",
+          "config_panel.zones_outputs_title",
+          entitiesSummary(
+            this.hass,
+            z.switch_entity_ids,
+            missingSummary(this.hass, "config_panel.sum_no_output")
+          ),
+          () => html`
         <div class="field-row">
           <div class="entity-picker-rows">
             ${z.switch_entity_ids.map(
@@ -570,39 +892,48 @@ export class ViewZones extends LitElement {
             </button>
           </div>
         </div>
-        <details class="inline-help">
-          <summary>
-            <ha-icon class="inline-help-icon" icon="mdi:information-outline"></ha-icon>
-            ${t(this.hass, "config_panel.zones_outputs_title")}
-          </summary>
-          <p>${t(this.hass, "config_panel.zones_outputs_desc")}</p>
-        </details>
-      </div>
-
-      <div class="section-title">${t(this.hass, "config_panel.zones_runtime_title")}</div>
-      <div class="field-block">
+        ${renderInlineHelp(
+              this.hass,
+              "config_panel.zones_outputs_help_summary",
+              ["config_panel.zones_outputs_desc"],
+              "mdi:information-outline"
+            )}
+          `
+        ),
+        section(
+          "runtime",
+          "mdi:timer-outline",
+          "config_panel.acc_runtime",
+          saidSummary(
+            `${z.duration_eco_min} / ${z.duration_normal_min} / ${z.duration_extra_min} ${t(
+              this.hass,
+              "config_panel.zones_min_suffix"
+            )}`
+          ),
+          () => html`
         <div class="duration-row">
           ${modeInput("duration_eco_min", "config_panel.zones_duration_eco")}
           ${modeInput("duration_normal_min", "config_panel.zones_duration_normal")}
           ${modeInput("duration_extra_min", "config_panel.zones_duration_extra")}
         </div>
-        <p class="hint">${t(this.hass, "config_panel.zones_runtime_desc")}</p>
-      </div>
-
-      <div class="section-title">${t(this.hass, "config_panel.zones_behavior_title")}</div>
-      <div class="field-block">
-        <div class="switch-rows">
-          <div class="switch-row">
-            <ha-switch
-              .disabled=${this._busy}
-              .checked=${z.enabled}
-              @change=${(e: Event) => {
-                z.enabled = Boolean((e.target as HTMLInputElement & { checked: boolean }).checked);
-                this.requestUpdate();
-              }}
-            ></ha-switch>
-            <span class="switch-row-label">${t(this.hass, "config_panel.zones_enabled")}</span>
-          </div>
+        ${renderInlineHelp(
+              this.hass,
+              "config_panel.zones_runtime_help_summary",
+              ["config_panel.zones_runtime_desc"],
+              "mdi:information-outline"
+            )}
+          `
+        ),
+      ],
+      options: [
+        section(
+          "behavior",
+          "mdi:call-split",
+          "config_panel.zones_behavior_title",
+          z.exclusive
+            ? saidSummary(t(this.hass, "config_panel.sum_exclusive"))
+            : quietSummary(t(this.hass, "config_panel.sum_parallel")),
+          () => html`
           <div class="switch-row">
             <ha-switch
               .disabled=${this._busy}
@@ -614,12 +945,20 @@ export class ViewZones extends LitElement {
             ></ha-switch>
             <span class="switch-row-label">${t(this.hass, "config_panel.zones_exclusive")}</span>
           </div>
-        </div>
-        <p class="hint">${t(this.hass, "config_panel.zones_behavior_desc")}</p>
-      </div>
-
-      <div class="section-title">${t(this.hass, "config_panel.zones_water_title")}</div>
-      <div class="field-block">
+            ${renderInlineHelp(
+              this.hass,
+              "config_panel.zones_behavior_help_summary",
+              ["config_panel.zones_behavior_desc"],
+              "mdi:information-outline"
+            )}
+          `
+        ),
+        section(
+          "water",
+          "mdi:water-outline",
+          "config_panel.zones_water_title",
+          water,
+          () => html`
         <div class="field-row">
           ${renderNativeEntityField(
             this.hass,
@@ -657,18 +996,23 @@ export class ViewZones extends LitElement {
           ],
           "mdi:water-outline"
         )}
-      </div>
-
-      <div class="section-title">${t(this.hass, "config_panel.zones_advanced_title")}</div>
-      <div class="field-block">
-        <details class="inline-help" ?open=${Boolean(
-          z.start_service || z.duration_field || z.duration_unit || z.start_entity_id
-        )}>
-          <summary>
-            <ha-icon class="inline-help-icon" icon="mdi:tune"></ha-icon>
-            ${t(this.hass, "config_panel.zones_advanced_summary")}
-          </summary>
-          <p>${t(this.hass, "config_panel.zones_advanced_desc")}</p>
+          `
+        ),
+        section(
+          "supply",
+          "mdi:pipe-valve",
+          "config_panel.acc_supply",
+          entitiesSummary(this.hass, z.supply_entity_ids, noneSummary(this.hass)),
+          () => this._renderSupplyFields(z)
+        ),
+        section(
+          "start",
+          "mdi:tune",
+          "config_panel.acc_start_service",
+          customStart
+            ? saidSummary(z.start_service || t(this.hass, "config_panel.zones_start_preset_custom"))
+            : quietSummary(t(this.hass, "config_panel.sum_start_default")),
+          () => html`
           <div class="field-row">
             <label class="stacked-field-label" for="si-preset-${z.zone_id || "new"}">
               ${t(this.hass, "config_panel.zones_start_preset")}
@@ -756,14 +1100,20 @@ export class ViewZones extends LitElement {
               { allowCustom: true }
             )}
           </div>
-          <p class="hint">${t(this.hass, "config_panel.zones_advanced_target_desc")}</p>
-        </details>
-        <details class="inline-help" ?open=${Boolean(z.countdown_entity_id)}>
-          <summary>
-            <ha-icon class="inline-help-icon" icon="mdi:timer-lock-outline"></ha-icon>
-            ${t(this.hass, "config_panel.zones_countdown_summary")}
-          </summary>
-          <p>${t(this.hass, "config_panel.zones_countdown_desc")}</p>
+          ${renderInlineHelp(
+              this.hass,
+              "config_panel.zones_start_help_summary",
+              ["config_panel.zones_advanced_desc", "config_panel.zones_advanced_target_desc"],
+              "mdi:information-outline"
+            )}
+          `
+        ),
+        section(
+          "countdown",
+          "mdi:timer-lock-outline",
+          "config_panel.acc_countdown",
+          entitiesSummary(this.hass, [z.countdown_entity_id], noneSummary(this.hass)),
+          () => html`
           <div class="field-row">
             ${renderNativeEntityField(
               this.hass,
@@ -791,12 +1141,142 @@ export class ViewZones extends LitElement {
               <option value="seconds">${t(this.hass, "config_panel.zones_duration_unit_seconds")}</option>
             </select>
           </div>
-        </details>
+          ${renderInlineHelp(
+              this.hass,
+              "config_panel.zones_countdown_help_summary",
+              ["config_panel.zones_countdown_desc"],
+              "mdi:information-outline"
+            )}
+          `
+        ),
+      ],
+    };
+  }
+
+  private _renderZoneFields(z: ZoneRow): TemplateResult {
+    const sections = this._zoneSections(z);
+    const toggle = (id: string | null): void => {
+      this._openSection = id;
+    };
+    return html`
+      <div class="acc-lead">
+        <ha-input
+          .label=${t(this.hass, "config_panel.zones_field_zone_name")}
+          .value=${z.name}
+          @input=${(e: Event) => {
+            z.name = (e.target as HTMLInputElement).value;
+            this.requestUpdate();
+          }}
+        ></ha-input>
+        <ha-switch
+          aria-label=${t(this.hass, "config_panel.zones_enabled")}
+          title=${t(this.hass, "config_panel.zones_enabled")}
+          .disabled=${this._busy}
+          .checked=${z.enabled}
+          @change=${(e: Event) => {
+            z.enabled = Boolean((e.target as HTMLInputElement & { checked: boolean }).checked);
+            this.requestUpdate();
+          }}
+        ></ha-switch>
       </div>
+      ${renderAccordion(sections.basics, this._openSection, toggle)}
+      ${renderAccordionGroup(t(this.hass, "config_panel.acc_more_options"))}
+      ${renderAccordion(sections.options, this._openSection, toggle)}
     `;
   }
 
-  private _renderRow(z: ZoneRow, slotsPerZone: Record<string, number>): TemplateResult {
+  /** Seconds, 0..3600; an empty field is "nothing entered". */
+  private _secondsFrom(e: Event): number | null {
+    const raw = (e.target as HTMLInputElement).value.trim();
+    const n = Math.round(Number(raw));
+    return raw === "" || !Number.isFinite(n) ? null : Math.max(0, Math.min(3600, n));
+  }
+
+  private _renderSupplyFields(z: ZoneRow): TemplateResult {
+    const installationDelay = Number(this.installation?.pre_start_delay_sec ?? 10);
+    return html`
+        <div class="field-row">
+          <div class="entity-picker-rows">
+            ${z.supply_entity_ids.map(
+              (eid, i) => html`
+                <div class="entity-picker-row">
+                  ${renderNativeEntityField(
+                    this.hass,
+                    this.outputEntityDomains ?? defaultDomains,
+                    t(this.hass, "config_panel.zones_supply_output_n", { n: i + 1 }),
+                    eid,
+                    (v) => {
+                      const next = [...z.supply_entity_ids];
+                      next[i] = v;
+                      z.supply_entity_ids = next;
+                      this.requestUpdate();
+                    }
+                  )}
+                  ${z.supply_entity_ids.length > 1
+                    ? html`<button
+                        type="button"
+                        class="row-remove"
+                        @click=${() => {
+                          z.supply_entity_ids = z.supply_entity_ids.filter((_id, j) => j !== i);
+                          this.requestUpdate();
+                        }}
+                      >
+                        ${t(this.hass, "config_panel.general_remove")}
+                      </button>`
+                    : nothing}
+                </div>
+              `
+            )}
+            <button
+              type="button"
+              class="btn-outline"
+              @click=${() => {
+                z.supply_entity_ids = [...z.supply_entity_ids, ""];
+                this.requestUpdate();
+              }}
+            >
+              ${t(this.hass, "config_panel.zones_supply_add")}
+            </button>
+          </div>
+        </div>
+        <div class="field-row supply-delays">
+          <ha-input
+            type="number"
+            min="0"
+            max="3600"
+            .label=${t(this.hass, "config_panel.zones_supply_lead", { n: installationDelay })}
+            .value=${z.supply_lead_sec === null ? "" : String(z.supply_lead_sec)}
+            @input=${(e: Event) => {
+              z.supply_lead_sec = this._secondsFrom(e);
+              this.requestUpdate();
+            }}
+          ></ha-input>
+          <ha-input
+            type="number"
+            min="0"
+            max="3600"
+            .label=${t(this.hass, "config_panel.zones_supply_trail")}
+            .value=${String(z.supply_trail_sec)}
+            @input=${(e: Event) => {
+              z.supply_trail_sec = this._secondsFrom(e) ?? 0;
+              this.requestUpdate();
+            }}
+          ></ha-input>
+        </div>
+        ${renderInlineHelp(
+          this.hass,
+          "config_panel.zones_supply_help_summary",
+          ["config_panel.zones_supply_desc"],
+          "mdi:information-outline"
+        )}
+    `;
+  }
+
+  private _renderRow(
+    z: ZoneRow,
+    slotsPerZone: Record<string, number>,
+    zoneOrder: string[]
+  ): TemplateResult {
     const outs = z.switch_entity_ids.filter(Boolean);
     const issue = this._zoneIssue(z);
     const active = this._activeZoneIds().includes(z.zone_id);
@@ -821,6 +1301,9 @@ export class ViewZones extends LitElement {
     const accentClass = !z.enabled ? "inactive" : issue ? "warn" : active ? "running" : "";
     const expanded = this._expanded.has(z.zone_id);
     const firstOut = outs[0] ?? "";
+    const orderIndex = zoneOrder.indexOf(z.zone_id);
+    const canReorder = this._filter === "all" && zoneOrder.length > 1;
+    const dragging = this._drag?.zoneId === z.zone_id;
 
     const runBtn = html`
       <button
@@ -847,24 +1330,67 @@ export class ViewZones extends LitElement {
       </button>
     `;
     const primaryBtn = inRun ? stopBtn : runBtn;
+    // Beside the runtimes on a wide screen; on a phone behind the chevron,
+    // so a row is a name and a line, and a list of zones fits the screen.
+    const details = html`
+      ${this._waterPerRun(z)
+        ? html`<span class="meta"
+            ><ha-icon icon="mdi:water-outline"></ha-icon>${this._waterPerRun(z)}
+            ${t(this.hass, "config_panel.water_per_run")}</span
+          >`
+        : nothing}
+      ${this._waterLastRun(z)
+        ? html`<span class="meta"
+            ><ha-icon icon="mdi:water-check-outline"></ha-icon>${t(
+              this.hass,
+              "config_panel.general_water_last_run"
+            )}
+            ${this._waterLastRun(z)}</span
+          >`
+        : nothing}
+      ${slotN > 0
+        ? html`<span class="meta"
+            ><ha-icon icon="mdi:format-list-bulleted"></ha-icon>${slotN === 1
+              ? t(this.hass, "config_panel.zones_in_cycles_one")
+              : t(this.hass, "config_panel.zones_in_cycles_many", { n: slotN })}</span
+          >`
+        : nothing}
+    `;
     const editBtn = html`
       <button
         type="button"
         class="iconbtn"
         title=${t(this.hass, "config_panel.zones_edit")}
         aria-label=${t(this.hass, "config_panel.zones_edit")}
-        @click=${() => {
-          this._msg = undefined;
-          this._editDraft = this._cloneZone(z);
-        }}
+        @click=${() => this._openEdit(z.zone_id)}
       >
         <ha-icon icon="mdi:pencil"></ha-icon>
       </button>
     `;
-
+    const dragLabel = t(this.hass, "config_panel.zones_drag_to_reorder");
+    const dragHandle = canReorder
+      ? html`<button
+          type="button"
+          class="drag-handle"
+          data-zone-id=${z.zone_id}
+          title=${dragLabel}
+          aria-label=${dragLabel}
+          @pointerdown=${(e: PointerEvent) => this._onHandlePointerDown(e, z.zone_id)}
+          @pointermove=${this._onHandlePointerMove}
+          @pointerup=${this._onHandlePointerUp}
+          @pointercancel=${this._endDrag}
+          @keydown=${(e: KeyboardEvent) => this._onHandleKeydown(e, z.zone_id)}
+        >
+          <ha-icon icon="mdi:drag-vertical"></ha-icon>
+        </button>`
+      : nothing;
     return html`
-      <div class="compact-row ${accentClass}">
+      <div
+        class="compact-row ${accentClass} ${dragging ? "dragging" : this._drag ? "shifting" : ""}"
+        style=${styleMap(this._dragStyle(orderIndex))}
+      >
         <div class="compact-row-header">
+          ${dragHandle}
           <ha-switch
             .disabled=${this._busy}
             .checked=${z.enabled}
@@ -921,33 +1447,14 @@ export class ViewZones extends LitElement {
                 })}
                 ${" "}${t(this.hass, "config_panel.zones_min_suffix")}
               </span>
-              ${this._waterPerRun(z)
-                ? html`<span class="meta"
-                    ><ha-icon icon="mdi:water-outline"></ha-icon>${this._waterPerRun(z)}
-                    ${t(this.hass, "config_panel.water_per_run")}</span
-                  >`
-                : nothing}
-              ${this._waterLastRun(z)
-                ? html`<span class="meta"
-                    ><ha-icon icon="mdi:water-check-outline"></ha-icon>${t(
-                      this.hass,
-                      "config_panel.general_water_last_run"
-                    )}
-                    ${this._waterLastRun(z)}</span
-                  >`
-                : nothing}
-              ${slotN > 0
-                ? html`<span class="meta"
-                    ><ha-icon icon="mdi:format-list-bulleted"></ha-icon>${slotN === 1
-                      ? t(this.hass, "config_panel.zones_in_cycles_one")
-                      : t(this.hass, "config_panel.zones_in_cycles_many", { n: slotN })}</span
-                  >`
-                : nothing}
-              ${firstOut
-                ? html`<span class="meta ellipsis"
-                    ><ha-icon icon="mdi:toggle-switch-outline"></ha-icon>${firstOut}</span
-                  >`
-                : nothing}
+              <span class="meta-extra hide-narrow">
+                ${details}
+                ${firstOut
+                  ? html`<span class="meta ellipsis"
+                      ><ha-icon icon="mdi:toggle-switch-outline"></ha-icon>${firstOut}</span
+                    >`
+                  : nothing}
+              </span>
             </div>
           </div>
           <div class="icon-group hide-narrow" role="group">
@@ -965,23 +1472,33 @@ export class ViewZones extends LitElement {
         </div>
         ${expanded
           ? html`<div class="compact-row-detail only-narrow">
-              ${firstOut ? html`<p class="out-line">${outs.join(", ")}</p>` : nothing}
+              <div class="meta-line">
+                ${details}
+                ${outs.map(
+                  (eid) => html`<span class="meta" title=${eid}
+                    ><ha-icon icon="mdi:toggle-switch-outline"></ha-icon>${summaryEntityName(
+                      this.hass,
+                      eid
+                    )}</span
+                  >`
+                )}
+              </div>
               <div class="drawer-actions">
                 ${inRun
                   ? html`<button type="button" class="btn-outline" ?disabled=${stopDisabled} @click=${() => this._stopZone(z.zone_id)}>
+                      <ha-icon icon="mdi:stop"></ha-icon>
                       ${stopLabel}
                     </button>`
                   : html`<button type="button" class="btn-outline" ?disabled=${runDisabled} @click=${() => this._runZoneNow(z.zone_id)}>
-                      ${t(this.hass, "config_panel.zones_run_zone_now")}
+                      <ha-icon icon="mdi:play"></ha-icon>
+                      ${t(this.hass, "config_panel.schedule_run_now_short")}
                     </button>`}
                 <button
                   type="button"
                   class="btn-outline"
-                  @click=${() => {
-                    this._msg = undefined;
-                    this._editDraft = this._cloneZone(z);
-                  }}
+                  @click=${() => this._openEdit(z.zone_id)}
                 >
+                  <ha-icon icon="mdi:pencil"></ha-icon>
                   ${t(this.hass, "config_panel.zones_edit")}
                 </button>
               </div>
@@ -993,6 +1510,7 @@ export class ViewZones extends LitElement {
 
   protected render() {
     const all = this._zonesFromInstallation();
+    const zoneOrder = all.map((z) => z.zone_id);
     const issuesCount = all.filter((z) => this._zoneIssue(z)).length;
     const filtered = all.filter((z) => {
       if (this._filter === "enabled") return z.enabled;
@@ -1032,7 +1550,7 @@ export class ViewZones extends LitElement {
                 ${issuesCount > 0 ? html`<span class="count">${issuesCount}</span>` : nothing}
               </button>
             </div>
-            <button type="button" class="btn hide-narrow" @click=${() => (this._addDialogOpen = true)}>
+            <button type="button" class="btn hide-narrow" @click=${() => this._openAdd()}>
               ${t(this.hass, "config_panel.zones_add_zone")}
             </button>
           </div>
@@ -1045,13 +1563,14 @@ export class ViewZones extends LitElement {
               ${t(this.hass, "config_panel.zones_help_summary")}
             </summary>
             <p>${t(this.hass, "config_panel.zones_intro")}</p>
+            <p>${t(this.hass, "config_panel.zones_reorder_hint")}</p>
           </details>
 
           ${all.length === 0
             ? html`<div class="empty-state">
                 <ha-icon icon="mdi:vector-square"></ha-icon>
                 <p>${t(this.hass, "config_panel.zones_empty")}</p>
-                <button type="button" class="btn" @click=${() => (this._addDialogOpen = true)}>
+                <button type="button" class="btn" @click=${() => this._openAdd()}>
                   ${t(this.hass, "config_panel.zones_add_zone")}
                 </button>
               </div>`
@@ -1063,7 +1582,11 @@ export class ViewZones extends LitElement {
                     ${t(this.hass, "config_panel.zones_filter_all")}
                   </button>
                 </div>`
-              : filtered.map((z) => this._renderRow(z, slotsPerZone))}
+              : repeat(
+                  filtered,
+                  (z) => z.zone_id,
+                  (z) => this._renderRow(z, slotsPerZone, zoneOrder)
+                )}
 
           <details class="inline-help" style="margin-top:14px">
             <summary>
@@ -1080,7 +1603,7 @@ export class ViewZones extends LitElement {
         class="fab"
         aria-label=${t(this.hass, "config_panel.zones_add_zone")}
         title=${t(this.hass, "config_panel.zones_add_zone")}
-        @click=${() => (this._addDialogOpen = true)}
+        @click=${() => this._openAdd()}
       >
         <ha-icon icon="mdi:plus"></ha-icon>
       </button>
@@ -1090,7 +1613,7 @@ export class ViewZones extends LitElement {
         header-title=${t(this.hass, "config_panel.zones_dialog_new_title")}
         @closed=${() => this._closeAddDialog()}
       >
-        ${this._renderZoneFields(this._new)}
+        ${this._addDialogOpen ? this._renderZoneFields(this._new) : nothing}
         <div slot="footer" class="dialog-footer">
           <div class="dialog-footer-row">
             <div class="dialog-footer-lead"></div>
@@ -1123,18 +1646,29 @@ export class ViewZones extends LitElement {
           <div class="dialog-footer-row">
             <div class="dialog-footer-lead">
               ${edit
-                ? html`<button
-                    type="button"
-                    class="btn-danger"
-                    ?disabled=${this._busy}
-                    @click=${() => {
-                      if (edit && confirm(t(this.hass, "config_panel.zones_confirm_delete"))) {
-                        void this._saveZone("delete", edit.zone_id);
-                      }
-                    }}
-                  >
-                    ${t(this.hass, "config_panel.zones_delete_zone")}
-                  </button>`
+                ? html`<details class="more-menu">
+                    <summary
+                      aria-label=${t(this.hass, "config_panel.general_more")}
+                      title=${t(this.hass, "config_panel.general_more")}
+                    >
+                      <ha-icon icon="mdi:dots-vertical"></ha-icon>
+                    </summary>
+                    <div class="more-pop">
+                      <button
+                        type="button"
+                        class="danger"
+                        ?disabled=${this._busy}
+                        @click=${() => {
+                          if (edit && confirm(t(this.hass, "config_panel.zones_confirm_delete"))) {
+                            void this._saveZone("delete", edit.zone_id);
+                          }
+                        }}
+                      >
+                        <ha-icon icon="mdi:trash-can-outline"></ha-icon>
+                        ${t(this.hass, "config_panel.zones_delete_zone")}
+                      </button>
+                    </div>
+                  </details>`
                 : nothing}
             </div>
             <div class="dialog-footer-actions">

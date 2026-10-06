@@ -5,6 +5,7 @@ from __future__ import annotations
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN
@@ -40,18 +41,31 @@ async def async_setup_entry(
     async_add_entities([ScheduleEnabledSwitch(coordinator)])
 
     known: set[str] = set()
+    registry = er.async_get(hass)
+    prefix, suffix = f"{entry.entry_id}_slot_", "_enabled"
 
     @callback
     def _sync_slot_switches() -> None:
-        """Add switches for slots that appeared since the last sync."""
+        """Add switches for slots that appeared, remove those of slots that went."""
+        current = {slot.slot_id for slot in coordinator.installation.schedule_slots}
         new_entities: list[SwitchEntity] = []
-        for slot in coordinator.installation.schedule_slots:
-            if slot.slot_id in known:
-                continue
-            known.add(slot.slot_id)
-            new_entities.append(SlotEnabledSwitch(coordinator, slot.slot_id))
+        for slot_id in current - known:
+            known.add(slot_id)
+            new_entities.append(SlotEnabledSwitch(coordinator, slot_id))
         if new_entities:
             async_add_entities(new_entities)
+        # Not left behind as "unavailable" for good: the registry entry goes
+        # with the slot. Also sweeps up what earlier versions left there.
+        for registered in er.async_entries_for_config_entry(registry, entry.entry_id):
+            unique_id = registered.unique_id
+            if registered.domain != "switch" or not (
+                unique_id.startswith(prefix) and unique_id.endswith(suffix)
+            ):
+                continue
+            slot_id = unique_id[len(prefix) : -len(suffix)]
+            if slot_id not in current:
+                known.discard(slot_id)
+                registry.async_remove(registered.entity_id)
 
     _sync_slot_switches()
     entry.async_on_unload(coordinator.async_add_listener(_sync_slot_switches))

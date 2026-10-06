@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import logging
 import uuid
 from dataclasses import replace
@@ -22,6 +23,10 @@ from homeassistant.util import dt as dt_util
 from .const import (
     MAX_REPETITIONS,
     MAX_SOAK_MIN,
+    MAX_SEASON_PERIODS,
+    MAX_SUPPLY_DELAY_SEC,
+    MAX_WAIT_MAX_MIN,
+    MAX_ZONE_DURATION_MIN,
     DOMAIN,
     GUARD_OPERATORS,
     MAX_SCRIPT_TIMEOUT_SEC,
@@ -34,11 +39,28 @@ from .const import (
     WEEK_PARITY_EVERY,
 )
 from .grouping import compute_phases
-from .models import Guard, Installation, ScheduleSlot, Zone, normalize_weekdays
-from .cycle import CYCLE_KINDS, anchor_week_parity, generate_cycle_slots
+from .models import (
+    Guard,
+    Installation,
+    Period,
+    ScheduleSlot,
+    Zone,
+    normalize_weekdays,
+    parse_entity_ids,
+    parse_supply_lead,
+    parse_zone_minutes,
+)
+from .cycle import (
+    CYCLE_KINDS,
+    MAX_CYCLE_START_TIMES,
+    anchor_week_parity,
+    generate_cycle_slots,
+    normalize_start_times,
+)
 from .runtime import ScheduleSlotRunError, ZoneManualRunError, ZoneStopError
 from .scheduler import compute_next_runs, phases_for_slot
-from .time_util import next_slot_fire_local_any, parse_hh_mm
+from .season import next_slot_fire
+from .time_util import parse_hh_mm
 from .validation import (
     parse_guard_list,
     parse_zone_switch_entities,
@@ -48,6 +70,8 @@ from .validation import (
     validate_script_entity,
     validate_script_timeout,
     validate_water_meter_entity,
+    strict_int,
+    validate_supply_against_zones,
     validate_zone_payload,
 )
 
@@ -75,8 +99,39 @@ SLOT_SCRIPT_TIMEOUT_SCHEMA = vol.Any(
 
 # Cycle & Soak fields as the panel sends them. Zero minutes is a valid soak
 # ("none"), so these are plain ranges rather than positive_int.
-SLOT_REPETITIONS_SCHEMA = vol.All(int, vol.Range(min=1, max=MAX_REPETITIONS))
-SLOT_SOAK_SCHEMA = vol.All(int, vol.Range(min=0, max=MAX_SOAK_MIN))
+SLOT_REPETITIONS_SCHEMA = vol.All(strict_int, vol.Range(min=1, max=MAX_REPETITIONS))
+SLOT_SOAK_SCHEMA = vol.All(strict_int, vol.Range(min=0, max=MAX_SOAK_MIN))
+ZONE_DURATION_SCHEMA = vol.All(strict_int, vol.Range(min=0, max=MAX_ZONE_DURATION_MIN))
+SUPPLY_DELAY_SCHEMA = vol.All(strict_int, vol.Range(min=0, max=MAX_SUPPLY_DELAY_SEC))
+
+
+def _cycle_member_ids(existing: list[ScheduleSlot], specs: list[dict[str, Any]]) -> list[str]:
+    """Slot ids for a cycle's members after an edit, one per spec.
+
+    A member keeps its id for as long as it keeps its days and its time, so its
+    switch entity goes on meaning the same run. An id that falls free -- its
+    time was moved, or the rhythm now starts in the other week -- goes to a new
+    member on the same days, and to no other: a switch that used to stop the
+    Tuesday run must not come to stop the Monday one. What is left gets a fresh
+    id, and the switch of an id nobody took goes with it.
+    """
+    kept = {(tuple(s.weekdays), s.week_parity, s.time_local): s.slot_id for s in existing}
+    wanted = [
+        (tuple(spec["weekdays"]), spec["week_parity"], spec["time_local"]) for spec in specs
+    ]
+    free: dict[tuple[int, ...], list[str]] = {}
+    for key, slot_id in kept.items():
+        if key not in wanted:
+            free.setdefault(key[0], []).append(slot_id)
+    ids: list[str] = []
+    for key in wanted:
+        if key in kept:
+            ids.append(kept[key])
+        elif free.get(key[0]):
+            ids.append(free[key[0]].pop(0))
+        else:
+            ids.append(uuid.uuid4().hex)
+    return ids
 
 
 def _copy_slot_cycle_soak(src: ScheduleSlot, dst: ScheduleSlot) -> None:
@@ -94,6 +149,56 @@ def _apply_slot_cycle_soak(slot: ScheduleSlot, data: dict[str, Any]) -> None:
         slot.soak_between_phases_min = int(data["soak_between_phases_min"])
     if "soak_between_repetitions_min" in data:
         slot.soak_between_repetitions_min = int(data["soak_between_repetitions_min"])
+
+
+# Periods of the year as {"from": "MM-DD", "to": "MM-DD"}; which days those are
+# is checked when they are applied.
+SEASON_SCHEMA = vol.All(
+    [vol.Schema({vol.Required("from"): cv.string, vol.Required("to"): cv.string})],
+    vol.Length(max=MAX_SEASON_PERIODS),
+)
+
+
+def _season_from_payload(raw: list[dict[str, str]]) -> list[Period] | None:
+    """The payload's periods, each once; None if one names no day of the year."""
+    periods: list[Period] = []
+    for item in raw:
+        period = Period.from_dict(item)
+        if period is None:
+            return None
+        if period not in periods:
+            periods.append(period)
+    return periods
+
+
+def _copy_slot_season(src: ScheduleSlot, dst: ScheduleSlot) -> None:
+    """Carry the season over to a slot derived from ``src`` (split, cycle)."""
+    dst.override_season = src.override_season
+    dst.season = list(src.season)
+
+
+def _apply_slot_season(slot: ScheduleSlot, data: dict[str, Any]) -> str | None:
+    """Copy the payload's season onto a slot; absent keys keep theirs."""
+    if "season" in data:
+        periods = _season_from_payload(data["season"])
+        if periods is None:
+            return "invalid_season"
+        slot.season = periods
+    if "override_season" in data:
+        slot.override_season = bool(data["override_season"])
+    return None
+
+
+def _apply_slot_zone_minutes(slot: ScheduleSlot, data: dict[str, Any]) -> None:
+    """Take the payload's fixed minutes, and keep none for zones the slot lost.
+
+    Runs after the slot's zones are settled: minutes only mean something for a
+    zone the slot waters.
+    """
+    if "zone_minutes" in data:
+        slot.zone_minutes = parse_zone_minutes(data["zone_minutes"], slot.zone_ids_ordered)
+    else:
+        slot.prune_zone_minutes()
 
 
 def _copy_slot_script_overrides(src: ScheduleSlot, dst: ScheduleSlot) -> None:
@@ -204,12 +309,10 @@ def _schedule_next_summary(hass: HomeAssistant, inst: Installation) -> dict[str,
     for slot in inst.schedule_slots:
         if not slot.enabled:
             continue
-        nxt = next_slot_fire_local_any(
-            after, slot.weekdays, slot.time_local, tz, slot.week_parity
-        )
+        nxt = next_slot_fire(inst, slot, after, tz)
         if nxt is None:
             continue
-        if abs((nxt - global_next).total_seconds()) < 1:
+        if abs(nxt.timestamp() - global_next.timestamp()) < 1:
             matching.append(slot)
 
     # Weekday the schedule actually fires next (all matching slots share global_next).
@@ -217,7 +320,11 @@ def _schedule_next_summary(hass: HomeAssistant, inst: Installation) -> dict[str,
     zones = inst.zones
     out_slots: list[dict[str, Any]] = []
     for s in matching:
-        names = [zones[zi].name if zi in zones else zi for zi in s.zone_ids_ordered]
+        names = [
+            zones[zi].name
+            for zi in s.zone_ids_ordered
+            if zi in zones and s.duration_for(zones[zi], inst.mode) > 0
+        ]
         out_slots.append(
             {
                 "slot_id": s.slot_id,
@@ -286,7 +393,9 @@ def _require_admin(request) -> None:
 
     user = request.get(KEY_HASS_USER)
     if user is None or not user.is_admin:
-        raise Unauthorized("Admin required")
+        # No message: the first argument is a Context, and a str there raises
+        # on its own -- a 500 where a 401 belongs.
+        raise Unauthorized()
 
 
 @callback
@@ -354,6 +463,11 @@ class SimpleIrrigationPanelGlobalView(HomeAssistantView):
                 vol.Optional("pause_until"): vol.Any(cv.string, None),
                 vol.Optional("guards"): GUARD_LIST_SCHEMA,
                 vol.Optional("water_meter_entity_id"): vol.Any(cv.string, None),
+                vol.Optional("season"): SEASON_SCHEMA,
+                vol.Optional("wait_when_busy"): cv.boolean,
+                vol.Optional("wait_max_min"): vol.All(
+                    strict_int, vol.Range(min=1, max=MAX_WAIT_MAX_MIN)
+                ),
             }
         )
     )
@@ -365,7 +479,9 @@ class SimpleIrrigationPanelGlobalView(HomeAssistantView):
         coord = _get_coordinator(hass, entry.entry_id)
         if coord is None:
             return self.json({"success": False, "error": "not_found"}, status_code=404)
-        inst = coord.installation
+        # On a copy: a save that is refused half-way must leave nothing behind
+        # for the next, unrelated save to write to the store.
+        inst = copy.deepcopy(coord.installation)
 
         if "name" in data and data["name"]:
             inst.name = str(data["name"]).strip() or inst.name
@@ -421,6 +537,15 @@ class SimpleIrrigationPanelGlobalView(HomeAssistantView):
             if err:
                 return self.json({"success": False, "error": err}, status_code=400)
             inst.water_meter_entity_id = meter
+        if "season" in data:
+            season = _season_from_payload(data["season"])
+            if season is None:
+                return self.json({"success": False, "error": "invalid_season"}, status_code=400)
+            inst.season = season
+        if "wait_when_busy" in data:
+            inst.wait_when_busy = bool(data["wait_when_busy"])
+        if "wait_max_min" in data:
+            inst.wait_max_min = int(data["wait_max_min"])
         if "pause_until" in data:
             raw = data["pause_until"]
             if raw in (None, ""):
@@ -449,7 +574,7 @@ class SimpleIrrigationPanelGlobalView(HomeAssistantView):
 
 
 class SimpleIrrigationPanelZoneView(HomeAssistantView):
-    """POST: add / update / delete zone."""
+    """POST: add / update / delete / reorder zone."""
 
     url = "/api/simple_irrigation/panel/zone"
     name = "api:simple_irrigation:panel_zone"
@@ -458,17 +583,18 @@ class SimpleIrrigationPanelZoneView(HomeAssistantView):
         vol.Schema(
             {
                 vol.Required("entry_id"): cv.string,
-                vol.Required("action"): vol.In(("add", "update", "delete")),
+                vol.Required("action"): vol.In(("add", "update", "delete", "reorder")),
                 vol.Optional("zone_id"): cv.string,
+                vol.Optional("zone_order"): [cv.string],
                 vol.Optional("zone"): vol.Schema(
                     {
                         vol.Optional("name"): cv.string,
                         vol.Optional("switch_entity_id"): cv.string,
                         vol.Optional("switch_entity_ids"): [cv.string],
                         vol.Optional("enabled"): cv.boolean,
-                        vol.Optional("duration_eco_min"): vol.All(int, vol.Range(min=0, max=240)),
-                        vol.Optional("duration_normal_min"): vol.All(int, vol.Range(min=0, max=240)),
-                        vol.Optional("duration_extra_min"): vol.All(int, vol.Range(min=0, max=240)),
+                        vol.Optional("duration_eco_min"): ZONE_DURATION_SCHEMA,
+                        vol.Optional("duration_normal_min"): ZONE_DURATION_SCHEMA,
+                        vol.Optional("duration_extra_min"): ZONE_DURATION_SCHEMA,
                         vol.Optional("exclusive"): cv.boolean,
                         vol.Optional("start_service"): vol.Any(cv.string, None),
                         vol.Optional("duration_field"): vol.Any(cv.string, None),
@@ -478,6 +604,9 @@ class SimpleIrrigationPanelZoneView(HomeAssistantView):
                         vol.Optional("flow_rate_lpm"): vol.Any(float, int, None),
                         vol.Optional("countdown_entity_id"): vol.Any(cv.string, None),
                         vol.Optional("countdown_unit"): vol.Any(cv.string, None),
+                        vol.Optional("supply_entity_ids"): [cv.string],
+                        vol.Optional("supply_lead_sec"): vol.Any(SUPPLY_DELAY_SCHEMA, None),
+                        vol.Optional("supply_trail_sec"): SUPPLY_DELAY_SCHEMA,
                     }
                 ),
             }
@@ -493,6 +622,14 @@ class SimpleIrrigationPanelZoneView(HomeAssistantView):
             return self.json({"success": False, "error": "not_found"}, status_code=404)
         inst = coord.installation
         action = data["action"]
+
+        if action == "reorder":
+            if not inst.set_zone_order(data.get("zone_order", [])):
+                return self.json(
+                    {"success": False, "error": "invalid_zone_order"}, status_code=400
+                )
+            await coord.async_update_installation(inst)
+            return self.json({"success": True})
 
         if action == "add":
             zone_data = data.get("zone") or {}
@@ -513,8 +650,16 @@ class SimpleIrrigationPanelZoneView(HomeAssistantView):
                 "flow_rate_lpm": zone_data.get("flow_rate_lpm", 0),
                 "countdown_entity_id": zone_data.get("countdown_entity_id", ""),
                 "countdown_unit": zone_data.get("countdown_unit", ""),
+                "supply_entity_ids": zone_data.get("supply_entity_ids", []),
+                "supply_lead_sec": zone_data.get("supply_lead_sec"),
+                "supply_trail_sec": zone_data.get("supply_trail_sec", 0),
             }
-            err = validate_zone_payload(hass, payload)
+            err = validate_zone_payload(hass, payload) or validate_supply_against_zones(
+                None,
+                parse_zone_switch_entities(payload),
+                parse_entity_ids(payload["supply_entity_ids"]),
+                inst.zones,
+            )
             if err:
                 return self.json({"success": False, "error": err}, status_code=400)
             entity_ids = parse_zone_switch_entities(payload)
@@ -536,6 +681,9 @@ class SimpleIrrigationPanelZoneView(HomeAssistantView):
                 flow_rate_lpm=float(payload["flow_rate_lpm"] or 0),
                 countdown_entity_id=str(payload["countdown_entity_id"] or "").strip(),
                 countdown_unit=str(payload["countdown_unit"] or "").strip(),
+                supply_entity_ids=parse_entity_ids(payload["supply_entity_ids"]),
+                supply_lead_sec=parse_supply_lead(payload["supply_lead_sec"]),
+                supply_trail_sec=int(payload["supply_trail_sec"]),
             )
             await coord.async_update_installation(inst)
             return self.json({"success": True, "zone_id": zid})
@@ -548,6 +696,7 @@ class SimpleIrrigationPanelZoneView(HomeAssistantView):
             inst.zones.pop(zid, None)
             for slot in inst.schedule_slots:
                 slot.zone_ids_ordered = [x for x in slot.zone_ids_ordered if x != zid]
+                slot.prune_zone_minutes()
             await coord.async_update_installation(inst)
             return self.json({"success": True})
 
@@ -586,8 +735,16 @@ class SimpleIrrigationPanelZoneView(HomeAssistantView):
                 "countdown_entity_id", zone.countdown_entity_id
             ),
             "countdown_unit": zone_data.get("countdown_unit", zone.countdown_unit),
+            "supply_entity_ids": zone_data.get("supply_entity_ids", zone.supply_entity_ids),
+            "supply_lead_sec": zone_data.get("supply_lead_sec", zone.supply_lead_sec),
+            "supply_trail_sec": zone_data.get("supply_trail_sec", zone.supply_trail_sec),
         }
-        err = validate_zone_payload(hass, merged)
+        err = validate_zone_payload(hass, merged) or validate_supply_against_zones(
+            zid,
+            parse_zone_switch_entities(merged),
+            parse_entity_ids(merged["supply_entity_ids"]),
+            inst.zones,
+        )
         if err:
             return self.json({"success": False, "error": err}, status_code=400)
         zone.name = merged["name"].strip()
@@ -605,6 +762,9 @@ class SimpleIrrigationPanelZoneView(HomeAssistantView):
         zone.flow_rate_lpm = float(merged["flow_rate_lpm"] or 0)
         zone.countdown_entity_id = str(merged["countdown_entity_id"] or "").strip()
         zone.countdown_unit = str(merged["countdown_unit"] or "").strip()
+        zone.supply_entity_ids = parse_entity_ids(merged["supply_entity_ids"])
+        zone.supply_lead_sec = parse_supply_lead(merged["supply_lead_sec"])
+        zone.supply_trail_sec = int(merged["supply_trail_sec"])
         await coord.async_update_installation(inst)
         return self.json({"success": True})
 
@@ -652,6 +812,9 @@ class SimpleIrrigationPanelSlotView(HomeAssistantView):
                 vol.Optional("repetitions"): SLOT_REPETITIONS_SCHEMA,
                 vol.Optional("soak_between_phases_min"): SLOT_SOAK_SCHEMA,
                 vol.Optional("soak_between_repetitions_min"): SLOT_SOAK_SCHEMA,
+                vol.Optional("zone_minutes"): {cv.string: ZONE_DURATION_SCHEMA},
+                vol.Optional("override_season"): cv.boolean,
+                vol.Optional("season"): SEASON_SCHEMA,
                 vol.Optional("cycle_id"): vol.Any(cv.string, None),
                 vol.Optional("cycle_kind"): vol.In(CYCLE_KINDS),
                 vol.Optional("cycle_meta"): vol.Schema(
@@ -659,7 +822,9 @@ class SimpleIrrigationPanelSlotView(HomeAssistantView):
                         vol.Optional("label"): cv.string,
                         vol.Optional("n"): vol.All(int, vol.Range(min=1, max=14)),
                         vol.Optional("anchor_weekday"): vol.All(int, vol.Range(min=0, max=6)),
-                        vol.Optional("times"): [cv.string],
+                        vol.Optional("times"): vol.All(
+                            [cv.string], vol.Length(max=MAX_CYCLE_START_TIMES)
+                        ),
                         vol.Optional("week_days"): [vol.All(int, vol.Range(min=0, max=6))],
                     }
                 ),
@@ -674,7 +839,9 @@ class SimpleIrrigationPanelSlotView(HomeAssistantView):
         coord = _get_coordinator(hass, data["entry_id"])
         if coord is None:
             return self.json({"success": False, "error": "not_found"}, status_code=404)
-        inst = coord.installation
+        # On a copy, like the global settings: every action here changes the
+        # schedule field by field and may still be refused further down.
+        inst = copy.deepcopy(coord.installation)
         action = data["action"]
 
         def _find_slot(sid: str) -> ScheduleSlot | None:
@@ -710,10 +877,13 @@ class SimpleIrrigationPanelSlotView(HomeAssistantView):
                 guards=guards,
                 ignore_global_guards=bool(data.get("ignore_global_guards", False)),
             )
-            script_err = _apply_slot_script_overrides(hass, slot, data)
+            script_err = _apply_slot_script_overrides(hass, slot, data) or _apply_slot_season(
+                slot, data
+            )
             if script_err:
                 return self.json({"success": False, "error": script_err}, status_code=400)
             _apply_slot_cycle_soak(slot, data)
+            _apply_slot_zone_minutes(slot, data)
             inst.schedule_slots.append(slot)
             await coord.async_update_installation(inst)
             return self.json({"success": True, "slot_id": slot.slot_id})
@@ -732,7 +902,8 @@ class SimpleIrrigationPanelSlotView(HomeAssistantView):
             for tstr in meta.get("times") or []:
                 if parse_hh_mm(str(tstr).strip()) is None:
                     return self.json({"success": False, "error": "invalid_time"}, status_code=400)
-            enabled = bool(data.get("enabled", True))
+            # Earliest first, each once: what the members and the wizard go by.
+            meta["times"] = normalize_start_times(meta.get("times"))
             incoming_id = str(data.get("cycle_id") or "")  # set when editing an existing cycle
             anchor = int(meta.get("anchor_weekday", 0))
             p0 = anchor_week_parity(anchor, dt_util.now().date())
@@ -741,10 +912,11 @@ class SimpleIrrigationPanelSlotView(HomeAssistantView):
                 return self.json({"success": False, "error": "invalid_cycle"}, status_code=400)
             label = str(meta.get("label") or "").strip()
 
-            # A "cycle" only exists when the cadence genuinely needs >=2 slots
-            # (e.g. every 2/3 days via odd/even parity). Cadences expressible as a
-            # single slot (daily, weekly, biweekly, n-per-week, custom) are stored
-            # as a plain slot with no cycle_id — so the UI treats them uniformly.
+            # A slot is a set of weekdays at one time of day. Whatever fits into
+            # one is stored as a plain slot with no cycle_id, so the UI treats it
+            # like any other. A "cycle" exists where that takes two or more:
+            # every 2/3 days needs odd and even weeks, and every further start
+            # time needs the cadence's slots once again.
             is_cycle = len(specs) >= 2
             new_cid = (incoming_id or uuid.uuid4().hex) if is_cycle else None
 
@@ -753,7 +925,18 @@ class SimpleIrrigationPanelSlotView(HomeAssistantView):
                 if incoming_id
                 else []
             )
-            reused_ids = [s.slot_id for s in existing]
+            member_ids = _cycle_member_ids(existing, specs)
+            # On or off: what the payload says, for all of them. Without a word
+            # on it each member stays as it is -- one that was switched off on
+            # its own is not switched back on by an edit of the cycle -- and a
+            # new one is on unless the whole cycle is off.
+            was_enabled = {s.slot_id: s.enabled for s in existing}
+            fresh_enabled = any(was_enabled.values()) if was_enabled else True
+
+            def _member_enabled(slot_id: str) -> bool:
+                if "enabled" in data:
+                    return bool(data["enabled"])
+                return was_enabled.get(slot_id, fresh_enabled)
 
             # Guards: take them from the payload, else keep what the edited cycle
             # already had. All members of a cycle share the same conditions.
@@ -770,10 +953,10 @@ class SimpleIrrigationPanelSlotView(HomeAssistantView):
 
             new_members = [
                 ScheduleSlot(
-                    slot_id=(reused_ids[i] if i < len(reused_ids) else uuid.uuid4().hex),
+                    slot_id=member_ids[i],
                     weekdays=list(spec["weekdays"]),
                     time_local=spec["time_local"],
-                    enabled=enabled,
+                    enabled=_member_enabled(member_ids[i]),
                     zone_ids_ordered=list(zone_ids),
                     name=label,
                     week_parity=spec["week_parity"],
@@ -792,10 +975,15 @@ class SimpleIrrigationPanelSlotView(HomeAssistantView):
                 if existing:
                     _copy_slot_script_overrides(existing[0], member)
                     _copy_slot_cycle_soak(existing[0], member)
-                script_err = _apply_slot_script_overrides(hass, member, data)
+                    _copy_slot_season(existing[0], member)
+                    member.zone_minutes = dict(existing[0].zone_minutes)
+                script_err = _apply_slot_script_overrides(
+                    hass, member, data
+                ) or _apply_slot_season(member, data)
                 if script_err:
                     return self.json({"success": False, "error": script_err}, status_code=400)
                 _apply_slot_cycle_soak(member, data)
+                _apply_slot_zone_minutes(member, data)
             # Rebuild the slot list, replacing the previous group's members (matched
             # by the incoming id) in place; append at the end when brand new.
             result: list[ScheduleSlot] = []
@@ -863,6 +1051,8 @@ class SimpleIrrigationPanelSlotView(HomeAssistantView):
             for new_slot in new_slots:
                 _copy_slot_script_overrides(slot, new_slot)
                 _copy_slot_cycle_soak(slot, new_slot)
+                _copy_slot_season(slot, new_slot)
+                new_slot.zone_minutes = dict(slot.zone_minutes)
             inst.schedule_slots[idx : idx + 1] = new_slots
             await coord.async_update_installation(inst)
             return self.json(
@@ -908,7 +1098,11 @@ class SimpleIrrigationPanelSlotView(HomeAssistantView):
             script_err = _apply_slot_script_overrides(hass, slot, data)
             if script_err:
                 return self.json({"success": False, "error": script_err}, status_code=400)
+            season_err = _apply_slot_season(slot, data)
+            if season_err:
+                return self.json({"success": False, "error": season_err}, status_code=400)
             _apply_slot_cycle_soak(slot, data)
+            _apply_slot_zone_minutes(slot, data)
             if "cycle_id" in data:
                 slot.cycle_id = str(data["cycle_id"]) if data["cycle_id"] else None
             if "cycle_kind" in data:

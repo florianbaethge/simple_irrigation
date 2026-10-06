@@ -7,9 +7,11 @@ import { t } from "../i18n";
 import { sharedStyles } from "../shared-styles";
 import { formatTimeLocalForDisplay, weekdayLong, weekdaysSummary } from "../date-format";
 import { computePhases, cycleSoakOf, programMinutes, type ZonePhaseInput } from "../schedule-phases";
-import { durationForMode, plannedLitres } from "../timetable-model";
+import { durationForMode, plannedLitres, slotZoneMinutes } from "../timetable-model";
+import { zoneMinutesOf } from "../zone-minutes-input";
 import { formatVolumeNumber, litresToUnit, volumeUnit } from "../units";
-import { mondayBasedWeekday, weekParityMatches, type CycleMeta } from "../cycle";
+import { mondayBasedWeekday, nextFire, weekParityMatches, type CycleMeta } from "../cycle";
+import { formatMonthDay, inSeason, lookAheadStart, monthDay, seasonFor } from "../season";
 import type { HomeAssistant, ScheduleNext } from "../types";
 
 const MODES = ["eco", "normal", "extra"] as const;
@@ -323,9 +325,10 @@ export class ViewOverview extends LitElement {
     if (!zoneIds.length) return 0;
     const phases = computePhases(zoneIds, this._zonesPhaseInput(), this._maxParallel(), true);
     const preStart = Math.max(0, Number(this._inst.pre_start_delay_sec ?? 10)) / 60;
+    const fixed = zoneMinutesOf(slot);
     const minutes = programMinutes(phases, cycleSoakOf(slot), (zid) => {
       const z = zones[zid];
-      return z && Boolean(z.enabled ?? true) ? durationForMode(z, mode) : 0;
+      return z && Boolean(z.enabled ?? true) ? slotZoneMinutes(zid, z, mode, fixed) : 0;
     });
     return Math.round(preStart + minutes);
   }
@@ -361,6 +364,39 @@ export class ViewOverview extends LitElement {
     }
   }
 
+  /** Schedules that came due during this run and take their turn after it. */
+  private _waitingLine(rs: Record<string, unknown>): string {
+    const slots = (this._inst.schedule_slots as Array<Record<string, unknown>> | undefined) ?? [];
+    const runs = Array.isArray(rs.waiting_runs)
+      ? (rs.waiting_runs as Array<{ slot_ids?: string[] }>)
+      : [];
+    const names: string[] = [];
+    for (const id of runs.flatMap((run) => run.slot_ids ?? [])) {
+      const slot = slots.find((s) => s.slot_id === id);
+      if (!slot) continue;
+      const label = String((slot.cycle_meta as CycleMeta)?.label ?? slot.name ?? "").trim();
+      names.push(`${label || this._kindLabel(slot)} (${String(slot.time_local ?? "")})`);
+    }
+    if (names.length <= 2) return names.join(", ");
+    return `${names.slice(0, 2).join(", ")} +${names.length - 2}`;
+  }
+
+  /**
+   * The day the first schedule comes back into season, while none is in season
+   * today; null when something is in season or nothing is scheduled at all.
+   */
+  private _seasonOpens(): Date | null {
+    const slots = (this._inst.schedule_slots as Array<Record<string, unknown>> | undefined) ?? [];
+    const enabled = slots.filter((slot) => slot.enabled ?? true);
+    if (!enabled.length) return null;
+    const today = new Date();
+    const opens = lookAheadStart(
+      enabled.map((slot) => seasonFor(this._inst, slot)),
+      today
+    );
+    return opens.toDateString() === today.toDateString() ? null : opens;
+  }
+
   /** The next `limit` distinct run fires across all enabled slots (client-side). */
   private _upcomingRuns(limit: number): UpcomingRun[] {
     const slots = (this._inst.schedule_slots as Array<Record<string, unknown>> | undefined) ?? [];
@@ -369,9 +405,30 @@ export class ViewOverview extends LitElement {
     const now = new Date();
     const runs: UpcomingRun[] = [];
     const mode = this._mode();
+    // From the day anything fires next. Mostly that is today; out of season,
+    // or in the last days of one, it may be months away -- and a three-week
+    // window from today would come up empty.
+    let start = now;
+    let first: Date | null = null;
+    for (const slot of slots) {
+      if (!(slot.enabled ?? true)) continue;
+      const at = nextFire(
+        {
+          weekdays: Array.isArray(slot.weekdays)
+            ? (slot.weekdays as number[])
+            : [Number(slot.weekday ?? 0)],
+          week_parity: String(slot.week_parity ?? "every") as "every" | "odd" | "even",
+          time_local: String(slot.time_local ?? "06:00"),
+        },
+        seasonFor(this._inst, slot),
+        now
+      );
+      if (at && (!first || at < first)) first = at;
+    }
+    if (first) start = first;
 
     for (let i = 0; i < 21 && runs.length < limit * 4; i++) {
-      const day = new Date(now.getFullYear(), now.getMonth(), now.getDate() + i);
+      const day = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
       const wd = mondayBasedWeekday(day);
       for (const slot of slots) {
         if (!(slot.enabled ?? true)) continue;
@@ -381,6 +438,7 @@ export class ViewOverview extends LitElement {
         if (!weekdays.includes(wd)) continue;
         const parity = String(slot.week_parity ?? "every");
         if (!weekParityMatches(day, parity as "every" | "odd" | "even")) continue;
+        if (!inSeason(seasonFor(this._inst, slot), day)) continue;
         const [h, mi] = String(slot.time_local ?? "06:00").split(":").map(Number);
         const when = new Date(day.getFullYear(), day.getMonth(), day.getDate(), h || 0, mi || 0);
         if (when <= now) continue;
@@ -398,7 +456,8 @@ export class ViewOverview extends LitElement {
             zoneIds,
             this._inst.zones as Record<string, Record<string, unknown>> | undefined,
             mode,
-            cycleSoakOf(slot).repetitions
+            cycleSoakOf(slot).repetitions,
+            zoneMinutesOf(slot)
           ),
           slotId: String(slot.slot_id ?? ""),
         });
@@ -415,6 +474,8 @@ export class ViewOverview extends LitElement {
     const diff = Math.round((startD.getTime() - startToday.getTime()) / 86400000);
     if (diff === 0) return t(this.hass, "config_panel.overview_today");
     if (diff === 1) return t(this.hass, "config_panel.overview_tomorrow");
+    // Further out than a week a weekday says nothing: the season's first runs.
+    if (diff >= 7) return formatMonthDay(this.hass, monthDay(d.getMonth() + 1, d.getDate()));
     return weekdayLong(this.hass, mondayBasedWeekday(d));
   }
 
@@ -433,9 +494,12 @@ export class ViewOverview extends LitElement {
 
   /** Planned end of a watering zone, as pushed by the runtime. */
   private _zoneEndsAt(zoneId: string): number | null {
+    return this._zoneMoment("zone_ends_at", zoneId);
+  }
+
+  private _zoneMoment(key: "zone_started_at" | "zone_ends_at", zoneId: string): number | null {
     const rs = (this.runState ?? {}) as Record<string, unknown>;
-    const ends = rs.zone_ends_at as Record<string, string> | undefined;
-    const raw = ends?.[zoneId];
+    const raw = (rs[key] as Record<string, string> | undefined)?.[zoneId];
     if (!raw) return null;
     const ms = new Date(raw).getTime();
     return Number.isFinite(ms) ? ms : null;
@@ -468,16 +532,15 @@ export class ViewOverview extends LitElement {
     const rs = (this.runState ?? {}) as Record<string, unknown>;
     const booked = typeof rs.run_water_l === "number" ? (rs.run_water_l as number) : null;
     const zones = this._inst.zones as Record<string, Record<string, unknown>> | undefined;
-    const mode = this._mode();
     let litres = booked ?? 0;
     let known = booked !== null;
     for (const id of activeIds) {
-      const z = zones?.[id];
-      const rate = Number(z?.flow_rate_lpm ?? 0);
-      const endsAt = this._zoneEndsAt(id);
-      if (!z || !(rate > 0) || endsAt === null) continue;
-      const remainingMin = Math.max(0, (endsAt - Date.now()) / 60000);
-      litres += rate * Math.max(0, durationForMode(z, mode) - remainingMin);
+      const rate = Number(zones?.[id]?.flow_rate_lpm ?? 0);
+      // Since it opened, not "mode time minus what is left": a manual run
+      // brings its own duration.
+      const startedAt = this._zoneMoment("zone_started_at", id);
+      if (!(rate > 0) || startedAt === null) continue;
+      litres += rate * Math.max(0, (Date.now() - startedAt) / 60000);
       known = true;
     }
     return known ? litres : null;
@@ -556,6 +619,7 @@ export class ViewOverview extends LitElement {
       .map((g) => g.map((id) => this._zoneName(String(id))).join(", "))
       .filter(Boolean)
       .join(" → ");
+    const waiting = this._waitingLine(rs);
     const mode = this._mode();
     const next = runs[0];
     const badgeClass = runBusy ? "running" : runState === "error" ? "error" : "";
@@ -570,8 +634,9 @@ export class ViewOverview extends LitElement {
       : runState === "error"
         ? t(this.hass, "config_panel.general_state_error_idle")
         : t(this.hass, "config_panel.general_state_idle");
-    const showSkip =
-      runBusy && runState !== "stopping" && (runState === "preparing" || upcoming.length > 0);
+    // Only while watering or resting. Before the first zone there is no phase
+    // to skip -- only the pump building pressure, and the backend ignores it.
+    const showSkip = runState === "running" && (upcoming.length > 0 || soaking);
     const runWater = this._liveWater(activeIds);
     const lastWater = typeof rs.last_run_water_l === "number" ? (rs.last_run_water_l as number) : null;
     // A blocking script is why "Preparing" can sit there for minutes — name it.
@@ -652,7 +717,7 @@ export class ViewOverview extends LitElement {
               `
             : nothing}
 
-          ${activeIds.length || soaking || (runBusy && runWater !== null) || nextZones || lastErr
+          ${activeIds.length || soaking || (runBusy && runWater !== null) || nextZones || waiting || lastErr
             ? html`
                 <ul class="pill-list">
                   ${soaking
@@ -695,6 +760,13 @@ export class ViewOverview extends LitElement {
                         <ha-icon icon="mdi:playlist-play"></ha-icon>
                         <span><strong>${t(this.hass, "config_panel.general_next_zones")}</strong>
                           ${nextZones}</span>
+                      </li>`
+                    : nothing}
+                  ${waiting
+                    ? html`<li class="pill">
+                        <ha-icon icon="mdi:timer-pause-outline"></ha-icon>
+                        <span><strong>${t(this.hass, "config_panel.general_waiting")}</strong>
+                          ${waiting}</span>
                       </li>`
                     : nothing}
                   ${lastErr
@@ -756,6 +828,7 @@ export class ViewOverview extends LitElement {
   }
 
   private _renderNextRuns(runs: UpcomingRun[]): TemplateResult {
+    const seasonOpens = this._seasonOpens();
     return html`
       <ha-card>
         <div class="card-header">
@@ -770,6 +843,16 @@ export class ViewOverview extends LitElement {
         <div class="card-content">
           ${!this._planEnabled()
             ? html`<p class="hint">${t(this.hass, "config_panel.general_plan_off_hint")}</p>`
+            : nothing}
+          ${seasonOpens && this._planEnabled()
+            ? html`<p class="hint">
+                ${t(this.hass, "config_panel.overview_season_opens", {
+                  date: formatMonthDay(
+                    this.hass,
+                    monthDay(seasonOpens.getMonth() + 1, seasonOpens.getDate())
+                  ),
+                })}
+              </p>`
             : nothing}
           ${runs.length
             ? runs.map((r, i) => {

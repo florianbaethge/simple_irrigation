@@ -273,12 +273,26 @@ def _hass(calls: list[tuple[str, str]]) -> MagicMock:
     return hass
 
 
+# A zone with this many minutes is over the moment it opens: see ``_runtime``.
+INSTANT = 1
+
+
 def _runtime(hass: MagicMock, inst: Installation) -> IrrigationRuntime:
     coordinator = MagicMock()
     coordinator.installation = inst
     coordinator.run_state = RunState()
     coordinator.async_update_run_state = AsyncMock()
-    return IrrigationRuntime(hass, coordinator)
+    runtime = IrrigationRuntime(hass, coordinator)
+    # These tests are about what happens around a zone, not about waiting for
+    # one. A minute is the shortest a zone can water, so INSTANT zones skip it.
+    wait = runtime._async_wait_zone_duration
+
+    async def _wait(timeout_sec: float, zone_id: str | None = None) -> None:
+        if timeout_sec > INSTANT * 60:
+            await wait(timeout_sec, zone_id)
+
+    runtime._async_wait_zone_duration = _wait
+    return runtime
 
 
 async def _wait_until(predicate, timeout: float = 5.0) -> None:
@@ -297,7 +311,7 @@ async def _wait_for_idle(runtime: IrrigationRuntime) -> None:
 async def test_the_run_rests_between_passes_with_the_zone_closed() -> None:
     """z1 on, off, soak, z1 on, off -- and the pump is off while it rests."""
     calls: list[tuple[str, str]] = []
-    zones = {"z1": _zone("z1", 0)}
+    zones = {"z1": _zone("z1", INSTANT)}
     inst = _installation(zones, pre_start_switches=["switch.pump"], pre_start_delay_sec=0)
     runtime = _runtime(_hass(calls), inst)
 
@@ -318,7 +332,7 @@ async def test_the_run_rests_between_passes_with_the_zone_closed() -> None:
 @pytest.mark.asyncio
 async def test_the_phase_counter_ignores_soaks() -> None:
     calls: list[tuple[str, str]] = []
-    zones = {"z1": _zone("z1", 0), "z2": _zone("z2", 0)}
+    zones = {"z1": _zone("z1", INSTANT), "z2": _zone("z2", INSTANT)}
     runtime = _runtime(_hass(calls), _installation(zones))
     rs = runtime.coordinator.run_state
     seen: list[tuple[int, list[list[str]]]] = []
@@ -339,7 +353,7 @@ async def test_the_phase_counter_ignores_soaks() -> None:
 @pytest.mark.asyncio
 async def test_skip_phase_cuts_a_rest_short() -> None:
     calls: list[tuple[str, str]] = []
-    zones = {"z1": _zone("z1", 0)}
+    zones = {"z1": _zone("z1", INSTANT)}
     runtime = _runtime(_hass(calls), _installation(zones))
 
     await runtime.async_run_phases([["z1"], Soak(600), ["z1"]], scheduled=True, slot_ids=[])
@@ -354,7 +368,7 @@ async def test_skip_phase_cuts_a_rest_short() -> None:
 async def test_skipping_a_phase_skips_the_rest_after_it_too() -> None:
     """Whoever skips wants the next zone now, not ten minutes of nothing."""
     calls: list[tuple[str, str]] = []
-    zones = {"z1": _zone("z1", 60), "z2": _zone("z2", 0)}
+    zones = {"z1": _zone("z1", 60), "z2": _zone("z2", INSTANT)}
     runtime = _runtime(_hass(calls), _installation(zones))
 
     await runtime.async_run_phases([["z1"], Soak(600), ["z2"]], scheduled=True, slot_ids=[])
@@ -369,7 +383,7 @@ async def test_skipping_a_phase_skips_the_rest_after_it_too() -> None:
 @pytest.mark.asyncio
 async def test_stop_during_a_rest_ends_the_run() -> None:
     calls: list[tuple[str, str]] = []
-    zones = {"z1": _zone("z1", 0)}
+    zones = {"z1": _zone("z1", INSTANT)}
     runtime = _runtime(_hass(calls), _installation(zones))
 
     await runtime.async_run_phases([["z1"], Soak(600), ["z1"]], scheduled=True, slot_ids=[])
@@ -385,7 +399,7 @@ async def test_stop_during_a_rest_ends_the_run() -> None:
 async def test_a_rest_with_nothing_behind_it_is_dropped() -> None:
     """stop_zone removed the last phase: the run ends now, not after the soak."""
     calls: list[tuple[str, str]] = []
-    zones = {"z1": _zone("z1", 60), "z2": _zone("z2", 0)}
+    zones = {"z1": _zone("z1", 60), "z2": _zone("z2", INSTANT)}
     runtime = _runtime(_hass(calls), _installation(zones))
 
     await runtime.async_run_phases([["z1"], Soak(600), ["z2"]], scheduled=True, slot_ids=[])
@@ -416,7 +430,7 @@ async def test_a_zone_can_still_be_stopped_around_a_rest() -> None:
 @pytest.mark.asyncio
 async def test_run_this_slot_now_uses_the_slots_program() -> None:
     calls: list[tuple[str, str]] = []
-    zones = {"z1": _zone("z1", 0)}
+    zones = {"z1": _zone("z1", INSTANT)}
     slot = _slot(["z1"], repetitions=2, soak_between_repetitions_min=1)
     inst = _installation(zones, schedule_slots=[slot])
     runtime = _runtime(_hass(calls), inst)

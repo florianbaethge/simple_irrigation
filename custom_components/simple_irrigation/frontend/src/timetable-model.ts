@@ -1,6 +1,9 @@
 /** Weekly timetable entries from schedule slots (local wall clock, Mon=0 … Sun=6). */
 
 import { computePhases, cycleSoakOf, expandProgram, isSoak, type ZonePhaseInput } from "./schedule-phases";
+import { inSeason, seasonFor } from "./season";
+import { zoneMinutesOf } from "./zone-minutes-input";
+import { orderedZoneIds } from "./zone-order";
 
 /** 0 = 00:00–08:00, 1 = 08:00–16:00, 2 = 16:00–24:00 (by segment start time). */
 export type TimetableBucket = 0 | 1 | 2;
@@ -33,8 +36,10 @@ export interface TimetableEntry {
   startMin: number;
   endMin: number;
   bucket: TimetableBucket;
-  /** Plan, slot, and zone all on — theme “active” styling. */
+  /** Plan, slot, and zone all on, and in season today — theme “active” styling. */
   enabled: boolean;
+  /** The slot is out of season today; the timetable shows it like one switched off. */
+  offSeason: boolean;
   mode: string;
   slotId: string;
   weekParity: WeekParity;
@@ -58,6 +63,20 @@ export function durationForMode(
   return Math.max(0, Number(zone.duration_normal_min ?? 0));
 }
 
+/**
+ * Minutes a zone waters in a slot: the slot's fixed minutes for it, else what
+ * the mode says (`ScheduleSlot.duration_for` in models.py).
+ */
+export function slotZoneMinutes(
+  zoneId: string,
+  zone: Record<string, unknown> | undefined,
+  mode: string,
+  fixed?: Record<string, number>
+): number {
+  const own = fixed?.[zoneId];
+  return typeof own === "number" ? Math.max(0, own) : durationForMode(zone, mode);
+}
+
 /** Bucket by wall-clock hour of segment start ([0,8), [8,16), [16,24)). */
 /**
  * Litres a run of these zones is expected to use in `mode`, from the zones'
@@ -68,7 +87,8 @@ export function plannedLitres(
   zoneIds: string[],
   zones: Record<string, Record<string, unknown> | undefined> | undefined,
   mode: string,
-  repetitions = 1
+  repetitions = 1,
+  fixed?: Record<string, number>
 ): number | null {
   if (!zones) return null;
   let total = 0;
@@ -79,7 +99,7 @@ export function plannedLitres(
     const rate = Number(z.flow_rate_lpm ?? 0);
     if (!Number.isFinite(rate) || rate <= 0) continue;
     known = true;
-    total += rate * durationForMode(z, mode) * Math.max(1, repetitions);
+    total += rate * slotZoneMinutes(zid, z, mode, fixed) * Math.max(1, repetitions);
   }
   return known ? total : null;
 }
@@ -171,6 +191,8 @@ export function buildTimetableEntries(installation: Record<string, unknown>): Ti
       ? (slot.zone_ids_ordered as string[])
       : [];
 
+    const fixed = zoneMinutesOf(slot);
+    const offSeason = !inSeason(seasonFor(installation, slot), new Date());
     const slotStartMin = parseTimeLocalToMinutes(timeLocal);
     const phases = computePhases(ordered, zonesById, maxParallel, false);
     // Cycle & Soak: every pass draws its own blocks, a rest just moves the cursor.
@@ -191,7 +213,7 @@ export function buildTimetableEntries(installation: Record<string, unknown>): Ti
           const z = zones[zid];
           if (!z) continue;
           if (Boolean(z.enabled ?? true)) {
-            const d = durationForMode(z, mode);
+            const d = slotZoneMinutes(zid, z, mode, fixed);
             phaseLenMin = Math.max(phaseLenMin, d);
           }
         }
@@ -200,7 +222,9 @@ export function buildTimetableEntries(installation: Record<string, unknown>): Ti
           const z = zones[zid];
           if (!z) continue;
           const zoneEnabled = Boolean(z.enabled ?? true);
-          const dur = durationForMode(z, mode);
+          const dur = slotZoneMinutes(zid, z, mode, fixed);
+          // No minutes, no water: the run leaves this zone closed.
+          if (dur <= 0) continue;
           const startMin = phaseStart;
           const endMin = phaseStart + dur;
           entries.push({
@@ -209,7 +233,8 @@ export function buildTimetableEntries(installation: Record<string, unknown>): Ti
             startMin,
             endMin,
             bucket: bucketFromStartMin(startMin),
-            enabled: planEnabled && slotEnabled && zoneEnabled,
+            enabled: planEnabled && slotEnabled && zoneEnabled && !offSeason,
+            offSeason,
             mode,
             slotId,
             weekParity,
@@ -225,9 +250,7 @@ export function buildTimetableEntries(installation: Record<string, unknown>): Ti
 }
 
 export function zoneRowOrder(installation: Record<string, unknown>): string[] {
-  const zones = installation?.zones as Record<string, unknown> | undefined;
-  if (!zones) return [];
-  return Object.keys(zones);
+  return orderedZoneIds(installation);
 }
 
 export function zoneDisplayName(

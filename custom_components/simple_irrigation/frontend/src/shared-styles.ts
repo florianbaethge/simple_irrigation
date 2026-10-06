@@ -527,9 +527,21 @@ export const sharedStyles = css`
     min-width: 0;
   }
   .compact-row-detail {
-    padding: 0 14px 14px;
+    padding: 12px 14px 14px;
     border-top: 1px solid var(--divider-color);
     margin-top: -2px;
+  }
+  /* A small heading inside a row's detail, over what it introduces. */
+  .detail-caption {
+    margin: 14px 0 6px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--secondary-text-color);
+  }
+  .compact-row-detail > .detail-caption:first-child {
+    margin-top: 0;
   }
 
   /* Icon-only button with a guaranteed hit area + focus ring. */
@@ -638,15 +650,27 @@ export const sharedStyles = css`
   }
 
   /* 14-day run strip (rhythm preview + expanded rhythm rows). */
+  /* Two weeks in a row; on a phone one week under the other, so a day always
+     sits under the same day and no leftover cell is stretched across the row. */
   .day-strip {
-    display: flex;
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: repeat(14, minmax(0, 1fr));
     gap: 4px;
     margin: 6px 0;
   }
+  @container siview (max-width: 700px) {
+    /* Two rows need air between them, and a cell a finger's worth of height. */
+    .day-strip {
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+      gap: 6px;
+    }
+    .day-strip .day-cell {
+      height: 42px;
+      font-size: 0.68rem;
+    }
+  }
   .day-strip .day-cell {
-    flex: 1 1 calc(100% / 14 - 4px);
-    min-width: 30px;
+    min-width: 0;
     height: 34px;
     border-radius: 7px;
     border: 1px solid var(--divider-color);
@@ -672,6 +696,12 @@ export const sharedStyles = css`
     background: color-mix(in srgb, var(--primary-color) 80%, var(--card-background-color));
     border-color: color-mix(in srgb, var(--primary-color) 45%, transparent);
     color: var(--text-primary-color, #fff);
+  }
+  /* Due by its rhythm, but out of season: drawn, not filled. */
+  .day-strip .day-cell.off {
+    border-style: dashed;
+    border-color: color-mix(in srgb, var(--primary-color) 55%, transparent);
+    background: transparent;
   }
   .day-strip .day-cell.today {
     outline: 2px solid var(--primary-color);
@@ -740,6 +770,11 @@ export const sharedStyles = css`
     outline-offset: 2px;
   }
   @container siview (max-width: 700px) {
+    /* A row's name is the one thing a phone must not cut off. */
+    .compact-row-title .ellipsis {
+      white-space: normal;
+      overflow-wrap: anywhere;
+    }
     .fab {
       display: inline-flex;
     }
@@ -751,6 +786,34 @@ export const sharedStyles = css`
     .only-narrow {
       display: none !important;
     }
+    /* With the phone's drawer gone, the caption is the first thing in the detail. */
+    .only-narrow + .detail-caption {
+      margin-top: 0;
+    }
+  }
+  /* What a row can do, behind its chevron on a phone: side by side. */
+  .drawer-actions {
+    display: flex;
+    gap: 8px;
+    padding: 12px 0 0;
+  }
+  .drawer-actions .btn-outline {
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 44px;
+    margin-top: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 8px 10px;
+    font-size: 0.9rem;
+    --mdc-icon-size: 18px;
+  }
+  /* Details of a row that sit in its meta line on a wide screen and behind
+     its chevron on a phone: the wrapper itself takes no part in the layout. */
+  .meta-extra {
+    display: contents;
   }
 
   @media (prefers-reduced-motion: reduce) {

@@ -1,0 +1,43 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to build the zip for, e.g. v1.13.0"
+        required: true
+
+permissions: {}
+
+jobs:
+  zip:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: refs/tags/${{ env.TAG }}
+      - name: Build simple_irrigation.zip
+        run: |
+          version="$(jq -r .version custom_components/simple_irrigation/manifest.json)"
+          if [ "v$version" != "$TAG" ]; then
+            echo "::error::manifest.json version $version does not match tag $TAG"
+            exit 1
+          fi
+          # HACS expects the integration files at the zip root (hacs.json: zip_release).
+          git archive --format=zip -o simple_irrigation.zip "HEAD:custom_components/simple_irrigation"
+          unzip -l simple_irrigation.zip | tail -n 1
+      - name: Attach to release
+        run: |
+          if gh release view "$TAG" --json assets --jq '.assets[].name' | grep -qx simple_irrigation.zip; then
+            echo "simple_irrigation.zip is already attached to $TAG, nothing to do."
+            exit 0
+          fi
+          gh release upload "$TAG" simple_irrigation.zip

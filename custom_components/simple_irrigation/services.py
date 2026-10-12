@@ -21,6 +21,7 @@ from .const import (
     ATTR_UNTIL,
     ATTR_ZONE_ID,
     DOMAIN,
+    MAX_MANUAL_DURATION_MIN,
     MAX_ZONE_DURATION_MIN,
     MODES,
     SERVICE_CLEAR_PAUSE,
@@ -188,7 +189,13 @@ async def async_setup_services(hass: HomeAssistant) -> None:
     async def handle_pause_until(call: ServiceCall) -> None:
         data = _get_domain_data(hass, call)
         coordinator = data["coordinator"]
-        until = call.data[ATTR_UNTIL]
+        # The date picker of an action hands over a time without a zone: it is
+        # meant in Home Assistant's. Stored as it came, it could not be compared
+        # with "now" any more, and no schedule would have run again.
+        try:
+            until = dt_util.as_utc(call.data[ATTR_UNTIL])
+        except OverflowError as err:
+            raise ServiceValidationError("until is out of range") from err
         inst = coordinator.installation
         inst.pause_until = until
         await coordinator.async_update_installation(inst)
@@ -226,7 +233,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             {
                 vol.Required(ATTR_ZONE_ID): cv.string,
                 vol.Required(ATTR_DURATION_MIN): vol.All(
-                    not_bool, vol.Coerce(int), vol.Range(min=1)
+                    not_bool, vol.Coerce(int), vol.Range(min=1, max=MAX_MANUAL_DURATION_MIN)
                 ),
                 vol.Optional(ATTR_CONFIG_ENTRY_ID): cv.string,
             }

@@ -177,7 +177,11 @@ class IrrigationScheduler:
 
         if pause_until and now < pause_until:
             # Next eligible after pause
-            global_next, zone_next = compute_next_runs(inst, pause_until, tz)
+            try:
+                global_next, zone_next = compute_next_runs(inst, pause_until, tz)
+            except OverflowError:
+                # A pause to the end of the calendar: nothing comes after it.
+                global_next, zone_next = None, {zid: None for zid in inst.zones}
 
         rs.next_run_global = global_next
         rs.next_run_per_zone = zone_next
@@ -195,7 +199,16 @@ class IrrigationScheduler:
     async def _async_reschedule(self) -> None:
         async with self._lock:
             self._cancel_track()
-            await self._async_update_next_runs_in_state()
+            try:
+                await self._async_update_next_runs_in_state()
+            except Exception:  # noqa: BLE001 - without a timer no schedule runs again
+                _LOGGER.exception("Could not work out the next run; trying again in a minute")
+                self._unsub = async_track_point_in_time(
+                    self.hass,
+                    self._async_retry_reschedule,
+                    dt_util.utcnow() + timedelta(minutes=1),
+                )
+                return
 
             inst = self.coordinator.installation
             rs = self.coordinator.run_state
@@ -220,6 +233,10 @@ class IrrigationScheduler:
                 when_utc,
             )
 
+    async def _async_retry_reschedule(self, _now: datetime) -> None:
+        self._unsub = None
+        await self._async_reschedule()
+
     async def _async_fire_at(self, _now: datetime) -> None:
         """Called at scheduled time — match slots and start run."""
         self._unsub = None
@@ -237,11 +254,14 @@ class IrrigationScheduler:
             if pause_until and now < pause_until:
                 return
 
+            # A minute back in real time, not by the wall clock: at 03:00 on the
+            # night the clocks go forward, "02:59" lies an hour ahead.
+            after = dt_util.as_utc(now) - timedelta(minutes=1)
             due_slots: list[ScheduleSlot] = []
             for slot in inst.schedule_slots:
                 if not slot.enabled:
                     continue
-                nxt = next_slot_fire(inst, slot, now - timedelta(minutes=1), tz)
+                nxt = next_slot_fire(inst, slot, after, tz)
                 if nxt is None:
                     continue
                 # By timestamp: the difference of two wall clocks is off by an

@@ -7,6 +7,8 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 from typing import Any
 
+from homeassistant.util import dt as dt_util
+
 from .const import (
     DEFAULT_WAIT_MAX_MIN,
     MAX_REPETITIONS,
@@ -641,7 +643,9 @@ class Installation:
         pause_raw = data.get("pause_until")
         pause_until: datetime | None = None
         if pause_raw:
-            pause_until = datetime.fromisoformat(pause_raw)
+            # 1.13.0 stored what the pause_until action was given, zone or not;
+            # without one it was meant in Home Assistant's.
+            pause_until = dt_util.as_utc(datetime.fromisoformat(pause_raw))
 
         zones_data = data.get("zones") or {}
         zones: dict[str, Zone] = {}

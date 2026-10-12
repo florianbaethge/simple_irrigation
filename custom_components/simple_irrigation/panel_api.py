@@ -552,8 +552,9 @@ class SimpleIrrigationPanelGlobalView(HomeAssistantView):
                 inst.pause_until = None
             else:
                 try:
-                    inst.pause_until = datetime.fromisoformat(str(raw))
-                except ValueError:
+                    # Without a zone it is meant in Home Assistant's.
+                    inst.pause_until = dt_util.as_utc(datetime.fromisoformat(str(raw)))
+                except (ValueError, OverflowError):
                     return self.json({"success": False, "error": "invalid_pause_until"}, status_code=400)
 
         await coord.async_update_installation(inst)

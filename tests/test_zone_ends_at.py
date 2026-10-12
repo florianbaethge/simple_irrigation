@@ -19,6 +19,7 @@ from custom_components.simple_irrigation.runtime import IrrigationRuntime
 def _runtime(zone: Zone) -> IrrigationRuntime:
     hass = MagicMock()
     hass.services.async_call = AsyncMock()
+    hass.async_create_task = lambda coro, name=None: asyncio.ensure_future(coro)
     hass.bus.async_fire = MagicMock()
 
     coordinator = MagicMock()

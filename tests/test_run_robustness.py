@@ -9,11 +9,13 @@ from __future__ import annotations
 
 import asyncio
 import time
-from unittest.mock import AsyncMock, MagicMock
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from custom_components.simple_irrigation.const import (
+    MAX_MANUAL_DURATION_MIN,
     RUN_STATE_ERROR,
     RUN_STATE_IDLE,
     RUN_STATE_PREPARING,
@@ -34,6 +36,7 @@ from custom_components.simple_irrigation.scheduler import program_for_slot
 
 VALVE = "valve.drip_main"
 PUMP = "switch.pump"
+RUNTIME = "custom_components.simple_irrigation.runtime"
 
 
 def zone(zid: str, *supply: str, **kwargs) -> Zone:
@@ -57,6 +60,9 @@ class Garden:
         self.failing_on: set[str] = set()
         self.failing_off: set[str] = set()
         self.slow_off: dict[str, float] = {}
+        # Entities Home Assistant cannot reach: it drops a call to them, silently.
+        self.unavailable: set[str] = set()
+        self.calls: list[tuple[str, str, str]] = []
         self.events: list[tuple[str, dict]] = []
         self.inst = Installation(
             installation_id="i1",
@@ -69,7 +75,9 @@ class Garden:
         self.hass = MagicMock()
         self.hass.services.async_call = AsyncMock(side_effect=self._call)
         self.hass.async_create_task = lambda coro, name=None: asyncio.ensure_future(coro)
-        self.hass.states.get = lambda _entity_id: None
+        self.hass.states.get = lambda entity_id: (
+            SimpleNamespace(state="unavailable") if entity_id in self.unavailable else None
+        )
         self.hass.bus.async_fire = lambda name, data=None: self.events.append((name, data or {}))
         self.hass.is_running = True
         self.coordinator = MagicMock()
@@ -84,9 +92,12 @@ class Garden:
     def rs(self) -> RunState:
         return self.coordinator.run_state
 
-    async def _call(self, _domain, service, data=None, **_kwargs) -> None:
+    async def _call(self, domain, service, data=None, **_kwargs) -> None:
         entity_id = (data or {}).get("entity_id", "")
-        opening = service in ("turn_on", "open_valve")
+        self.calls.append((domain, service, entity_id))
+        if entity_id in self.unavailable:
+            return
+        opening = service in ("turn_on", "open_valve") or service.startswith("start")
         if opening and entity_id in self.failing_on:
             raise RuntimeError(f"{entity_id} cannot open")
         if not opening and entity_id in self.failing_off:
@@ -124,6 +135,7 @@ class Garden:
             *self.inst.zones.values(), pre_start_switches=list(self.inst.pre_start_switches)
         )
         fresh.on = set(self.on)
+        fresh.unavailable = set(self.unavailable)
         fresh.coordinator.run_state = RunState.from_dict(self.rs.to_dict())
         return fresh
 
@@ -563,3 +575,141 @@ async def test_a_zone_added_while_a_slot_run_prepares_follows_the_slot() -> None
     assert [list(step) for step in runtime._phase_queue] == [["a"], ["b"]]
     assert garden.rs.upcoming_phases == [["a"], ["b"], ["c"]]
     await runtime.async_stop_all()
+
+
+# --- found by the audit after 1.13 ------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_a_stop_whose_caller_goes_away_is_still_carried_out() -> None:
+    """A closed tab or a dropped connection cancels the request, not the Stop."""
+    garden = Garden(zone("a"), pre_start_switches=[PUMP])
+    garden.slow_off = {"switch.a": 0.2}
+    garden.hold("a")
+    await garden.runtime.async_run_zone("a", 10)
+    await until(lambda: "switch.a" in garden.on)
+
+    stop = asyncio.ensure_future(garden.runtime.async_stop_all())
+    await asyncio.sleep(0.05)
+    stop.cancel()
+
+    await until(lambda: garden.rs.run_state == RUN_STATE_IDLE)
+    assert garden.on == set()
+    assert not garden.runtime.is_busy()
+    assert await garden.runtime.async_run_phases([["a"]], scheduled=True, slot_ids=[])
+    await garden.runtime.async_stop_all()
+
+
+@pytest.mark.asyncio
+async def test_a_stop_cancelled_during_the_post_run_script_does_not_leave_the_run_stopping() -> None:
+    garden = Garden(zone("a"))
+    garden.hold("a")
+    post_run = asyncio.Event()
+    garden.runtime._async_post_run = post_run.wait
+    await garden.runtime.async_run_zone("a", 10)
+    await until(lambda: "switch.a" in garden.on)
+
+    stop = asyncio.ensure_future(garden.runtime.async_stop_all())
+    await until(lambda: garden.on == set())
+    stop.cancel()
+    post_run.set()
+
+    await until(lambda: garden.rs.run_state == RUN_STATE_IDLE)
+    assert not garden.runtime.is_busy()
+
+
+def _start_service_zone(*outputs: str) -> Zone:
+    return Zone(
+        zone_id="a",
+        name="a",
+        switch_entity_ids=list(outputs),
+        duration_normal_min=1,
+        start_service="rainbird.start_irrigation",
+        duration_field="duration",
+        duration_unit="minutes",
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_start_service_that_fails_for_one_output_leaves_none_open() -> None:
+    garden = Garden(_start_service_zone("switch.a1", "switch.a2"))
+    garden.failing_on = {"switch.a2"}
+
+    await garden.runtime.async_run_phases([["a"]], scheduled=True, slot_ids=[])
+    await until(lambda: garden.rs.run_state == RUN_STATE_ERROR)
+
+    assert garden.on == set()
+    assert ("switch", "turn_off", "switch.a1") in garden.calls
+
+
+@pytest.mark.asyncio
+async def test_a_valve_out_of_reach_at_the_end_is_not_taken_for_closed() -> None:
+    """Home Assistant drops the call without an error; the water runs on."""
+    garden = Garden(zone("a"))
+    release = garden.hold("a")
+    with patch(f"{RUNTIME}.async_track_state_change_event") as track:
+        await garden.runtime.async_run_phases([["a"]], scheduled=True, slot_ids=[])
+        await until(lambda: "switch.a" in garden.on)
+        garden.unavailable = {"switch.a"}
+        release.set()
+        await until(garden.runtime._task.done)
+
+        assert "switch.a" in garden.on
+        assert garden.rs.run_state == RUN_STATE_ERROR
+        assert garden.rs.last_error == "Could not turn off: switch.a"
+
+        # The valve is back: it is closed without waiting for the next run.
+        garden.unavailable = set()
+        watched, came_back = track.call_args.args[1:3]
+        assert watched == ["switch.a"]
+        await came_back(SimpleNamespace(data={"entity_id": "switch.a"}))
+
+    assert garden.on == set()
+    assert garden.runtime._unclosed == set()
+    track.return_value.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_a_valve_still_out_of_reach_after_a_restart_is_closed_when_it_is_back() -> None:
+    garden = Garden(zone("a"))
+    garden.hold("a")
+    await garden.runtime.async_run_phases([["a"]], scheduled=True, slot_ids=[])
+    await until(lambda: garden.rs.active_zone_ids == ["a"])
+    garden.unavailable = {"switch.a"}
+
+    with patch(f"{RUNTIME}.async_track_state_change_event") as track:
+        fresh = await _crash(garden)
+        assert "switch.a" in fresh.on
+        assert fresh.rs.last_error == "Could not turn off: switch.a"
+
+        fresh.unavailable = set()
+        await track.call_args.args[2](SimpleNamespace(data={"entity_id": "switch.a"}))
+
+    assert fresh.on == set()
+
+
+@pytest.mark.asyncio
+async def test_a_group_is_switched_by_home_assistant_s_own_services() -> None:
+    """A group has no turn_on of its own; calling it failed every run."""
+    beds = Zone(zone_id="a", name="a", switch_entity_ids=["group.beds"], duration_normal_min=1)
+    garden = Garden(beds)
+
+    await garden.runtime.async_run_phases([["a"]], scheduled=True, slot_ids=[])
+    await until(garden.runtime._task.done)
+
+    assert garden.calls[0] == ("homeassistant", "turn_on", "group.beds")
+    assert ("homeassistant", "turn_off", "group.beds") in garden.calls
+    assert not any(domain == "group" for domain, _service, _entity in garden.calls)
+
+
+@pytest.mark.asyncio
+async def test_a_manual_duration_is_capped_at_a_day() -> None:
+    """Seconds handed over as minutes must not plan a valve open for weeks."""
+    garden = Garden(zone("a"))
+    garden.hold("a")
+
+    await garden.runtime.async_run_zone("a", 100_000)
+
+    assert garden.runtime._duration_overrides == {"a": MAX_MANUAL_DURATION_MIN}
+    await garden.runtime.async_stop_all()
+

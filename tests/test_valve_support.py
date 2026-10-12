@@ -38,40 +38,23 @@ def test_entity_domain_extraction():
 
 
 def test_service_selection_logic():
-    """Test the service selection logic for different domains."""
-    OUTPUT_DOMAIN_SERVICES = {
-        "valve": ("open_valve", "close_valve"),
-    }
-    
-    def get_turn_on_service(entity_id: str) -> tuple[str, str]:
+    """Which service switches an output of each domain."""
+    from custom_components.simple_irrigation.const import (
+        OUTPUT_DOMAIN_SERVICES,
+        OUTPUT_SERVICE_DOMAINS,
+    )
+
+    def services_for(entity_id: str) -> tuple[str, str, str]:
         domain = entity_id.split(".")[0]
-        if domain in OUTPUT_DOMAIN_SERVICES:
-            service_on, _service_off = OUTPUT_DOMAIN_SERVICES[domain]
-            return domain, service_on
-        else:
-            return domain, "turn_on"
-    
-    def get_turn_off_service(entity_id: str) -> tuple[str, str]:
-        domain = entity_id.split(".")[0]
-        if domain in OUTPUT_DOMAIN_SERVICES:
-            _service_on, service_off = OUTPUT_DOMAIN_SERVICES[domain]
-            return domain, service_off
-        else:
-            return domain, "turn_off"
-    
-    # Test valve entities use valve services
-    assert get_turn_on_service("valve.zone_1") == ("valve", "open_valve")
-    assert get_turn_off_service("valve.zone_1") == ("valve", "close_valve")
-    
-    # Test other entities use standard services
-    assert get_turn_on_service("switch.pump") == ("switch", "turn_on")
-    assert get_turn_off_service("switch.pump") == ("switch", "turn_off")
-    
-    assert get_turn_on_service("input_boolean.active") == ("input_boolean", "turn_on")
-    assert get_turn_off_service("input_boolean.active") == ("input_boolean", "turn_off")
-    
-    assert get_turn_on_service("group.garden") == ("group", "turn_on")
-    assert get_turn_off_service("group.garden") == ("group", "turn_off")
+        on, off = OUTPUT_DOMAIN_SERVICES.get(domain, ("turn_on", "turn_off"))
+        return OUTPUT_SERVICE_DOMAINS.get(domain, domain), on, off
+
+    assert services_for("valve.zone_1") == ("valve", "open_valve", "close_valve")
+    assert services_for("switch.pump") == ("switch", "turn_on", "turn_off")
+    assert services_for("input_boolean.active") == ("input_boolean", "turn_on", "turn_off")
+    # A group has no services of its own: Home Assistant's generic ones switch
+    # its members.
+    assert services_for("group.garden") == ("homeassistant", "turn_on", "turn_off")
 
 
 def test_domain_allowlist_logic():

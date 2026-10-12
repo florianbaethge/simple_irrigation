@@ -3,5 +3,5 @@
   "render_readme": true,
   "zip_release": true,
   "filename": "simple_irrigation.zip",
-  "homeassistant": "2024.1.0"
+  "homeassistant": "2026.4.0"
 }

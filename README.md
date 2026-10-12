@@ -23,7 +23,7 @@
 
 Outputs can be any mix of `switch`, `input_boolean`, `group` and `valve` entities. Zones can also use a **duration-aware start service** for irrigation integrations such as Rain Bird, Rachio, Hydrawise, B-hyve / Orbit and OpenSprinkler. A valve's own **hardware countdown** can be armed as a safety net for when Home Assistant is gone mid-run. Optional **pre-start** outputs (pump / master valve) fire first. Full **English**, **German**, **Italian**, **Dutch** and **French** translations. Responsive down to the Home Assistant companion app.
 
-**Requirements:** Home Assistant **2024.1** or newer.
+**Requirements:** Home Assistant **2026.4** or newer.
 
 ## Contents
 

@@ -49,6 +49,7 @@ def _runtime(
     hass = MagicMock()
     hass.is_running = started
     hass.services.async_call = AsyncMock(side_effect=_call)
+    hass.async_create_task = lambda coro, name=None: asyncio.ensure_future(coro)
     hass.states.get = lambda _entity_id: None
 
     coordinator = MagicMock()

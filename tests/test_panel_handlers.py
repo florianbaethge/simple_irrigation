@@ -9,6 +9,7 @@ behind when they do.
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock
@@ -17,6 +18,7 @@ import pytest
 from homeassistant.components.http import KEY_HASS
 from homeassistant.components.http.const import KEY_HASS_USER
 from homeassistant.exceptions import Unauthorized
+from homeassistant.util import dt as dt_util
 
 from custom_components.simple_irrigation import panel_api
 from custom_components.simple_irrigation.const import DOMAIN
@@ -467,6 +469,18 @@ async def test_the_installation_takes_season_and_waiting() -> None:
     assert status == 200
     assert [p.to_dict() for p in inst.season] == [{"from": "04-01", "to": "10-31"}]
     assert (inst.wait_when_busy, inst.wait_max_min) == (True, 45)
+
+
+async def test_a_pause_saved_without_a_time_zone_gets_home_assistant_s() -> None:
+    """Stored as it came it could not be compared with "now" any more."""
+    hass, coord = _garden()
+
+    status, _result = await _global(hass, {"pause_until": "2026-10-20T08:00"})
+
+    until = coord.installation.pause_until
+    assert status == 200
+    assert until.tzinfo is not None
+    assert until == dt_util.as_utc(datetime(2026, 10, 20, 8, 0))
 
 
 async def test_a_refused_settings_save_leaves_nothing_behind() -> None:

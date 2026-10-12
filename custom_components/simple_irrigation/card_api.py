@@ -31,6 +31,7 @@ from .const import (
     CARD_API_REGISTERED_KEY,
     CARD_MAX_NEXT_RUNS,
     DOMAIN,
+    MAX_MANUAL_DURATION_MIN,
     MODES,
     RUN_STATE_ERROR,
     RUN_STATE_IDLE,
@@ -595,7 +596,9 @@ def ws_subscribe(
         vol.Required("action"): vol.In(CARD_ACTIONS),
         vol.Optional("slot_id"): cv.string,
         vol.Optional("zone_ids"): [cv.string],
-        vol.Optional("duration_min"): vol.All(int, vol.Range(min=1, max=1440)),
+        vol.Optional("duration_min"): vol.All(
+            int, vol.Range(min=1, max=MAX_MANUAL_DURATION_MIN)
+        ),
         vol.Optional("hours"): vol.All(int, vol.Range(min=1, max=8760)),
         vol.Optional("until"): cv.string,
         vol.Optional("mode"): vol.In(MODES),

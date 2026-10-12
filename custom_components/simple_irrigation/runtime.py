@@ -9,8 +9,10 @@ from contextlib import suppress
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
+from homeassistant.const import STATE_UNAVAILABLE
 from homeassistant.exceptions import HomeAssistantError
-from homeassistant.core import CALLBACK_TYPE, HomeAssistant
+from homeassistant.core import CALLBACK_TYPE, Event, HomeAssistant
+from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.helpers.start import async_at_started
 from homeassistant.util import dt as dt_util
 
@@ -21,7 +23,10 @@ from .const import (
     EVENT_RUN_STARTED,
     EVENT_ZONE_FINISHED,
     EVENT_ZONE_STARTED,
+    MAX_MANUAL_DURATION_MIN,
     MAX_WAITING_RUNS,
+    OUTPUT_DOMAIN_SERVICES,
+    OUTPUT_SERVICE_DOMAINS,
     RUN_STATE_ERROR,
     RUN_STATE_IDLE,
     RUN_STATE_PREPARING,
@@ -119,6 +124,10 @@ class IrrigationRuntime:
         # Outputs a clean-up could not close. Every later clean-up tries them
         # again, and for as long as one is left the run has not ended cleanly.
         self._unclosed: set[str] = set()
+        # Of those, the ones Home Assistant could not reach at all. They are
+        # closed as soon as they are back.
+        self._unreachable: set[str] = set()
+        self._unsub_unreachable: CALLBACK_TYPE | None = None
         # Supply outputs this run has opened, and how many watering zones need
         # each of them. One that nobody needs any more is closed -- unless the
         # next phase is about to ask for it again.
@@ -212,6 +221,7 @@ class IrrigationRuntime:
         if not self.is_busy():
             outputs.extend(inst.pre_start_switches)
         failed: list[str] = []
+        unreachable: set[str] = set()
         for entity_id in dict.fromkeys(outputs):
             if entity_id in self._touched_entities:
                 continue
@@ -219,6 +229,10 @@ class IrrigationRuntime:
                 await self._async_switch_turn_off(entity_id)
             except Exception:  # noqa: BLE001 - one bad output must not strand the rest
                 failed.append(entity_id)
+                continue
+            if not self._reachable(entity_id):
+                failed.append(entity_id)
+                unreachable.add(entity_id)
         if not final:
             return
         self._interrupted = False
@@ -230,6 +244,10 @@ class IrrigationRuntime:
                 await self._async_disarm_countdown(countdown)
         if failed:
             _LOGGER.error("Could not turn off after a restart: %s", ", ".join(failed))
+            # The next clean-up tries them again, and one that was out of reach
+            # is closed when it is back.
+            self._unclosed.update(failed)
+            self._watch_unreachable(self._unreachable | unreachable)
             rs = self.coordinator.run_state
             rs.last_error = f"Could not turn off: {', '.join(failed)}"
             await self.coordinator.async_update_run_state(rs)
@@ -251,10 +269,15 @@ class IrrigationRuntime:
         rs = self.coordinator.run_state
         state, watering = rs.run_state, list(rs.active_zone_ids)
         try:
-            await asyncio.wait_for(self.async_stop_all(), SHUTDOWN_CLOSE_TIMEOUT_SEC)
+            await asyncio.wait_for(self._async_stop_all_counted(), SHUTDOWN_CLOSE_TIMEOUT_SEC)
         except TimeoutError:
             # The run is stuck somewhere, a script most likely. Close without it.
             _LOGGER.warning("Run did not stop in time for shutdown; closing its outputs")
+            run = self._task
+            if run and not run.done():
+                run.cancel()
+                # Let it go before its outputs are closed under it.
+                await asyncio.wait({run}, timeout=SHUTDOWN_CLOSE_TIMEOUT_SEC)
             with suppress(TimeoutError):
                 await asyncio.wait_for(
                     self._async_turn_off_all_tracked(), SHUTDOWN_CLOSE_TIMEOUT_SEC
@@ -269,6 +292,9 @@ class IrrigationRuntime:
         if self._unsub_started is not None:
             self._unsub_started()
             self._unsub_started = None
+        if self._unsub_unreachable is not None:
+            self._unsub_unreachable()
+            self._unsub_unreachable = None
         await self.async_stop_all()
         if self._task:
             self._task.cancel()
@@ -1103,6 +1129,7 @@ class IrrigationRuntime:
 
         await _sync_active()
 
+        ext_wait: asyncio.Task[bool] | None = None
         try:
             while tasks_by_zone:
                 if self._stop_event.is_set():
@@ -1156,6 +1183,8 @@ class IrrigationRuntime:
             # No await here: this is also where a cancelled run comes through.
             for task in (*tasks_by_zone.values(), *releases):
                 task.cancel()
+            if ext_wait is not None:
+                ext_wait.cancel()
 
         rs = self.coordinator.run_state
         rs.active_zone_ids = []
@@ -1358,8 +1387,10 @@ class IrrigationRuntime:
         explicit_target = zone.start_entity_id.strip()
         targets = [explicit_target] if explicit_target else outputs
 
-        await asyncio.gather(*(_start_target(eid) for eid in targets))
+        # Before the call, not after it: a start that fails for one output, or
+        # a Stop while the controller is still answering, must find them all.
         self._touched_entities.update(outputs)
+        await asyncio.gather(*(_start_target(eid) for eid in targets))
         await self._async_wait_zone_duration(duration_min * 60, zone.zone_id)
         await asyncio.gather(*(self._async_switch_turn_off(eid) for eid in outputs))
         return True
@@ -1377,6 +1408,9 @@ class IrrigationRuntime:
 
         mode = inst.mode
         dur = duration_min if duration_min is not None else zone.duration_for_mode(mode)
+        # Whoever calls this: seconds handed over as minutes must not leave a
+        # valve open for weeks.
+        dur = min(dur, MAX_MANUAL_DURATION_MIN)
 
         async with self._run_lock:
             rs = self.coordinator.run_state
@@ -1467,11 +1501,13 @@ class IrrigationRuntime:
         if tz is None:
             return
         now = dt_util.now()
+        # In real time, not by the wall clock (see the scheduler).
+        after = dt_util.as_utc(now) - timedelta(minutes=2)
         due_slots = []
         for slot in inst.schedule_slots:
             if not slot.enabled:
                 continue
-            nxt = next_slot_fire(inst, slot, now - timedelta(minutes=2), tz)
+            nxt = next_slot_fire(inst, slot, after, tz)
             if nxt is None:
                 continue
             if abs(now.timestamp() - nxt.timestamp()) < 120:
@@ -1572,7 +1608,15 @@ class IrrigationRuntime:
             await self.coordinator.async_update_run_state(rs)
 
     async def async_stop_all(self) -> None:
-        """Signal stop and turn off outputs. Whatever waited for its turn is off too."""
+        """Signal stop and turn off outputs. Whatever waited for its turn is off too.
+
+        In a task of its own: whoever asks for a Stop may be gone before it is
+        done -- a browser tab closed, a script cut off -- and a Stop left half
+        done leaves valves open and the run on "stopping" for good.
+        """
+        await asyncio.shield(self.hass.async_create_task(self._async_stop_all_counted()))
+
+    async def _async_stop_all_counted(self) -> None:
         self._stopping_all += 1
         try:
             self._drop_waiting(SKIP_STOPPED)
@@ -1585,10 +1629,12 @@ class IrrigationRuntime:
         self._zone_stop_requests.clear()
         stopped = self._task
         if stopped and not stopped.done():
-            try:
-                await asyncio.wait_for(stopped, timeout=300)
-            except TimeoutError:
+            # wait(), not wait_for(): that hands a cancellation of this Stop on
+            # to the run, in the middle of closing its outputs.
+            _done, pending = await asyncio.wait({stopped}, timeout=300)
+            if pending:
                 stopped.cancel()
+                await asyncio.wait({stopped}, timeout=10)
         # Once more, in case the run could not close up itself. Under the lock
         # every start takes: none slips in between, to have its pump switched
         # off and its state set to idle under it.
@@ -1663,47 +1709,58 @@ class IrrigationRuntime:
             _LOGGER.warning("Could not clear countdown %s", entity_id, exc_info=True)
 
     async def _async_switch_turn_on(self, entity_id: str) -> None:
-        from .const import OUTPUT_DOMAIN_SERVICES
-        
         self._touched_entities.add(entity_id)
-        domain = entity_id.split(".")[0]
-        
-        if domain in OUTPUT_DOMAIN_SERVICES:
-            service_on, _service_off = OUTPUT_DOMAIN_SERVICES[domain]
-            await self.hass.services.async_call(
-                domain,
-                service_on,
-                {"entity_id": entity_id},
-                blocking=True,
-            )
-        else:
-            await self.hass.services.async_call(
-                domain,
-                "turn_on",
-                {"entity_id": entity_id},
-                blocking=True,
-            )
+        await self._async_switch(entity_id, on=True)
 
     async def _async_switch_turn_off(self, entity_id: str) -> None:
-        from .const import OUTPUT_DOMAIN_SERVICES
+        await self._async_switch(entity_id, on=False)
 
+    async def _async_switch(self, entity_id: str, *, on: bool) -> None:
         domain = entity_id.split(".")[0]
+        services = OUTPUT_DOMAIN_SERVICES.get(domain, ("turn_on", "turn_off"))
+        await self.hass.services.async_call(
+            OUTPUT_SERVICE_DOMAINS.get(domain, domain),
+            services[0 if on else 1],
+            {"entity_id": entity_id},
+            blocking=True,
+        )
 
-        if domain in OUTPUT_DOMAIN_SERVICES:
-            _service_on, service_off = OUTPUT_DOMAIN_SERVICES[domain]
-            await self.hass.services.async_call(
-                domain,
-                service_off,
-                {"entity_id": entity_id},
-                blocking=True,
+    def _reachable(self, entity_id: str) -> bool:
+        """Whether a call to this output gets anywhere.
+
+        Home Assistant drops a call to an unavailable entity without an error:
+        the close "succeeds" and the valve stays as it is.
+        """
+        state = self.hass.states.get(entity_id)
+        return state is None or state.state != STATE_UNAVAILABLE
+
+    def _watch_unreachable(self, entity_ids: set[str]) -> None:
+        """Close these outputs as soon as Home Assistant can reach them again."""
+        if self._unsub_unreachable is not None:
+            self._unsub_unreachable()
+            self._unsub_unreachable = None
+        self._unreachable = set(entity_ids)
+        if self._unreachable:
+            self._unsub_unreachable = async_track_state_change_event(
+                self.hass, sorted(self._unreachable), self._async_close_returned
             )
-        else:
-            await self.hass.services.async_call(
-                domain,
-                "turn_off",
-                {"entity_id": entity_id},
-                blocking=True,
-            )
+
+    async def _async_close_returned(self, event: Event) -> None:
+        """An output that was out of reach when it had to close has a state again."""
+        entity_id = event.data["entity_id"]
+        if entity_id not in self._unreachable or not self._reachable(entity_id):
+            return
+        if entity_id in self._touched_entities:
+            # A run under way holds it; its own clean-up closes it.
+            return
+        try:
+            await self._async_switch_turn_off(entity_id)
+        except Exception:  # noqa: BLE001 - it stays on the list for the next clean-up
+            _LOGGER.exception("Could not turn off %s after it came back", entity_id)
+            return
+        _LOGGER.warning("%s is back and has been turned off", entity_id)
+        self._unclosed.discard(entity_id)
+        self._watch_unreachable(self._unreachable - {entity_id})
 
     async def _async_turn_off_all_tracked(self) -> list[str]:
         """Close everything this run touched; returns what would not close. Never raises.
@@ -1726,13 +1783,24 @@ class IrrigationRuntime:
             + list(inst.pre_start_switches)
         )
         failed: list[str] = []
+        unreachable: set[str] = set()
         for entity_id in pending:
             try:
                 await self._async_switch_turn_off(entity_id)
             except Exception:  # noqa: BLE001 - one bad output must not strand the rest
                 _LOGGER.exception("Could not turn off %s during cleanup", entity_id)
                 failed.append(entity_id)
+                continue
+            if not self._reachable(entity_id):
+                _LOGGER.error(
+                    "%s is unavailable and could not be turned off; "
+                    "it is turned off as soon as it is back",
+                    entity_id,
+                )
+                failed.append(entity_id)
+                unreachable.add(entity_id)
         self._unclosed = set(failed)
+        self._watch_unreachable(unreachable)
         self._touched_entities.clear()
         self._forget_supplies()
         for entity_id in list(self._armed_countdowns):

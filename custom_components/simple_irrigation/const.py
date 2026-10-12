@@ -45,6 +45,12 @@ OUTPUT_DOMAIN_SERVICES: Final = {
     "valve": ("open_valve", "close_valve"),
 }
 
+# Domains whose outputs are switched by another domain's services. A group has
+# none of its own; Home Assistant's generic ones switch its members.
+OUTPUT_SERVICE_DOMAINS: Final = {
+    "group": "homeassistant",
+}
+
 # Domain of the optional pre-start / post-run scripts (see SCRIPT_TIMEOUT_SEC).
 SCRIPT_DOMAIN: Final = "script"
 
@@ -77,6 +83,8 @@ MAX_REPETITIONS: Final = 10
 # Longest a zone may run in one go, wherever the number comes from: the zone's
 # own runtimes, a slot's fixed minutes, the set_zone_duration service.
 MAX_ZONE_DURATION_MIN: Final = 240
+# Longest a manual run may be asked for with its own duration: a day.
+MAX_MANUAL_DURATION_MIN: Final = 1440
 # Longest a supply output may lead or trail its zone, like the pre-start delay.
 MAX_SUPPLY_DELAY_SEC: Final = 3600
 

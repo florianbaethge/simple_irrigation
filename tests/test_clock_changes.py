@@ -70,6 +70,22 @@ async def test_a_slot_in_the_hour_that_is_skipped_in_spring_still_runs() -> None
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("time_local", ["02:00", "03:00"])
+async def test_a_slot_at_the_edge_of_the_skipped_hour_still_runs(time_local: str) -> None:
+    """At 03:00 that night "a minute ago" by the wall clock is 02:59 -- an hour ahead."""
+    inst = _inst(time_local)
+    before = local(datetime(2026, 3, 28, 20, 0, tzinfo=UTC))
+    nxt, _ = compute_next_runs(inst, before, TZ)
+    timer_utc = dt_util.as_utc(nxt)
+    assert timer_utc == datetime(2026, 3, 29, 1, 0, tzinfo=UTC)
+    scheduler, runtime = _scheduler(inst)
+    now = local(timer_utc + timedelta(milliseconds=50))
+    with patch(f"{SCHEDULER}.dt_util.now", return_value=now), patch(f"{SCHEDULER}.async_track_point_in_time"):
+        await scheduler._async_fire_at(now)
+    assert runtime.async_run_phases.await_count == 1
+
+
+@pytest.mark.asyncio
 async def test_a_reschedule_in_the_repeated_hour_arms_no_timer_in_the_past() -> None:
     inst = _inst("02:30")
     scheduler, runtime = _scheduler(inst)

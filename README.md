@@ -25,55 +25,77 @@ Outputs can be any mix of `switch`, `input_boolean`, `group` and `valve` entitie
 
 **Requirements:** Home Assistant **2024.1** or newer.
 
----
+## Contents
 
-## The panel at a glance
+- [How it works](#how-it-works)
+- [The panel](#the-panel)
+- [Dashboard card](#dashboard-card)
+- [Installation](#installation)
+- [First-time setup](#first-time-setup)
+- [Entities](#entities)
+- [Services](#services)
+- [Events](#events)
+- [Documentation](#documentation)
+- [Logs and debugging](#logs-and-debugging)
+- [Development](#development)
+- [Contributing and support](#contributing-and-support)
+
+## How it works
+
+You build two things in the panel — **zones** and **schedules** — and Simple Irrigation runs them.
+
+- **A zone** is one thing that gets watered: a name, one or more output entities, and a runtime for each watering mode (Eco / Normal / Extra). Optional extras sit behind **More options**: a supply only this zone needs, litres per run, a duration-aware start service, a hardware countdown.
+- **A schedule** says when zones water: a **cycle** from the wizard (daily, every 2 or 3 days, x days per week, every 2 weeks …) or a single **slot**, with an ordered zone list. Optional per schedule: conditions, Cycle & Soak, a season, fixed minutes per zone, its own scripts.
+
+Every start — scheduled or by hand — goes through the same pipeline, one run at a time:
+
+```
+pre-start script  →  pre-start outputs on  →  pre-start delay  →  zones  →  all outputs off  →  post-run script
+```
+
+The zones of a run are grouped into **phases** by the *max parallel* limit and the *exclusive* flags. The installation's **watering mode** picks each zone's runtime, unless the schedule fixes its minutes.
+
+The details: [Zones](https://github.com/florianbaethge/simple_irrigation/blob/main/docs/zones.md) · [Schedules](https://github.com/florianbaethge/simple_irrigation/blob/main/docs/schedules.md) · [Runs: modes, pre-start and scripts](https://github.com/florianbaethge/simple_irrigation/blob/main/docs/runs.md) · [Water use](https://github.com/florianbaethge/simple_irrigation/blob/main/docs/water.md).
+
+## The panel
 
 | Tab | What it does |
 |-----|----------------|
-| **Overview** | Live run state with a countdown to the next run, the next few upcoming runs (duration and expected litres), the active watering mode, water used so far while running, and quick actions: *Run next slot now*, *Skip today*, *Pause 48 h* (plus *Stop* / *Skip phase* while running). Shows **Soaking** with a countdown while a run rests. |
-| **Zones** | Named zones with one or more output entities, Eco / Normal / Extra runtimes, an **enabled** toggle and **exclusive** flag. An optional **supply** — an upstream valve or a pump only this zone needs. Optional **water** tracking per zone: a meter entity or a flow rate, shown as litres per run and last run. A **start service** section supports integration-specific start services that receive the runtime, and a valve's own **hardware countdown** can be armed as a safety net. Filter by **All / Enabled / Issues**, reorder zones, run a zone now, and see how many cycles use it. |
-| **Schedule** | Your watering **cycles** and single slots. A guided **New irrigation cycle** wizard (daily, every 2/3 days, x-per-week, weekly, every 2 weeks, custom), with one or several start times a day. Every row expands to a **14-day run strip**; multi-slot cycles show their members and can be detached. Per-slot **conditions** gate a run on soil moisture, rain, tank level or any other entity, per-slot **scripts** override the installation's pre-start / post-run script, **Cycle & Soak** repeats the slot's phases with rests in between, a **season** limits it to periods of the year, and **fixed minutes** per zone override the mode for one schedule. |
-| **Timetable** | Week-at-a-glance grid (zones × weekdays, morning / daytime / evening) with per-day totals, using the same phase and mode timing as a real run — every Cycle & Soak pass is drawn. On phones it becomes a per-day list. Click a run to jump straight to its editor. |
-| **Settings** | Installation name (shown in the panel header), optional **pre-start** and **post-run scripts**, pre-start outputs & delay, watering mode, max parallel zones, whether schedules that overlap **wait their turn**, the installation's **season**, an optional **water meter** on the supply line, global **conditions**, default installation, service reference and raw diagnostics. Every section is closed to a line that says what is set. |
+| **Overview** | Live run state with a countdown, the next runs, the watering mode and the quick actions: *Run next slot now*, *Skip today*, *Pause 48 h*, *Stop* / *Skip phase* |
+| **Zones** | Zones with their outputs and runtimes; filter, reorder, run or stop a zone |
+| **Schedule** | Cycles and single slots, the **New irrigation cycle** wizard, a 14-day run strip per row |
+| **Timetable** | The week at a glance: zones × weekdays, with per-day totals |
+| **Settings** | Pre-start, scripts, watering mode, season, water meter, global conditions |
 
-**Editors are accordions.** A zone, a schedule and the settings each open as a short list of sections, every one closed to a line that says what it holds — *When: Daily · 06:00*, *Zones: Front lawn, Back lawn · ~20 min*, *Cycle & Soak: Off*. What every schedule needs comes first; conditions, rests, season and scripts sit under **More options** and say by themselves whether they are in use. Explanations are behind the small info lines, so nothing has to be scrolled past on a phone. Deleting, and splitting a slot into single days, are in the **⋮** menu next to *Cancel* and *Save*.
+<p align="center">
+  <img src="https://raw.githubusercontent.com/florianbaethge/simple_irrigation/main/screenshots/overview.png" alt="Overview tab — current run, next runs, watering mode" width="760">
+</p>
 
----
+All tabs and the editors with screenshots: [The panel](https://github.com/florianbaethge/simple_irrigation/blob/main/docs/panel.md).
 
-## Screenshots
+## Dashboard card
 
-### Overview
+`custom:simple-irrigation-card` brings the irrigation onto your dashboards — for everyone in the household, not only administrators. It is registered automatically and has a visual editor. One card type with a **view** option:
 
-![Overview tab — current run, next runs, watering mode](https://raw.githubusercontent.com/florianbaethge/simple_irrigation/main/screenshots/overview.png)
+| `view` | Shows |
+|--------|-------|
+| `status` *(default)* | What happens next and the actions worth reaching for; the remaining time and the queue while a run is active |
+| `zones` | Every zone with its runtime: what is open, what is next, what is broken |
+| `schedule` | The next runs resolved into real dates |
+| `week` | The current week as a timetable |
+| `run` | The manual run picker |
 
-### Zones
+<p align="center">
+  <img src="https://raw.githubusercontent.com/florianbaethge/simple_irrigation/main/screenshots/card_status.png" alt="Card — status view" width="380">
+  <img src="https://raw.githubusercontent.com/florianbaethge/simple_irrigation/main/screenshots/card_week.png" alt="Card — week view" width="380">
+</p>
 
-![Zones tab — zone list with modes, exclusive and issue filters](https://raw.githubusercontent.com/florianbaethge/simple_irrigation/main/screenshots/zones.png)
+```yaml
+type: custom:simple-irrigation-card
+view: status
+```
 
-![Edit zone — sections with their summaries, outputs open](https://raw.githubusercontent.com/florianbaethge/simple_irrigation/main/screenshots/zone_edit.png)
-
-![Edit zone — Water section with meter entity, flow rate and how to measure it](https://raw.githubusercontent.com/florianbaethge/simple_irrigation/main/screenshots/zone_edit_water.png)
-
-### Schedule & cycles
-
-![Schedule tab — cycles and slots, with a cycle expanded to its 14-day strip](https://raw.githubusercontent.com/florianbaethge/simple_irrigation/main/screenshots/schedule.png)
-
-![New irrigation cycle wizard — live 14-day preview](https://raw.githubusercontent.com/florianbaethge/simple_irrigation/main/screenshots/cycle_wizard.png)
-
-![Edit slot — sections with their summaries, When open: weekdays, start time, week cycle](https://raw.githubusercontent.com/florianbaethge/simple_irrigation/main/screenshots/schedule_edit.png)
-
-![Edit slot — Cycle & Soak: repetitions and rests, with the help expanded](https://raw.githubusercontent.com/florianbaethge/simple_irrigation/main/screenshots/schedule_edit_cycle_soak.png)
-
-### Timetable
-
-![Timetable tab — weekly overview by zone and weekday](https://raw.githubusercontent.com/florianbaethge/simple_irrigation/main/screenshots/timetable.png)
-
-### Settings
-
-![Settings tab — every section closed to a line that says what is set](https://raw.githubusercontent.com/florianbaethge/simple_irrigation/main/screenshots/settings.png)
-
----
+All options, tap and hold actions, the manual run picker, the badge and more screenshots: [Dashboard card](https://github.com/florianbaethge/simple_irrigation/blob/main/docs/card.md).
 
 ## Installation
 
@@ -87,8 +109,6 @@ Outputs can be any mix of `switch`, `input_boolean`, `group` and `valve` entitie
 
 Copy the folder `custom_components/simple_irrigation/` into your Home Assistant configuration directory (next to `configuration.yaml`), then restart. Add the integration as above.
 
----
-
 ## First-time setup
 
 1. Complete the **config flow**: installation name, optional pre-start outputs, default mode, max parallel zones.
@@ -99,495 +119,60 @@ Copy the folder `custom_components/simple_irrigation/` into your Home Assistant 
 
 You can add **multiple** config entries for separate gardens or seasonal plans (each appears in the panel picker, and its name shows in the panel header).
 
----
-
-## Concepts
-
-### Zones
-
-- **Outputs:** any mix of `switch`, `input_boolean`, `group` and `valve` entities. Most use `turn_on` / `turn_off`; valves use `open_valve` / `close_valve`. A zone can drive **several outputs** at once.
-- **Runtimes:** three values per zone — Eco / Normal / Extra. The installation’s active **mode** picks which one is used, unless a schedule fixes the zone's minutes (see *Cycles and slots*). A zone with 0 minutes is left out of the run; its valve is not opened.
-- **Exclusive:** the zone never runs in parallel with others (high-flow lines, shared supply, drip circuits).
-- **Issues filter:** zones whose output entity is missing or `unavailable` are flagged so you can spot broken wiring at a glance.
-- **Order:** on the **All** filter, drag a zone by its handle — with a mouse or a finger — or focus the handle and press the up or down arrow key. The order applies wherever zones are listed (Zones, Timetable, the dashboard card) and is the run order a new cycle starts with. Existing cycles keep their run order.
-
-#### Duration-aware start services
-
-Some irrigation integrations do not start a zone with a regular `turn_on`. Instead, their start action requires the watering duration in the same service call. Open a zone and, under **More options**, its **Start service** section.
-
-![Edit zone — advanced start settings with preset, duration field and start target](https://raw.githubusercontent.com/florianbaethge/simple_irrigation/main/screenshots/zone_edit_advanced.png)
-
-Leave the whole section empty and nothing changes: the zone keeps the normal `turn_on` / wait / `turn_off` behavior. Built-in presets fill in the service, duration field and unit for:
-
-| Preset | Service | Duration field | Unit | Start target |
-|--------|---------|----------------|------|--------------|
-| **Rain Bird** | `rainbird.start_irrigation` | `duration` | minutes | leave empty |
-| **Rachio** | `rachio.start_watering` | `duration` | minutes | leave empty |
-| **Hydrawise** | `hydrawise.start_watering` | `duration` | minutes | the zone's `binary_sensor` |
-| **B-hyve / Orbit** | `bhyve.start_watering` | `minutes` | minutes | leave empty |
-| **OpenSprinkler** | `opensprinkler.run` | `run_seconds` | seconds | leave empty |
-
-Choose **Custom** for another integration and enter its `domain.service`, duration field and whether that field expects minutes or seconds.
-
-- **Stopping always runs via the zone outputs.** Simple Irrigation waits for the configured mode duration and then sends the normal off/close action to every output, as a safety net against a controller that doesn't stop by itself.
-- The optional **start target entity** only changes *what the start call addresses*, for integrations whose start service does not target the output. Hydrawise is the case this exists for: it starts via the zone's `binary_sensor`, while the water is carried by the `valve` entity. Put the `valve` in the zone outputs and the `binary_sensor` in the start target — closing the valve stops the run. **An output has to control the same valve as the start target**, otherwise *Stop* cannot end the run.
-- All outputs of a zone start together, exactly like the default path, and the zone takes its configured duration regardless of how many outputs it has.
-- A failed off action stops the run and is reported, so a potentially open valve cannot go unnoticed while another zone starts. The cleanup that follows still closes every other output.
-- **The start service has to return once the run has started**, which is what all the presets above do. A service that instead blocks for the whole watering time — a script entered under **Custom**, typically — is given 30 seconds and then dropped, so the zone keeps its own timing. Note that dropping it cancels the call, so put the waiting in Simple Irrigation's duration, not in the start service.
-
-#### Hardware countdown as a safety net
-
-Simple Irrigation closes every output itself — but only while Home Assistant is running. A run that is under way when Home Assistant shuts down is ended and its outputs are closed on the way down; whatever was watering when Home Assistant stopped or crashed is closed once more as soon as it is back. In between — a crash, a power cut, a dead network — nobody is there to close anything. Some valves carry a **timer of their own** that shuts them when it runs out, whatever happened to the controller in the meantime: Tuya and Sonoff water timers expose it as a `number` entity (`countdown`, `timer`, …) next to the valve's switch. Open a zone, scroll to **Advanced** and expand **Hardware countdown (safety timer)**.
-
-- Pick the **countdown entity**. Right before the zone opens, it is set to the duration of the pass (every Cycle & Soak pass on its own), so the valve closes on time even if Home Assistant, the network or the integration dies mid-run. Once the outputs are closed again — at the end, after *Stop zone* or *Stop* — the countdown is cleared.
-- The **unit** is read off the entity (`min` or `s`). Choose minutes or seconds by hand only when the entity carries no unit.
-- The value is rounded up to whole units and clamped to the entity's range; a pass longer than the timer's maximum is logged and covered as far as the timer reaches.
-- **The timer never blocks a run.** Simple Irrigation keeps stopping the zone itself; if the countdown cannot be set, a warning is logged and the zone waters on the integration's own timing.
-- Set the countdown before the switch, not after: some valves restart or ignore a countdown written while they are already open. That order is fixed.
-
-#### Supply: an upstream valve or a pump for some of the zones
-
-The installation's **pre-start outputs** are on for a whole run and for every zone. Some gardens need less than that: a master valve that feeds only the drip lines, a cistern pump that only some zones draw from. Open a zone and, under **More options**, its **Supply** section to name the outputs that must be open for *this* zone to get water.
-
-- The supply opens **before** the zone and closes **after** it — never the other way round, also on *Stop* and *Skip phase*.
-- Zones that name the same output **share** it. It is switched once for three drip lines watering one after the other, and it stays open for zones watering together.
-- It closes as soon as **no watering zone needs it**: a pump does not go on running against closed valves while another zone finishes.
-- **Lead time** is how long the zone waits after its supply has opened; empty, the installation's pre-start delay applies. It is only waited for when the supply really had to be opened. **Trail time** keeps the supply open that long after the zone has closed.
-- During a Cycle & Soak rest the supply is closed like every other output. After a restart that cut a run off, every supply is closed — also one that was still coming up or trailing, with no zone watering at that moment.
-- An output is a zone's valve **or** a supply, not both: the panel refuses a supply that is the valve of any zone, and the other way round.
-
-A pump that only some zones need belongs here rather than in the pre-start outputs. Everything else stays as it is: a zone without a supply runs exactly as before. What it does not do is wait for a valve to *report* open, or start a supply through a service that takes a duration — a supply is an output that is switched on and off.
-
-### Cycles and slots
-
-A **cycle** is a repeating watering cadence. The wizard offers:
-
-| Cadence | Result |
-|---------|--------|
-| **Daily** / **Weekly** / **Every 2 weeks** / **x days per week** / **Custom days** | a single schedule slot |
-| **Every 2 days** / **Every 3 days** | a grouped **cycle** of two linked slots |
-| Any of them with **several start times** | a grouped **cycle**: the slots above, once for every start time |
-
-Why the split? A slot waters on chosen weekdays at **one time of day** and, optionally, only in **odd** or **even** ISO calendar weeks. That covers most cadences in one slot — but a true *every-2-days* rhythm needs two slots on alternating parity (odd weeks Mon/Wed/Fri/Sun, even weeks Tue/Thu/Sat), and every further start time needs the cadence's slots once more. Whatever takes more than one slot appears as a **cycle** with member rows and a **Detach into single slots** action; everything else is a plain, single slot. Either way, **every row expands to a 14-day run strip** so you can see exactly when it fires.
-
-- **Several start times a day:** fresh seed, pots in a heat wave and a greenhouse want water more than once a day. In the wizard's time step, **Add start time** gives a cycle up to eight start times. The whole cycle — zones, run order, conditions, Cycle & Soak — runs at each of them and stays one row to edit. This is not Cycle & Soak: that repeats the phases back to back with short rests, this spreads whole runs over the day. The wizard warns when two start times are closer together than one run takes — what becomes of the later one is described under [When schedules overlap](#when-schedules-overlap).
-- **Fixed minutes:** in a slot's **Zones** section — and in the wizard's zone step — every zone has a minutes field. Empty, the zone waters as long as the active mode says, and the field shows what that is. A number fixes it for this schedule, whatever the mode: the lawn gets twenty minutes in the morning and five in the evening without a second set of zones. The row carries a **Fixed minutes** badge, and all estimates count with it. An automation can set and clear the same field with `simple_irrigation.set_zone_duration`.
-- **Run order & phases:** the ordered zone list is grouped into **phases** by the *max parallel* limit and *exclusive* flags. The editor shows the phase breakdown live.
-- **Optimize cycles:** detects single slots that are one schedule written out day by day — same time, zones, conditions, scripts, season and fixed minutes, on days a cadence of the wizard produces exactly — and offers to fold them into one cycle. Nothing runs differently afterwards; slots that differ in any of it are left alone.
-- **Run now:** *Run next slot now* (Overview), *Run this slot now* (a schedule row) and *Run zone now* (Zones) all use the same pre-start and shutdown pipeline as a scheduled run.
-
-#### When schedules overlap
-
-One run at a time: a schedule that comes due while something else is running — another schedule or a manual run — cannot start. Schedules due in the very same minute are no overlap; they run as one run, back to back.
-
-By default the later schedule is **skipped**. That is no longer silent: the log says which schedule was skipped and why, and the `simple_irrigation_schedule_skipped` event carries the same (see [Automations and services](#automations-and-services)).
-
-**Settings → Watering → Let schedules wait for their turn** makes it wait instead:
-
-- It starts once the run before it is completely done — post-run script, outputs closed — as a run of its own, with its own pre-start, scripts and Cycle & Soak. Several waiting schedules run in the order they came due.
-- When its turn comes, everything that would have kept it from running at its own time is looked at again: the installation is not paused or switched off, the schedule still exists and is enabled, its **conditions hold now**. Minutes and mode are those of the moment it starts.
-- **Wait at most** (120 minutes by default) is counted from the time it was due. A schedule due at 06:30 starts by 08:30 or not at all — nothing drifts into the midday sun.
-- **Stop** ends the run and sends the waiting schedules home with it; nothing starts behind a stop. *Skip phase* and stopping a single zone leave them alone. A run that ends in an error drops them too.
-- To take one waiting schedule out of the line, switch that schedule off — or press *Skip today* to drop them all.
-- Nothing waits across a restart of Home Assistant.
-
-While a run is under way, Overview and the dashboard card name the schedules waiting behind it, and `binary_sensor.<installation>_running` lists them in `waiting_slot_ids`. Manual runs never wait: *Run now* during a run answers "already running", as before.
-
-#### Cycle & Soak
-
-Sloped lawns and clay soil cannot take twenty minutes of water at once — it runs off before it soaks in. **Schedule → edit a slot (or the cycle wizard) → Cycle & Soak** waters the slot in several short passes instead:
-
-![Edit slot — Cycle & Soak: repetitions and rests, with the help expanded](https://raw.githubusercontent.com/florianbaethge/simple_irrigation/main/screenshots/schedule_edit_cycle_soak.png)
-
-| Setting | Effect |
-|---------|--------|
-| **Repetitions** | How often the slot's phases run, in order. `1` is a plain run. |
-| **Rest between phases** | Minutes every output stays closed between two phases of the same pass. |
-| **Rest between repetitions** | Minutes between the last phase of one pass and the first of the next. |
-
-Example — one lawn zone, 3 repetitions of its 10-minute mode duration, 15 minutes rest between repetitions: it waters 10 min, rests 15, waters 10, rests 15, waters 10. The slot's estimated duration on Schedule, Overview, Timetable and the card counts the rests, and the Timetable draws every pass.
-
-- A rest is a real pause: **every output is closed, pre-start outputs included** — a pump must not run against closed valves for a quarter of an hour. Before the next pass they come back up with the usual pre-start delay.
-- **Stop** ends the run, rests included. **Skip phase** — on Overview, on the dashboard card and as `simple_irrigation.skip_phase` — cuts a rest short, and skipping a phase skips the rest after it too — whoever skips wants to see the next zone, not a pause.
-- Overview and the card show **Soaking** with a countdown while the run rests; `binary_sensor.<installation>_running` carries the end of the rest as its `soak_until` attribute.
-- Rests are per slot. Several slots due in the same minute run back to back, each with its own rests; a rest with nothing left to water behind it is skipped.
-
-### Water use
-
-Optional, and honest by design: Simple Irrigation reports litres only where it can back them up. Two sources, per zone under **Zones → edit → Water**, and one for the whole installation under **Settings → Water**:
-
-| Source | What it does |
-|--------|--------------|
-| **Flow rate** (per zone) | Litres per minute you measured once. Every run of the zone is **estimated** from its actual watering time and shown with a tilde (`~120 L`). |
-| **Water meter** (per zone) | A volume sensor on the zone's own line. Read when the zone opens and closes; the difference is **measured** and wins over the rate. |
-| **Water meter** (installation) | A volume sensor on the supply line. Measures each run as a whole, parallel zones included, and replaces the zones' sum for the run total. |
-
-![Edit zone — Water section with meter entity, flow rate and how to measure it](https://raw.githubusercontent.com/florianbaethge/simple_irrigation/main/screenshots/zone_edit_water.png)
-
-Any sensor with a volume unit works (`L`, `m³`, `gal`, `ft³`, …); values are converted. Everything is stored in litres and shown in your Home Assistant unit system — gallons in the US, including the flow-rate field.
-
-**How to measure a flow rate:** run the zone alone for 10 minutes, read the water meter before and after, divide the difference by 10. Some irrigation systems depend on water pressure and deliver a different flow with a different supply — measure again after such a change, or keep the conditions constant, for example with a pressure regulator. A rate is only as good as the setup it was measured in.
-
-**Where the numbers go.** No history of its own, no extra tab: the integration books what a run used and hands it to Home Assistant.
-
-- `sensor.<installation>_water` and `sensor.<zone>_water` are `total_increasing` **water** sensors (running totals, attributes `source` and `last_run_l`). That gives you history graphs, long-term statistics, the **Energy dashboard's water section** and a **Utility Meter** for daily or monthly figures — the same tools you use for the rest of the house. Both stay *unknown* until the first run reports water, so nothing shows a bogus zero.
-- The panel shows the forecast per zone, schedule slot and next run (`~120 L per run`), what the current run has used so far, and the last run. The card shows the forecast for the next run, the last run, and a live figure while watering.
-- Zones without a rate or meter contribute nothing — a forecast for a slot is only shown when at least one of its zones can estimate, and a run total is marked as an estimate as soon as one zone's figure is.
-
-### Conditions
-
-A **condition** states something that must hold for a scheduled run to start — "water, but only while the soil is dry". Each one is an entity, a comparison and a value:
-
-| Operator | Meaning | Example |
-|----------|---------|---------|
-| **is above** / **is below** | numeric compare (strict) | `sensor.cistern_litres` is above `200` |
-| **equals** | numeric compare with tolerance | `sensor.zones_open` equals `2` |
-| **state is** | text compare, case-insensitive | `input_select.season` state is `summer` |
-| **is on** / **is off** | boolean state | `binary_sensor.rain` is off |
-
-Any numeric entity works — there is no unit restriction, so litres, millimetres, percent and degrees all compare the same way. Rain sensors (`binary_sensor`), manual overrides (`input_boolean`) and helpers (`input_number`, `input_select`) are just as valid as `sensor`.
-
-Conditions live in two places and are combined with **AND** — all must hold:
-
-- **Settings → Conditions:** apply to every scheduled run. This is where a rain sensor or a cistern level belongs.
-- **Per schedule slot:** added below the start time, on top of the global ones. A slot can also **ignore the global conditions** — a greenhouse does not care about rain.
-
-Two deliberate behaviours:
-
-- **A broken sensor never stops irrigation.** If the entity is missing, `unavailable`, or its state cannot be read as a number, the run proceeds and a warning is logged. Plants dying because a sensor died is the worse failure.
-- **Conditions are checked at start time only.** A blocked run is skipped for that day, not retried later, and the *next run* times shown in the panel ignore conditions — today's sensor reading says nothing about tomorrow's.
-
-Manual runs (*Run now*, *Run zone now*) always start, regardless of conditions.
-
-### Season
-
-A **season** says when in the year schedules water by themselves — 1 April to 31 October, and nothing in winter, without switching every schedule off in autumn and remembering to switch it on again in spring. It is made of **periods**: a day and a month to a day and a month, both days included, the same every year. A period may run across New Year, and there may be several of them.
-
-- **Settings → Season** is the season of the whole installation. One period is all most gardens need; with no period, schedules water all year, as they always have.
-- **A schedule can bring its own.** In the slot editor and the cycle wizard, **Season** offers *Like the installation*, *All year* and *Own periods*. Own periods **take the place of** the installation's season, they are not added to it — a schedule from 1 March waters in March, even if the installation opens in April.
-
-That is what makes one garden with different rhythms through the year possible, without duplicating zones:
-
-| Schedule | Season |
-|----------|--------|
-| Lawn, daily | Own periods: 1 Jun – 31 Aug |
-| Lawn, every 3 days | Own periods: 1 Apr – 31 May **and** 1 Sep – 31 Oct |
-| Beds | Like the installation (1 Apr – 31 Oct) |
-| Greenhouse | All year |
-
-Together with a schedule's **fixed minutes**, each of them can also water for a different length of time.
-
-- **Out of season a schedule is simply not due.** It stays switched on and keeps everything it is set to; nothing is reported as skipped, and nothing waits. Its *next run* — in the panel, on the card and in the `next_run` sensors — is the first one after its season opens again.
-- **Manual runs never ask.** *Run now*, *Run zone now* and the services start at any time of the year.
-- Overview, Schedule and Timetable say when the installation is out of season and when it comes back; a schedule with its own season shows its periods in its row. The 14-day strips and the card's week draw days out of season dashed.
-- The date that counts is the day the schedule is due, in Home Assistant's time zone. Pause and conditions apply on top, as before.
-
-**Stopping a single zone.** While a zone waters, its row in **Zones** shows the remaining time and a stop button (■); the same is available as `simple_irrigation.stop_zone`. Only that zone ends — its outputs go off, the other zones of the run carry on, and a zone still waiting its turn is taken out of the plan. Stopping the last zone simply lets the run finish normally, post-run script included. The `simple_irrigation_zone_finished` event carries `stopped: true` for a zone that was cut short.
-
-### Modes, pre-start, pause
-
-- **Watering mode (Eco / Normal / Extra):** chosen on Overview or Settings, or via `simple_irrigation.set_mode` for weather/tank automations.
-- **Max parallel zones:** caps concurrency; exclusive zones still run alone.
-- **Season:** when in the year schedules water by themselves — see [Season](#season).
-- **Let schedules wait for their turn:** what happens to a schedule that comes due during another run — see [When schedules overlap](#when-schedules-overlap).
-- **Pre-start / post-run scripts:** optional scripts run **before** the pre-start outputs and **after** the last one goes off — see below.
-- **Pre-start outputs & delay:** outputs turned on before any zone (pump / master valve), with an editable delay to build pressure — both configured on **Settings**. An output that only some zones need goes into those zones' **Supply** instead.
-- **Pause / Skip today / Pause 48 h:** affect **scheduled** starts only; an already-running cycle is stopped from **Overview**, or one zone at a time from **Zones**.
-
-### Pre-start and post-run scripts
-
-Sometimes the garden has to be made ready before a drop of water flows: send the robot mower home, close a window, switch a well pump’s power over — and let it all go back to normal afterwards. **Settings → Pump / pre-start** takes one `script.*` entity for each end of the pipeline and runs it **to completion**:
-
-```
-pre-start script  →  pre-start outputs on  →  pre-start delay  →  zones  →  all outputs off  →  post-run script
-```
-
-Because the scripts block, they may *wait* — that is the part an automation on `simple_irrigation_run_started` cannot do:
-
-```yaml
-# script.mower_go_home — send the mower back and wait until it has docked
-sequence:
-  - action: lawn_mower.dock
-    target:
-      entity_id: lawn_mower.garden
-  - wait_for_trigger:
-      - trigger: state
-        entity_id: lawn_mower.garden
-        to: docked
-    timeout: "00:08:00"
-```
-
-- **A stuck script never costs a run.** When the configured **timeout** (default 300 s) expires the script is stopped, a warning is logged, and the run continues anyway — the same fail-open rule as conditions.
-- **You can see what it is waiting for.** While a script blocks, Overview says *“Waiting for the pre-start script: …”* under **Preparing** (and the same for the post-run script under **Stopping…**), so a five-minute mower script no longer looks like a hung run. The same detail is on `binary_sensor.<installation>_running` as the `run_state`, `active_zone_ids` and `active_script` attributes, for your own dashboards and automations.
-- **Stop** is greyed out while the post-run script runs: the run is already ending, and stopping cannot cut its cleanup short.
-- Both run for **every** start through the pipeline: scheduled runs, *Run now*, *Run this slot now* and *Run zone now*.
-- The **post-run script** runs at the end of *every* run — finished, failed, or stopped from Overview — so whatever the pre-start script prepared is always undone. `Stop all` therefore waits for it before the run is reported idle.
-- Use a **script**, not an automation. `automation.trigger` skips the automation’s conditions by default and silently does nothing when the automation is already running in `single` mode — a silent no-op at exactly the wrong moment. Scripts also take parameters and are what the built-in `script.<name>` blocking call is designed for.
-
-#### Per-schedule overrides
-
-Not every run needs the same preparation: the lawn sprinklers want the mower out of the way, drip irrigation does not care. **Schedule → edit a slot (or the cycle wizard) → Scripts** overrides either script for that schedule:
-
-| Setting | Effect |
-|---------|--------|
-| Switch off (default) | The installation’s script runs. |
-| Switch on, entity filled in | That script runs **instead** of the installation’s, with its own timeout (empty = the installation’s). |
-| Switch on, entity empty | **No script at all** for this schedule — the drip-irrigation case. |
-
-Scripts belong to the **schedule**, not to the zone: zones run in parallel phases, so a per-zone script would have no single point in the pipeline to run at. Keep zones that need different preparation in different slots rather than mixing them.
-
-When several slots are due in the same minute their zones are merged into one run — and a run has one pre-start and one post-run script. The first overriding slot wins and the disagreement is logged; build slots that do not mix if that matters to you.
-
-### Timetable
-
-- **Grid:** one row group per zone; columns are weekdays (order follows your HA profile’s week start). Three time-of-day rows per zone (morning 0–8, daytime 8–16, evening 16–24), a **total per weekday** footer, and the same phase/mode timing as the runtime. Disabled zones/slots render muted.
-- **Odd/even weeks:** a toggle switches between calendar-week parities when any cycle uses them; biweekly runs are drawn dashed.
-- **Mobile:** below ~700 px the grid becomes a **per-day list** with the day’s runs and total — no horizontal scrolling.
-- **Deep link:** clicking a run opens the **Schedule** editor for that slot (and expands its cycle).
-
----
-
-## Dashboard card
-
-The integration ships a Lovelace card, `custom:simple-irrigation-card`, and registers it as a dashboard resource automatically — nothing to add under **Settings → Dashboards → Resources**. Pick it from the card picker as *Simple Irrigation Card*.
-
-The card is one card type with a **view** option. Dropped on a dashboard with no options at all it picks the only installation and shows the status view:
-
-```yaml
-type: custom:simple-irrigation-card
-```
-
-![Status view — next run, its length and zones, the actions and the watering mode](https://raw.githubusercontent.com/florianbaethge/simple_irrigation/main/screenshots/card_status.png)
-
-### Views
-
-| `view` | Shows |
-|--------|-------|
-| `status` *(default)* | What happens next, how long it takes, and the two or three actions worth reaching for. While a run is active it leads with the remaining time of the open zone and lists the queue, with **Skip phase** beside **Stop**; during a Cycle & Soak rest it shows **Soaking** with the countdown. With water tracking it adds the expected litres of the next run, the last run, and a live figure while watering. |
-| `zones` | Every zone with its runtime for the active mode: what is open, what is next, what is broken. |
-| `schedule` | The next runs resolved into real dates — no cron rules to decode. |
-| `week` | The current week as a timetable; bar height is the run's duration, position its time of day. |
-| `run` | The manual run picker (see below). |
-
-![Zones view — every zone with its runtime for the active mode](https://raw.githubusercontent.com/florianbaethge/simple_irrigation/main/screenshots/card_zones.png)
-
-![Schedule view — the next runs resolved into real dates](https://raw.githubusercontent.com/florianbaethge/simple_irrigation/main/screenshots/card_schedule.png)
-
-![Week view — the current week as a timetable, bar height is duration](https://raw.githubusercontent.com/florianbaethge/simple_irrigation/main/screenshots/card_week.png)
-
-### Options
-
-| Option | Default | Meaning |
-|--------|---------|---------|
-| `entry_id` | auto | Which installation. Optional — a single installation is picked automatically, and with several the one marked as default wins. |
-| `view` | `status` | `status` · `zones` · `schedule` · `week` · `run` |
-| `compact` | `false` | One tile-style row instead of the full card. In the `zones` view, a compact zone list. |
-| `show_mode` | `true` | Eco / Normal / Extra selector on the status view |
-| `manual_start` | `off` | `off` · `zones` · `slot` · `both` — adds a collapsible **Run now** section below the card |
-| `manual_duration` | `false` | Offer a duration override in the zones picker |
-| `actions` | `run_next, skip_today, pause_48h` | Any of `run_next` · `stop` · `skip_today` · `pause_48h` · `pause_until`. The first one is the primary button; `stop` only appears while something is running. |
-| `next_runs` | `4` | How many runs the schedule view lists (1–12) |
-| `zones` | `all` | `all` · `active` · an explicit list of zone ids |
-| `tap_action` / `hold_action` | open the entity / open the panel | Header row and, in the compact layout, the whole row |
-| `zone_tap_action` / `zone_hold_action` | open the zone / open the panel's Zones page | Zone rows in the `zones` view |
-| `run_tap_action` / `run_hold_action` | open the run's slot / nothing | Rows in the `schedule` view and the bars of the `week` view |
-
-A fully specified card — this is what every option looks like, not what you need:
-
-```yaml
-type: custom:simple-irrigation-card
-entry_id: 1a2b3c…
-view: status
-compact: false
-show_mode: true
-manual_start: zones
-manual_duration: false
-actions:
-  - run_next
-  - stop
-  - skip_today
-next_runs: 4
-zones: all
-```
-
-![Compact layout — one tile-style row with the primary action](https://raw.githubusercontent.com/florianbaethge/simple_irrigation/main/screenshots/card_compact.png)
-
-### Tap and hold
-
-Every row of the card carries a **tap** and a **long press** action, configured in the visual editor under *Interactions* or in YAML. Out of the box a tap opens what the row stands for and a long press opens the panel page it lives on — a zone row opens the zone's entity, holding it opens the panel's **Zones** page, and a run in the schedule or week view opens its own slot in the **Schedule** editor.
-
-| `action` | Does |
-|----------|------|
-| `more-info` | Open the more-info dialog — the zone's entity on a zone row, the installation's otherwise. `entity` overrides it. |
-| `panel` | Open the Simple Irrigation panel. `panel_page` picks `overview` · `zones` · `schedule` · `timetable` · `settings`; left out, the row picks the page it belongs to, and a run deep-links to its own slot. |
-| `navigate` | Go to `navigation_path`, e.g. another dashboard view. |
-| `url` | Open `url_path`. |
-| `perform-action` | Call `perform_action` (`domain.service`) with optional `data` and `target`. |
-| `none` | Nothing — the row stops being tappable at all, rather than looking clickable and doing nothing. |
-
-```yaml
-type: custom:simple-irrigation-card
-view: zones
-zone_tap_action:
-  action: perform-action
-  perform_action: simple_irrigation.run_zone
-  data:
-    zone_id: lawn
-zone_hold_action:
-  action: panel
-  panel_page: zones
-```
-
-The panel is registered for administrators only. A `panel` action falls back to the more-info dialog for everyone else, so a shared dashboard does not send family members to an empty page.
-
-The badge takes the same `tap_action` and `hold_action` (YAML only — badges have no visual editor).
-
-![Card editor — the Interactions section with tap and long press per row kind](https://raw.githubusercontent.com/florianbaethge/simple_irrigation/main/screenshots/card_editor.png)
-
-### Manual run
-
-Selecting is separated from launching: nothing is watered until the start button is pressed, so a mis-tap on a chip costs nothing.
-
-![Manual run picker — zone chips, duration override and the start button](https://raw.githubusercontent.com/florianbaethge/simple_irrigation/main/screenshots/card_run.png)
-
-- **Zones** — pick any number. They run in the order you picked them — each chip carries its place — and are grouped into phases by the installation's *max parallel* limit and *exclusive* flags, like the zones of a schedule slot. The line above the start button spells the plan out before you press it: `20 + 20 + 12 min` one after another, `(20 ‖ 20) + 12 min` where two may water together. Started via `simple_irrigation.run_zone` (or `run_zone_with_duration` when the duration is overridden). A disabled zone stays visible but is not selectable; a zone with a missing output is selectable and fails loudly.
-- **Slot** — runs a whole schedule slot through `simple_irrigation.run_schedule_slot`, reusing the slot's own zone list and runtimes. A manual slot run normally ignores the slot's conditions; the **Apply the slot conditions** toggle opts back in, and the run then refuses when a condition is not met.
-
-### Badges
-
-`custom:simple-irrigation-badge` puts the same facts in the badge row of a sections dashboard, without a card slot:
-
-```yaml
-type: custom:simple-irrigation-badge
-badges:
-  - state    # Watering · 7:24, or Idle
-  - next     # Next 19:30
-  - mode     # Normal
-  - pause    # only while paused
-  - issues   # only when a zone output is unusable
-```
-
-### Layout and theming
-
-Colours come from the active theme, so the card follows light and dark mode and any custom theme without configuration. The layout reflows on the card's own width, not the screen's: below roughly 300 px the action column drops under the summary and the week view falls back to weekday initials, so the card is at home in a two-column section, a phone view or a full-width slot alike.
-
-The card is readable by every user, not just admins — it uses its own read-only websocket API rather than the admin panel's.
-
----
-
-## Automations and services
-
-All services accept an optional `config_entry_id` when you run more than one Simple Irrigation entry (find it in **Settings → Devices & services** or in diagnostics). Without it a service goes to the only installation there is, or — like the dashboard card — to the one marked **Open this installation by default**.
-
-| Service | Typical use |
-|---------|-------------|
-| `simple_irrigation.run_zone` | Start one zone with pre-start, duration from the current mode, then off |
-| `simple_irrigation.run_zone_with_duration` | Same pipeline with a fixed duration (minutes) |
-| `simple_irrigation.run_schedule_slot` | Run one slot’s full sequence now (`slot_id`) |
-| `simple_irrigation.run_due_zones` | Trigger “what’s due now” |
-| `simple_irrigation.stop_all` | Stop the active cycle |
-| `simple_irrigation.stop_zone` | End one zone of the running cycle; the rest carries on (`zone_id`) |
-| `simple_irrigation.skip_phase` | End the running phase, or the Cycle & Soak rest the run is in, and go on to the next. Does nothing while idle or before the first zone has opened — the pump's time to build pressure is never cut short |
+## Entities
+
+| Entity | Purpose |
+|--------|---------|
+| `binary_sensor.<installation>_running` | On while a run is in progress; attributes say what it is doing (`run_state`, `active_zone_ids`, `active_script`, `soak_until`, `waiting_slot_ids`) |
+| `sensor.<installation>_next_run` | Start of the next scheduled run |
+| `sensor.<installation>_watering_until` | When the zones watering right now finish — also per zone |
+| `sensor.<installation>_water` | Litres used as a running total — also per zone |
+| `select.<installation>_mode` | Watering mode: Eco / Normal / Extra |
+| `switch.<installation>_<slot>_enabled` | One schedule slot on or off |
+
+Ids as a Home Assistant set to English creates them; zone entities appear after the integration has been reloaded. The full list: [Entities](https://github.com/florianbaethge/simple_irrigation/blob/main/docs/automations.md#entities).
+
+## Services
+
+All services accept an optional `config_entry_id` (needed only with several installations).
+
+| Service | Purpose |
+|---------|---------|
+| `simple_irrigation.run_zone` · `run_zone_with_duration` | Start one zone, for its mode's runtime or for given minutes |
+| `simple_irrigation.run_schedule_slot` · `run_due_zones` | Run one slot now, or whatever is due |
+| `simple_irrigation.stop_all` · `stop_zone` · `skip_phase` | Stop the run, one zone of it, or go on to the next phase |
 | `simple_irrigation.set_mode` | Set `eco` / `normal` / `extra` |
-| `simple_irrigation.set_zone_enabled` | Enable/disable a zone |
-| `simple_irrigation.set_zone_duration` | Set how long a zone waters, from your own calculation: its runtime for a mode (`zone_id`, `duration_min`, `mode`), or its fixed minutes in one schedule (`zone_id`, `slot_id`, `duration_min`) |
-| `simple_irrigation.pause_until` | Pause automatic runs until a datetime (`until` field) |
-| `simple_irrigation.clear_pause` | Clear the pause |
+| `simple_irrigation.set_zone_enabled` · `set_zone_duration` | Switch a zone on or off; set its minutes from your own calculation |
+| `simple_irrigation.pause_until` · `clear_pause` | Pause automatic runs, and end the pause |
 
-Example — feed a zone's runtime from a calculation done in Home Assistant (weather, soil moisture, ET…), so schedule slots, conditions and the hardware countdown keep working as usual:
+Fields and examples: [Services](https://github.com/florianbaethge/simple_irrigation/blob/main/docs/automations.md#services).
 
-```yaml
-action: simple_irrigation.set_zone_duration
-data:
-  zone_id: "..."          # the zone's UUID, see Download diagnostics
-  duration_min: "{{ states('sensor.lawn_minutes') | int }}"
-  mode: normal            # eco | normal | extra: which of the zone's runtimes to write
-```
+## Events
 
-The same service fixes a zone's minutes in **one** schedule when it is given a `slot_id` instead of a `mode` — the evening run gets its own figure, the morning run keeps its own:
+`simple_irrigation_run_started`, `_run_finished` and `_run_failed` fire around every run, `simple_irrigation_zone_started` and `_zone_finished` around every zone, and `simple_irrigation_schedule_skipped` when a schedule came due and was kept from running, with its `reason` — ideal for notifications ("the evening run was skipped: busy"). Payloads: [Events](https://github.com/florianbaethge/simple_irrigation/blob/main/docs/automations.md#events).
 
-```yaml
-action: simple_irrigation.set_zone_duration
-data:
-  zone_id: "..."
-  slot_id: "..."          # any member of a cycle stands for the whole cycle
-  duration_min: 6         # leave out to remove the fixed minutes again
-```
+## Documentation
 
-`set_zone_duration` takes 0–240 minutes, the same range as the panel; `0` leaves the zone out. A zone that has not started yet picks the new value up, also in a run that is already under way — which is what lets a pre-start script set it. A manual *Run zone now* takes its duration when it is started. With Cycle & Soak the minutes apply to every pass.
-
-Example — set mode from an automation:
-
-```yaml
-action: simple_irrigation.set_mode
-data:
-  mode: eco
-  # config_entry_id: abc123...  # if multiple entries
-```
-
-Example — get told when a schedule did not run. `simple_irrigation_schedule_skipped` fires for every schedule that was due and did not start, with `slot_id`, `name`, `due_at` and a `reason`: `busy` (something was running and schedules do not wait), `expired` (waited longer than it may), `conditions`, `paused`, `stopped`, `error` (the run before it failed) or `queue_full`.
-
-```yaml
-triggers:
-  - trigger: event
-    event_type: simple_irrigation_schedule_skipped
-conditions: "{{ trigger.event.data.reason in ['busy', 'expired'] }}"
-actions:
-  - action: notify.mobile_app_phone
-    data:
-      message: "{{ trigger.event.data.name }} was skipped ({{ trigger.event.data.reason }})"
-```
-
-Every schedule slot and per-slot toggle is also exposed as a **switch** entity, so you can enable/disable individual runs from dashboards and automations. Use **Developer tools → Actions** to explore fields with translated descriptions.
-
-### Remaining run time
-
-While a zone is watering, the integration publishes when it is planned to finish:
-
-| Entity | Value |
-|--------|-------|
-| `sensor.<installation>_watering_until` | End of the zones running right now — the last one to finish |
-| `sensor.<zone>_watering_until` | End of that individual zone, useful when zones run in parallel |
-
-Both are timestamps, not a minute counter: the state changes twice per zone run instead of every second, which keeps the recorder small, and the dashboard still renders a live countdown from it. Outside a running cycle both are `unknown`.
-
-```yaml
-type: entities
-entities:
-  - entity: sensor.simple_irrigation_watering_until
-    name: Watering until
-    format: relative   # "in 12 minutes", ticking
-```
-
-The panel’s **Overview** tab shows the same information as a `m:ss` countdown per active zone.
-
-### Water sensors
-
-With [water use](#water-use) configured, two `total_increasing` sensors per installation hand the litres to Home Assistant:
-
-| Entity | Value |
-|--------|-------|
-| `sensor.<installation>_water` | Running total of the installation, in litres (attributes `source`, `last_run_l`) |
-| `sensor.<zone>_water` | Running total of that zone (same attributes) |
-
-Both are **water** sensors, so they appear in the Energy dashboard's water section, in long-term statistics and in a **Utility Meter** without further setup. They stay `unknown` until the first run reports water. `binary_sensor.<installation>_running` carries `soak_until` while a Cycle & Soak run rests.
-
----
+| Page | Content |
+|------|---------|
+| [The panel](https://github.com/florianbaethge/simple_irrigation/blob/main/docs/panel.md) | The five tabs, the accordion editors and the timetable, with screenshots |
+| [Zones](https://github.com/florianbaethge/simple_irrigation/blob/main/docs/zones.md) | Outputs and runtimes, duration-aware start services (Rain Bird, Rachio, Hydrawise, B-hyve, OpenSprinkler), hardware countdown, supply, stopping a single zone |
+| [Schedules](https://github.com/florianbaethge/simple_irrigation/blob/main/docs/schedules.md) | Cycles and slots, several start times, fixed minutes, overlapping schedules, Cycle & Soak, conditions, season |
+| [Runs: modes, pre-start and scripts](https://github.com/florianbaethge/simple_irrigation/blob/main/docs/runs.md) | Watering modes, pre-start outputs, pause, pre-start and post-run scripts, per-schedule overrides |
+| [Water use](https://github.com/florianbaethge/simple_irrigation/blob/main/docs/water.md) | Flow rates and meters, how to measure, the water sensors and the Energy dashboard |
+| [Dashboard card](https://github.com/florianbaethge/simple_irrigation/blob/main/docs/card.md) | Views, all options, tap and hold, manual run, badges |
+| [Automations](https://github.com/florianbaethge/simple_irrigation/blob/main/docs/automations.md) | Services with examples, events and their payloads, all entities, remaining run time |
 
 ## Logs and debugging
 
-- **Home Assistant log:**
-
-  ```yaml
-  logger:
-    logs:
-      custom_components.simple_irrigation: debug
-  ```
+```yaml
+logger:
+  logs:
+    custom_components.simple_irrigation: debug
+```
 
 - **Diagnostics:** **Settings → Devices & services → Simple Irrigation → Download diagnostics**.
 - **Panel:** the **Settings** tab has a *Diagnostics (raw run state)* disclosure and a *For automations* block with service names and the `config_entry_id`.
-
----
 
 ## Development
 
@@ -619,7 +204,7 @@ HA_URL=http://localhost:8123 HA_TOKEN=<long-lived-token> \
 
 Commit the updated bundles in `frontend/dist/` when you change the panel or card sources so HACS users do not need Node.
 
-## Version management
+### Version management
 
 The version is centrally managed in the `VERSION` file:
 
@@ -629,8 +214,6 @@ make version                        # show current version
 ```
 
 This updates `VERSION`, `manifest.json`, `frontend/package.json`, the panel TypeScript/embedded version, and rebuilds `frontend/dist/simple-irrigation-panel.js`.
-
----
 
 ## Contributing and support
 

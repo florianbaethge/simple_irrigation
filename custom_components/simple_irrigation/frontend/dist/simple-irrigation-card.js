@@ -5431,7 +5431,7 @@ window.customCards.push({
     documentationURL: "https://github.com/florianbaethge/simple_irrigation",
 });
 // eslint-disable-next-line no-console
-console.info(`%c SIMPLE-IRRIGATION-CARD %c ${"1.13.1"} `, "color: #fff; background: #03a9f4; font-weight: 700;", "color: #03a9f4; background: #fff; font-weight: 700;");
+console.info(`%c SIMPLE-IRRIGATION-CARD %c ${"1.14.0"} `, "color: #fff; background: #03a9f4; font-weight: 700;", "color: #03a9f4; background: #fff; font-weight: 700;");
 
 export { SimpleIrrigationCard };
 //# sourceMappingURL=simple-irrigation-card.js.map

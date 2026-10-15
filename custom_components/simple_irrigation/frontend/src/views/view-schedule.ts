@@ -1214,8 +1214,8 @@ export class ViewSchedule extends LitElement {
       const m = g.members.find((x) => x.enabled) ?? g.members[0];
       this._runSlotNow(m.slot_id);
     };
-    const runDisabled =
-      this._busy || this._runtimeBusy() || !anyEnabled || zoneIds.length === 0;
+    // Switched off only means it does not fire on its own; by hand it runs.
+    const runDisabled = this._busy || this._runtimeBusy() || zoneIds.length === 0;
 
     return html`
       <div class="compact-row ${accent}">
@@ -1273,7 +1273,7 @@ export class ViewSchedule extends LitElement {
               type="button"
               title=${t(this.hass, "config_panel.schedule_run_slot_now")}
               aria-label=${t(this.hass, "config_panel.schedule_run_slot_now")}
-              ?disabled=${this._busy || this._runtimeBusy() || !anyEnabled || zoneIds.length === 0}
+              ?disabled=${runDisabled}
               @click=${() => {
                 const m = g.members.find((x) => x.enabled) ?? g.members[0];
                 this._runSlotNow(m.slot_id);
@@ -1346,8 +1346,7 @@ export class ViewSchedule extends LitElement {
       ${this._renderGuardMeta(s.guards, s.ignore_global_guards)} ${this._renderScriptMeta(s)}
       ${this._renderCycleSoakMeta(s)} ${this._renderSeasonMeta(s)} ${this._renderWaterMeta(s)}
     `;
-    const runDisabled =
-      this._busy || this._runtimeBusy() || !s.enabled || s.zone_ids_ordered.length === 0;
+    const runDisabled = this._busy || this._runtimeBusy() || s.zone_ids_ordered.length === 0;
     return html`
       <div class="compact-row ${accent}">
         <div class="compact-row-header">

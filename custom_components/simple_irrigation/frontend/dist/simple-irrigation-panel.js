@@ -2659,12 +2659,18 @@ class ViewOverview extends i$4 {
         const opens = lookAheadStart(enabled.map((slot) => seasonFor(this._inst, slot)), today);
         return opens.toDateString() === today.toDateString() ? null : opens;
     }
-    /** The next `limit` distinct run fires across all enabled slots (client-side). */
-    _upcomingRuns(limit) {
-        const slots = this._inst.schedule_slots ?? [];
-        if (!this._planEnabled())
+    /**
+     * The next `limit` distinct run fires across all enabled slots (client-side).
+     * `includeOff` ignores the plan and slot switches and the pause and keeps only
+     * slots with zones: when each would fire if it could -- what "Run next slot"
+     * starts when nothing is scheduled. Mirrors `_next_slot_id` in card_api.py.
+     */
+    _upcomingRuns(limit, includeOff = false) {
+        const all = this._inst.schedule_slots ?? [];
+        const slots = includeOff ? all.filter((slot) => this._slotZoneIds(slot).length) : all;
+        if (!this._planEnabled() && !includeOff)
             return [];
-        const pauseMs = this._pauseUntil();
+        const pauseMs = includeOff ? null : this._pauseUntil();
         const now = new Date();
         const runs = [];
         const mode = this._mode();
@@ -2674,7 +2680,7 @@ class ViewOverview extends i$4 {
         let start = now;
         let first = null;
         for (const slot of slots) {
-            if (!(slot.enabled ?? true))
+            if (!includeOff && !(slot.enabled ?? true))
                 continue;
             const at = nextFire({
                 weekdays: Array.isArray(slot.weekdays)
@@ -2692,7 +2698,7 @@ class ViewOverview extends i$4 {
             const day = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
             const wd = mondayBasedWeekday(day);
             for (const slot of slots) {
-                if (!(slot.enabled ?? true))
+                if (!includeOff && !(slot.enabled ?? true))
                     continue;
                 const weekdays = Array.isArray(slot.weekdays)
                     ? slot.weekdays
@@ -2710,9 +2716,7 @@ class ViewOverview extends i$4 {
                     continue;
                 if (pauseMs !== null && when.getTime() < pauseMs)
                     continue;
-                const zoneIds = Array.isArray(slot.zone_ids_ordered)
-                    ? slot.zone_ids_ordered
-                    : [];
+                const zoneIds = this._slotZoneIds(slot);
                 runs.push({
                     when,
                     label: String(slot.cycle_meta?.label ?? slot.name ?? "").trim(),
@@ -2842,11 +2846,24 @@ class ViewOverview extends i$4 {
             return;
         void this._call(() => saveGlobal(this.hass, this.entryId, { mode }));
     }
-    _runNextSlot(runs) {
-        const sid = runs[0]?.slotId || this.scheduleNext?.slots?.[0]?.slot_id;
-        if (!sid)
+    /**
+     * The slot "Run next slot now" starts: the next scheduled one, or -- with the
+     * plan or every slot switched off -- the one that would fire next. Starting
+     * by hand does not depend on those switches.
+     */
+    _runNextTarget(runs) {
+        return (runs[0] ?? this._upcomingRuns(1, true)[0])?.slotId || undefined;
+    }
+    _runNextSlot(slotId) {
+        if (!slotId)
             return;
-        void this._call(() => runSlotNow(this.hass, this.entryId, sid));
+        void this._call(() => runSlotNow(this.hass, this.entryId, slotId));
+    }
+    _slotZoneIds(slot) {
+        return Array.isArray(slot.zone_ids_ordered) ? slot.zone_ids_ordered : [];
+    }
+    _turnPlanOn() {
+        void this._call(() => saveGlobal(this.hass, this.entryId, { enabled: true }));
     }
     _pause48h() {
         const until = new Date(Date.now() + 48 * 3600 * 1000).toISOString();
@@ -2880,6 +2897,7 @@ class ViewOverview extends i$4 {
         const waiting = this._waitingLine(rs);
         const mode = this._mode();
         const next = runs[0];
+        const runNextTarget = runBusy ? undefined : this._runNextTarget(runs);
         const badgeClass = runBusy ? "running" : runState === "error" ? "error" : "";
         const stateWord = runBusy
             ? runState === "preparing"
@@ -2891,7 +2909,9 @@ class ViewOverview extends i$4 {
                         : t$2(this.hass, "config_panel.general_state_running")
             : runState === "error"
                 ? t$2(this.hass, "config_panel.general_state_error_idle")
-                : t$2(this.hass, "config_panel.general_state_idle");
+                : !this._planEnabled()
+                    ? t$2(this.hass, "config_panel.entry_badge_plan_off")
+                    : t$2(this.hass, "config_panel.general_state_idle");
         // Only while watering or resting. Before the first zone there is no phase
         // to skip -- only the pump building pressure, and the backend ignores it.
         const showSkip = runState === "running" && (upcoming.length > 0 || soaking);
@@ -3035,8 +3055,8 @@ class ViewOverview extends i$4 {
                 `
             : b `
                   <button type="button" class="btn"
-                    ?disabled=${this._busy || !this._planEnabled() || !next}
-                    @click=${() => this._runNextSlot(runs)}>
+                    ?disabled=${this._busy || !runNextTarget}
+                    @click=${() => this._runNextSlot(runNextTarget)}>
                     ${t$2(this.hass, "config_panel.overview_run_next_now")}
                   </button>
                   <button type="button" class="btn-outline"
@@ -3061,6 +3081,28 @@ class ViewOverview extends i$4 {
       </ha-card>
     `;
     }
+    /** Why nothing is coming up, with the one step that changes it. */
+    _renderNoRuns() {
+        if (!this._planEnabled()) {
+            return b `<div class="empty-state">
+        <ha-icon icon="mdi:calendar-remove-outline"></ha-icon>
+        <p>${t$2(this.hass, "config_panel.general_plan_off_hint")}</p>
+        <button type="button" class="btn-outline" ?disabled=${this._busy}
+          @click=${() => this._turnPlanOn()}>
+          ${t$2(this.hass, "config_panel.overview_turn_plan_on")}
+        </button>
+      </div>`;
+        }
+        const slots = this._inst.schedule_slots ?? [];
+        const allOff = slots.length > 0 && slots.every((slot) => !(slot.enabled ?? true));
+        return b `<div class="empty-state">
+      <ha-icon icon="mdi:calendar-blank-outline"></ha-icon>
+      <p>${t$2(this.hass, allOff ? "config_panel.overview_all_slots_off" : "config_panel.general_no_slots")}</p>
+      <button type="button" class="btn-outline" @click=${() => this._goSchedule()}>
+        ${t$2(this.hass, "config_panel.tab_schedule")}
+      </button>
+    </div>`;
+    }
     _renderNextRuns(runs) {
         const seasonOpens = this._seasonOpens();
         return b `
@@ -3075,9 +3117,6 @@ class ViewOverview extends i$4 {
           </span>
         </div>
         <div class="card-content">
-          ${!this._planEnabled()
-            ? b `<p class="hint">${t$2(this.hass, "config_panel.general_plan_off_hint")}</p>`
-            : A}
           ${seasonOpens && this._planEnabled()
             ? b `<p class="hint">
                 ${t$2(this.hass, "config_panel.overview_season_opens", {
@@ -3116,13 +3155,7 @@ class ViewOverview extends i$4 {
                   </div>
                 `;
             })
-            : b `<div class="empty-state">
-                <ha-icon icon="mdi:calendar-blank-outline"></ha-icon>
-                <p>${t$2(this.hass, "config_panel.general_no_slots")}</p>
-                <button type="button" class="btn-outline" @click=${() => this._goSchedule()}>
-                  ${t$2(this.hass, "config_panel.tab_schedule")}
-                </button>
-              </div>`}
+            : this._renderNoRuns()}
         </div>
       </ha-card>
     `;
@@ -6329,7 +6362,8 @@ class ViewSchedule extends i$4 {
             const m = g.members.find((x) => x.enabled) ?? g.members[0];
             this._runSlotNow(m.slot_id);
         };
-        const runDisabled = this._busy || this._runtimeBusy() || !anyEnabled || zoneIds.length === 0;
+        // Switched off only means it does not fire on its own; by hand it runs.
+        const runDisabled = this._busy || this._runtimeBusy() || zoneIds.length === 0;
         return b `
       <div class="compact-row ${accent}">
         <div class="compact-row-header">
@@ -6375,7 +6409,7 @@ class ViewSchedule extends i$4 {
               type="button"
               title=${t$2(this.hass, "config_panel.schedule_run_slot_now")}
               aria-label=${t$2(this.hass, "config_panel.schedule_run_slot_now")}
-              ?disabled=${this._busy || this._runtimeBusy() || !anyEnabled || zoneIds.length === 0}
+              ?disabled=${runDisabled}
               @click=${() => {
             const m = g.members.find((x) => x.enabled) ?? g.members[0];
             this._runSlotNow(m.slot_id);
@@ -6439,7 +6473,7 @@ class ViewSchedule extends i$4 {
       ${this._renderGuardMeta(s.guards, s.ignore_global_guards)} ${this._renderScriptMeta(s)}
       ${this._renderCycleSoakMeta(s)} ${this._renderSeasonMeta(s)} ${this._renderWaterMeta(s)}
     `;
-        const runDisabled = this._busy || this._runtimeBusy() || !s.enabled || s.zone_ids_ordered.length === 0;
+        const runDisabled = this._busy || this._runtimeBusy() || s.zone_ids_ordered.length === 0;
         return b `
       <div class="compact-row ${accent}">
         <div class="compact-row-header">
@@ -9894,7 +9928,7 @@ __decorate([
 ], ViewZones.prototype, "_orderDraft", void 0);
 defineCustomElementOnce("si-view-zones", ViewZones);
 
-const VERSION = "1.13.1";
+const VERSION = "1.14.0";
 const PANEL_PAGES = ["overview", "zones", "schedule", "timetable", "settings"];
 /** Legacy path aliases so existing links / deep links keep working. */
 const PAGE_ALIASES = {

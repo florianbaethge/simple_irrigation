@@ -349,6 +349,8 @@
     "general_plan_off_hint": "Dieser Plan ist ausgeschaltet. Es starten keine automatischen Läufe, bis Sie ihn wieder aktivieren.",
     "general_next_scheduled_run": "Nächster geplanter Lauf",
     "general_no_slots": "Keine aktivierten Zeitplan-Slots oder noch keine Zonen zugewiesen.",
+    "overview_turn_plan_on": "Plan einschalten",
+    "overview_all_slots_off": "Alle Zeitplan-Slots sind ausgeschaltet. Von Hand können Sie trotzdem einen starten.",
     "general_none_scheduled": "Nichts geplant",
     "general_card_plan_control": "Plan-Steuerung",
     "general_enable_plan": "Automatische Bewässerung für diesen Plan aktivieren",

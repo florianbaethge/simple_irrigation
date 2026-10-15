@@ -349,6 +349,8 @@
     "general_plan_off_hint": "Ce plan est désactivé. Aucune exécution automatique ne démarrera tant que vous ne le réactiverez pas.",
     "general_next_scheduled_run": "Prochaine exécution planifiée",
     "general_no_slots": "Aucun créneau de programmation activé ou aucune zone assignée pour l’instant.",
+    "overview_turn_plan_on": "Activer le plan",
+    "overview_all_slots_off": "Tous les créneaux de programmation sont désactivés. Vous pouvez toujours en lancer un manuellement.",
     "general_none_scheduled": "Rien de planifié",
     "general_card_plan_control": "Contrôle du plan",
     "general_enable_plan": "Activer l’irrigation automatique pour ce plan",

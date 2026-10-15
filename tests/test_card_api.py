@@ -18,6 +18,7 @@ import pytest
 from custom_components.simple_irrigation.card_api import (
     _cadence,
     _next_firings,
+    _next_slot_id,
     _resolve,
     _slot_duration_min,
     _snapshot,
@@ -307,6 +308,72 @@ def test_next_firings_are_empty_for_a_disabled_installation() -> None:
         assert _next_firings(hass, _installation(enabled=False), 4) == []
 
 
+def test_next_firings_with_switches_ignored_include_a_disabled_plan_and_slots() -> None:
+    """When each slot would fire if it could: the fallback for "Run next slot"."""
+    inst = _installation(enabled=False)
+    for slot in inst.schedule_slots:
+        slot.enabled = False
+    hass = _hass()
+    with _freeze():
+        runs = _next_firings(hass, inst, 2, include_off=True)
+    assert [r["slot_id"] for r in runs] == ["evening", "morning"]
+
+
+def test_next_firings_with_switches_ignored_skip_slots_without_zones() -> None:
+    """A slot with nothing to water would only fail when started."""
+    inst = _installation()
+    inst.schedule_slots[1].zone_ids_ordered = []
+    hass = _hass()
+    with _freeze():
+        runs = _next_firings(hass, inst, 4, include_off=True)
+    assert runs and all(r["slot_id"] == "morning" for r in runs)
+
+
+# --- run next slot ----------------------------------------------------------
+
+
+def test_run_next_starts_the_next_scheduled_slot() -> None:
+    inst = _installation()
+    inst.schedule_slots[0].enabled = False
+    hass = _hass()
+    with _freeze():
+        # The morning slot would fire first tomorrow, but only the evening one is on.
+        assert _next_slot_id(hass, inst) == "evening"
+
+
+def test_run_next_falls_back_when_every_slot_is_switched_off() -> None:
+    """Switched off means "does not fire on its own"; by hand it still runs."""
+    inst = _installation()
+    for slot in inst.schedule_slots:
+        slot.enabled = False
+    hass = _hass()
+    with _freeze():
+        assert _next_slot_id(hass, inst) == "evening"
+
+
+def test_run_next_falls_back_when_the_plan_is_switched_off() -> None:
+    hass = _hass()
+    with _freeze():
+        assert _next_slot_id(hass, _installation(enabled=False)) == "evening"
+
+
+def test_run_next_passes_over_a_slot_without_zones() -> None:
+    inst = _installation()
+    inst.schedule_slots[1].zone_ids_ordered = []
+    hass = _hass()
+    with _freeze():
+        assert _next_slot_id(hass, inst) == "morning"
+
+
+def test_run_next_has_nothing_to_start_without_runnable_slots() -> None:
+    inst = _installation(enabled=False)
+    for slot in inst.schedule_slots:
+        slot.zone_ids_ordered = []
+    hass = _hass()
+    with _freeze():
+        assert _next_slot_id(hass, inst) is None
+
+
 # --- week -------------------------------------------------------------------
 
 
@@ -402,6 +469,19 @@ def test_snapshot_phase_counter_includes_the_running_phase() -> None:
     ):
         snap = _snapshot(hass, "e1", _coordinator(_installation(), rs))
     assert (snap["phase_index"], snap["phase_total"]) == (2, 5)
+
+
+def test_snapshot_offers_run_next_while_the_plan_is_off() -> None:
+    """The card enables "Run next slot" from this, not from the next-runs list."""
+    hass = _hass()
+    with _freeze(), patch(
+        "custom_components.simple_irrigation.card_api._entity_id", return_value=""
+    ):
+        snap = _snapshot(
+            hass, "e1", _coordinator(_installation(enabled=False), RunState())
+        )
+    assert snap["next_runs"] == []
+    assert snap["run_next_slot_id"] == "evening"
 
 
 def test_snapshot_has_no_phase_counter_while_idle() -> None:

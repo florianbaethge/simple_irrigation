@@ -162,6 +162,8 @@ export interface Snapshot {
   zones: ZoneRow[];
   slots: SlotRow[];
   next_runs: SlotRow[];
+  /** What "Run next slot" starts -- also with the plan or every slot switched off. */
+  run_next_slot_id: string | null;
   week: Week;
   issue_count: number;
   has_conditions: boolean;

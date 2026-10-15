@@ -349,6 +349,8 @@
     "general_plan_off_hint": "Questo piano è disattivato. Nessuna esecuzione automatica partirà finché non lo riabiliti.",
     "general_next_scheduled_run": "Prossima esecuzione pianificata",
     "general_no_slots": "Nessuna fascia pianificata abilitata o nessuna zona assegnata.",
+    "overview_turn_plan_on": "Attiva il piano",
+    "overview_all_slots_off": "Tutte le fasce pianificate sono disattivate. Puoi comunque avviarne una a mano.",
     "general_none_scheduled": "Nessuna pianificata",
     "general_card_plan_control": "Controllo piano",
     "general_enable_plan": "Abilita irrigazione automatica per questo piano",

@@ -235,9 +235,15 @@ def _slot_payload(inst: Installation, slot: ScheduleSlot) -> dict[str, Any]:
     }
 
 
-def _slot_fires_on(inst: Installation, slot: ScheduleSlot, day: date) -> bool:
-    """Whether an enabled slot fires on ``day`` (weekday, ISO-week parity, season)."""
-    if not slot.enabled:
+def _slot_fires_on(
+    inst: Installation, slot: ScheduleSlot, day: date, *, include_off: bool = False
+) -> bool:
+    """Whether a slot fires on ``day`` (weekday, ISO-week parity, season).
+
+    Only enabled slots fire, unless ``include_off`` asks when a switched-off
+    slot would.
+    """
+    if not slot.enabled and not include_off:
         return False
     if day.weekday() not in slot.weekdays:
         return False
@@ -245,17 +251,26 @@ def _slot_fires_on(inst: Installation, slot: ScheduleSlot, day: date) -> bool:
 
 
 def _next_firings(
-    hass: HomeAssistant, inst: Installation, limit: int
+    hass: HomeAssistant, inst: Installation, limit: int, *, include_off: bool = False
 ) -> list[dict[str, Any]]:
     """The next ``limit`` real firings across all slots, ascending.
 
     Resolved into concrete datetimes by walking forward day by day, so the card
     never has to decode weekday/parity rules — and a slot that fires twice in
     the window appears twice.
+
+    ``include_off`` ignores the plan and slot switches and keeps only slots
+    with zones to water: when each slot would fire if it could be started.
     """
     tz = dt_util.get_time_zone(hass.config.time_zone)
-    if tz is None or not inst.enabled or limit <= 0:
+    if tz is None or limit <= 0 or (not inst.enabled and not include_off):
         return []
+
+    slots = [
+        slot
+        for slot in inst.schedule_slots
+        if not include_off or _slot_zone_ids(inst, slot)
+    ]
 
     now = dt_util.now()
     today = now.astimezone(tz).date()
@@ -265,8 +280,9 @@ def _next_firings(
     # schedule comes back, so the card says when that is instead of nothing.
     openings = [
         fire
-        for slot in inst.schedule_slots
-        if slot.enabled and (fire := next_slot_fire(inst, slot, now, tz)) is not None
+        for slot in slots
+        if (slot.enabled or include_off)
+        and (fire := next_slot_fire(inst, slot, now, tz)) is not None
     ]
     first_day = max(today, min(openings).astimezone(tz).date()) if openings else today
 
@@ -275,8 +291,8 @@ def _next_firings(
     # head-room for a fully paused fortnight without an unbounded loop.
     for offset in range(21):
         day = first_day + timedelta(days=offset)
-        for slot in inst.schedule_slots:
-            if not _slot_fires_on(inst, slot, day):
+        for slot in slots:
+            if not _slot_fires_on(inst, slot, day, include_off=include_off):
                 continue
             parsed = parse_hh_mm(slot.time_local)
             if parsed is None:
@@ -525,6 +541,8 @@ def _snapshot(hass: HomeAssistant, entry_id: str, data: dict[str, Any]) -> dict[
         "zones": zones,
         "slots": slots,
         "next_runs": next_runs,
+        # What "Run next slot" would start, also with nothing scheduled.
+        "run_next_slot_id": _next_slot_id(hass, inst),
         "week": _week(hass, inst),
         "issue_count": sum(1 for z in zones if z["issue"] and z["enabled"]),
         "has_conditions": bool(inst.guards),
@@ -722,14 +740,16 @@ async def ws_action(
 
 
 def _next_slot_id(hass: HomeAssistant, inst: Installation) -> str | None:
-    """Slot id of the next scheduled firing, ignoring an active pause.
+    """Slot "Run next slot" starts: the next scheduled firing with zones to water.
 
-    "Run next slot" is a manual override, so a pause must not hide the slot the
-    user is explicitly asking for.
+    It is a manual override, so neither a pause nor a switched-off plan or slot
+    hides it: with nothing scheduled, it is the slot that would fire next if
+    the switches were on.
     """
-    firings = _next_firings(hass, inst, 1)
-    if firings:
-        return str(firings[0]["slot_id"])
+    for include_off in (False, True):
+        for run in _next_firings(hass, inst, CARD_MAX_NEXT_RUNS, include_off=include_off):
+            if run["zone_ids"]:
+                return str(run["slot_id"])
     return None
 
 

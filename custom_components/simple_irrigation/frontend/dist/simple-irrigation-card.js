@@ -384,6 +384,7 @@ const TRANSLATIONS = {
         next_run: "Next run",
         no_next_run: "No run scheduled",
         no_next_run_hint: "Add a schedule slot in the Simple Irrigation panel.",
+        no_next_run_off_hint: "All schedule slots are switched off.",
         remaining: "{zone} · remaining",
         zones_count: "{count} zones",
         zones_count_one: "1 zone",
@@ -411,7 +412,7 @@ const TRANSLATIONS = {
         paused_manual_note: "Manual runs are unaffected.",
         last_run_failed: "Last run stopped early",
         disabled_title: "Schedule disabled",
-        disabled_note: "This installation is switched off; nothing will run.",
+        disabled_note: "Automatic runs are off. You can still start a run by hand.",
         // zones view
         zones_title: "Zones",
         issues_count: "{count} issues",
@@ -468,6 +469,7 @@ const TRANSLATIONS = {
         run_progress: "{zone} · {time} left · {index} of {total}",
         select_zones_first: "Select at least one zone.",
         no_slots: "No schedule slots to run.",
+        slot_off: "Off",
         // compact
         compact_idle: "{state} · next {time} · ~{duration}",
         compact_idle_no_run: "{state} · nothing scheduled",
@@ -573,6 +575,7 @@ const TRANSLATIONS = {
         next_run: "Prochain arrosage",
         no_next_run: "Aucun arrosage planifié",
         no_next_run_hint: "Ajoutez un créneau de programmation dans le panneau Simple Irrigation.",
+        no_next_run_off_hint: "Tous les créneaux de programmation sont désactivés.",
         remaining: "{zone} · restant",
         zones_count: "{count} zones",
         zones_count_one: "1 zone",
@@ -600,7 +603,7 @@ const TRANSLATIONS = {
         paused_manual_note: "Les exécutions manuelles ne sont pas affectées.",
         last_run_failed: "La dernière exécution a été interrompue",
         disabled_title: "Programmation désactivée",
-        disabled_note: "Cette installation est coupée ; rien ne s’exécutera.",
+        disabled_note: "Les exécutions automatiques sont désactivées. Vous pouvez toujours lancer une exécution manuellement.",
         // zones view
         zones_title: "Zones",
         issues_count: "{count} problèmes",
@@ -657,6 +660,7 @@ const TRANSLATIONS = {
         run_progress: "{zone} · encore {time} · {index} sur {total}",
         select_zones_first: "Sélectionnez au moins une zone.",
         no_slots: "Aucun créneau de programmation à exécuter.",
+        slot_off: "Désactivé",
         // compact
         compact_idle: "{state} · prochain {time} · ~{duration}",
         compact_idle_no_run: "{state} · rien de planifié",
@@ -760,6 +764,7 @@ const TRANSLATIONS = {
         next_run: "Nächster Lauf",
         no_next_run: "Kein Lauf geplant",
         no_next_run_hint: "Lege im Simple-Irrigation-Panel einen Zeitplan an.",
+        no_next_run_off_hint: "Alle Zeitplan-Slots sind ausgeschaltet.",
         remaining: "{zone} · verbleibend",
         zones_count: "{count} Zonen",
         zones_count_one: "1 Zone",
@@ -785,7 +790,7 @@ const TRANSLATIONS = {
         paused_manual_note: "Manuelle Läufe sind nicht betroffen.",
         last_run_failed: "Letzter Lauf wurde vorzeitig beendet",
         disabled_title: "Zeitplan deaktiviert",
-        disabled_note: "Diese Anlage ist ausgeschaltet; es läuft nichts.",
+        disabled_note: "Automatische Läufe sind aus. Von Hand kannst du trotzdem starten.",
         zones_title: "Zonen",
         issues_count: "{count} Probleme",
         issues_count_one: "1 Problem",
@@ -838,6 +843,7 @@ const TRANSLATIONS = {
         run_progress: "{zone} · noch {time} · {index} von {total}",
         select_zones_first: "Wähle mindestens eine Zone.",
         no_slots: "Keine Zeitplan-Slots vorhanden.",
+        slot_off: "Aus",
         compact_idle: "{state} · nächster Lauf {time} · ~{duration}",
         compact_idle_no_run: "{state} · nichts geplant",
         compact_running: "{zone} · noch {time} · {index} von {total}",
@@ -935,6 +941,7 @@ const TRANSLATIONS = {
         next_run: "Volgende beurt",
         no_next_run: "Geen beurt gepland",
         no_next_run_hint: "Maak een tijdvak aan in het Simple Irrigation-paneel.",
+        no_next_run_off_hint: "Alle tijdvakken staan uit.",
         remaining: "{zone} · resterend",
         zones_count: "{count} zones",
         zones_count_one: "1 zone",
@@ -960,7 +967,7 @@ const TRANSLATIONS = {
         paused_manual_note: "Handmatige beurten gaan gewoon door.",
         last_run_failed: "Laatste beurt is vroegtijdig gestopt",
         disabled_title: "Schema uitgeschakeld",
-        disabled_note: "Deze installatie staat uit; er draait niets.",
+        disabled_note: "Automatische beurten staan uit. Handmatig starten kan nog steeds.",
         zones_title: "Zones",
         issues_count: "{count} problemen",
         issues_count_one: "1 probleem",
@@ -1013,6 +1020,7 @@ const TRANSLATIONS = {
         run_progress: "{zone} · nog {time} · {index} van {total}",
         select_zones_first: "Kies minstens één zone.",
         no_slots: "Geen tijdvakken beschikbaar.",
+        slot_off: "Uit",
         compact_idle: "{state} · volgende {time} · ~{duration}",
         compact_idle_no_run: "{state} · niets gepland",
         compact_running: "{zone} · nog {time} · {index} van {total}",
@@ -1110,6 +1118,7 @@ const TRANSLATIONS = {
         next_run: "Prossima irrigazione",
         no_next_run: "Nessuna irrigazione programmata",
         no_next_run_hint: "Aggiungi una fascia oraria nel pannello Simple Irrigation.",
+        no_next_run_off_hint: "Tutte le fasce orarie sono spente.",
         remaining: "{zone} · rimanente",
         zones_count: "{count} zone",
         zones_count_one: "1 zona",
@@ -1135,7 +1144,7 @@ const TRANSLATIONS = {
         paused_manual_note: "Le irrigazioni manuali non sono interessate.",
         last_run_failed: "L'ultima irrigazione si è interrotta",
         disabled_title: "Programmazione disattivata",
-        disabled_note: "Questo impianto è spento; non verrà eseguito nulla.",
+        disabled_note: "Le irrigazioni automatiche sono spente. Puoi comunque avviarne una a mano.",
         zones_title: "Zone",
         issues_count: "{count} problemi",
         issues_count_one: "1 problema",
@@ -1188,6 +1197,7 @@ const TRANSLATIONS = {
         run_progress: "{zone} · {time} rimanenti · {index} di {total}",
         select_zones_first: "Seleziona almeno una zona.",
         no_slots: "Nessuna fascia oraria disponibile.",
+        slot_off: "Spenta",
         compact_idle: "{state} · prossima {time} · ~{duration}",
         compact_idle_no_run: "{state} · nulla in programma",
         compact_running: "{zone} · {time} rimanenti · {index} di {total}",
@@ -4309,7 +4319,11 @@ let SimpleIrrigationCard = class SimpleIrrigationCard extends i$2 {
               `
             : b `
                 <div class="big">${localize(this.hass, "no_next_run")}</div>
-                <div class="sub">${localize(this.hass, "no_next_run_hint")}</div>
+                <div class="sub">
+                  ${localize(this.hass, snap.slots.length && snap.slots.every((slot) => !slot.enabled)
+                ? "no_next_run_off_hint"
+                : "no_next_run_hint")}
+                </div>
               `}
         </div>
         ${this._renderActions()} ${this._renderModeRow()}
@@ -4324,14 +4338,16 @@ let SimpleIrrigationCard = class SimpleIrrigationCard extends i$2 {
         const actions = this._cfg.actions.filter((action) => action !== "stop" || busyRun);
         if (!actions.length)
             return A;
-        const hasNext = Boolean(this._nextRun() ?? snap.next_runs.length);
+        const hasNext = Boolean(snap.run_next_slot_id);
         return b `<div class="actions">
       ${actions.map((action, index) => {
             const primary = index === 0 && action !== "stop";
             const danger = action === "stop";
+            // Skipping or pausing a plan that is switched off changes nothing.
             const disabled = this._busy ||
                 (action === "run_next" && (!hasNext || busyRun)) ||
-                (action === "stop" && !busyRun);
+                (action === "stop" && !busyRun) ||
+                (!snap.enabled && action !== "run_next" && action !== "stop");
             return b `<button
           class=${e({ btn: true, primary, danger })}
           ?disabled=${disabled}
@@ -4585,7 +4601,7 @@ let SimpleIrrigationCard = class SimpleIrrigationCard extends i$2 {
         </button>
         <button
           class="btn inline small outline-pri"
-          ?disabled=${this._busy || !this._snapshot?.next_runs.length}
+          ?disabled=${this._busy || !this._snapshot?.run_next_slot_id}
           @click=${() => this._onAction("run_next")}
         >
           ${localize(this.hass, "action_run_next")}
@@ -4602,6 +4618,7 @@ let SimpleIrrigationCard = class SimpleIrrigationCard extends i$2 {
         <span class="pill">${localize(this.hass, "disabled_title")}</span>
       </div>
       <div class="snote">${localize(this.hass, "disabled_note")}</div>
+      ${this._renderActions()}
     </div>`;
     }
     // ---- zones --------------------------------------------------------------
@@ -5113,7 +5130,8 @@ let SimpleIrrigationCard = class SimpleIrrigationCard extends i$2 {
         const snap = this._snapshot;
         const slots = snap.slots;
         const selected = slots.find((slot) => slot.slot_id === this._pickedSlot) ??
-            slots.find((slot) => slot.enabled && slot.zone_ids.length);
+            slots.find((slot) => slot.enabled && slot.zone_ids.length) ??
+            slots.find((slot) => slot.zone_ids.length);
         if (!slots.length) {
             return b `<div class="empty">${localize(this.hass, "no_slots")}</div>`;
         }
@@ -5122,7 +5140,8 @@ let SimpleIrrigationCard = class SimpleIrrigationCard extends i$2 {
       <div style="margin-top:4px">
         ${slots.map((slot) => {
             const on = slot.slot_id === selected?.slot_id;
-            const runnable = slot.enabled && slot.zone_ids.length > 0;
+            // A switched-off slot only stops firing on its own; by hand it runs.
+            const runnable = slot.zone_ids.length > 0;
             return b `<button
             class=${e({ slotrow: true, on, disabled: !runnable })}
             ?disabled=${!runnable}
@@ -5135,7 +5154,14 @@ let SimpleIrrigationCard = class SimpleIrrigationCard extends i$2 {
               <div class="slotname">
                 ${slot.name || cadenceLabel(this.hass, slot.cadence)}
               </div>
-              <div class="slotsub">${slot.zone_names.join(", ")}</div>
+              <div class="slotsub">
+                ${[
+                slot.enabled ? "" : localize(this.hass, "slot_off"),
+                slot.zone_names.join(", "),
+            ]
+                .filter(Boolean)
+                .join(" · ")}
+              </div>
             </div>
             <span class="slotdur">
               ${approxMinutes(this.hass, slot.duration_min)}
@@ -5302,7 +5328,7 @@ let SimpleIrrigationCard = class SimpleIrrigationCard extends i$2 {
         }
         return b `<button
       class="cbtn"
-      ?disabled=${this._busy || !this._snapshot?.next_runs.length}
+      ?disabled=${this._busy || !this._snapshot?.run_next_slot_id}
       aria-label=${localize(this.hass, "action_run_next")}
       @click=${() => this._onAction("run_next")}
     >

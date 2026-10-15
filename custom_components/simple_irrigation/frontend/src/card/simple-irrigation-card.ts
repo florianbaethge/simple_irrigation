@@ -684,7 +684,14 @@ export class SimpleIrrigationCard extends LitElement {
               `
             : html`
                 <div class="big">${localize(this.hass, "no_next_run")}</div>
-                <div class="sub">${localize(this.hass, "no_next_run_hint")}</div>
+                <div class="sub">
+                  ${localize(
+                    this.hass,
+                    snap.slots.length && snap.slots.every((slot) => !slot.enabled)
+                      ? "no_next_run_off_hint"
+                      : "no_next_run_hint"
+                  )}
+                </div>
               `}
         </div>
         ${this._renderActions()} ${this._renderModeRow()}
@@ -701,16 +708,18 @@ export class SimpleIrrigationCard extends LitElement {
       (action) => action !== "stop" || busyRun
     );
     if (!actions.length) return nothing;
-    const hasNext = Boolean(this._nextRun() ?? snap.next_runs.length);
+    const hasNext = Boolean(snap.run_next_slot_id);
 
     return html`<div class="actions">
       ${actions.map((action, index) => {
         const primary = index === 0 && action !== "stop";
         const danger = action === "stop";
+        // Skipping or pausing a plan that is switched off changes nothing.
         const disabled =
           this._busy ||
           (action === "run_next" && (!hasNext || busyRun)) ||
-          (action === "stop" && !busyRun);
+          (action === "stop" && !busyRun) ||
+          (!snap.enabled && action !== "run_next" && action !== "stop");
         return html`<button
           class=${classMap({ btn: true, primary, danger })}
           ?disabled=${disabled}
@@ -989,7 +998,7 @@ export class SimpleIrrigationCard extends LitElement {
         </button>
         <button
           class="btn inline small outline-pri"
-          ?disabled=${this._busy || !this._snapshot?.next_runs.length}
+          ?disabled=${this._busy || !this._snapshot?.run_next_slot_id}
           @click=${() => this._onAction("run_next")}
         >
           ${localize(this.hass, "action_run_next")}
@@ -1007,6 +1016,7 @@ export class SimpleIrrigationCard extends LitElement {
         <span class="pill">${localize(this.hass, "disabled_title")}</span>
       </div>
       <div class="snote">${localize(this.hass, "disabled_note")}</div>
+      ${this._renderActions()}
     </div>`;
   }
 
@@ -1579,7 +1589,8 @@ export class SimpleIrrigationCard extends LitElement {
     const slots = snap.slots;
     const selected =
       slots.find((slot) => slot.slot_id === this._pickedSlot) ??
-      slots.find((slot) => slot.enabled && slot.zone_ids.length);
+      slots.find((slot) => slot.enabled && slot.zone_ids.length) ??
+      slots.find((slot) => slot.zone_ids.length);
 
     if (!slots.length) {
       return html`<div class="empty">${localize(this.hass, "no_slots")}</div>`;
@@ -1590,7 +1601,8 @@ export class SimpleIrrigationCard extends LitElement {
       <div style="margin-top:4px">
         ${slots.map((slot) => {
           const on = slot.slot_id === selected?.slot_id;
-          const runnable = slot.enabled && slot.zone_ids.length > 0;
+          // A switched-off slot only stops firing on its own; by hand it runs.
+          const runnable = slot.zone_ids.length > 0;
           return html`<button
             class=${classMap({ slotrow: true, on, disabled: !runnable })}
             ?disabled=${!runnable}
@@ -1603,7 +1615,14 @@ export class SimpleIrrigationCard extends LitElement {
               <div class="slotname">
                 ${slot.name || cadenceLabel(this.hass, slot.cadence)}
               </div>
-              <div class="slotsub">${slot.zone_names.join(", ")}</div>
+              <div class="slotsub">
+                ${[
+                  slot.enabled ? "" : localize(this.hass, "slot_off"),
+                  slot.zone_names.join(", "),
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </div>
             </div>
             <span class="slotdur">
               ${approxMinutes(this.hass, slot.duration_min)}
@@ -1786,7 +1805,7 @@ export class SimpleIrrigationCard extends LitElement {
     }
     return html`<button
       class="cbtn"
-      ?disabled=${this._busy || !this._snapshot?.next_runs.length}
+      ?disabled=${this._busy || !this._snapshot?.run_next_slot_id}
       aria-label=${localize(this.hass, "action_run_next")}
       @click=${() => this._onAction("run_next")}
     >

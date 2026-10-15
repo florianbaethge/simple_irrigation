@@ -349,6 +349,8 @@
     "general_plan_off_hint": "Dit plan is uitgeschakeld. Er zullen geen automatische runs starten totdat u dit opnieuw inschakelt.",
     "general_next_scheduled_run": "Volgende geplande run",
     "general_no_slots": "Geen ingeschakelde planningsslots of zones toegewezen.",
+    "overview_turn_plan_on": "Plan inschakelen",
+    "overview_all_slots_off": "Alle planningsslots staan uit. U kunt er nog steeds handmatig een starten.",
     "general_none_scheduled": "Niets gepland",
     "general_card_plan_control": "Planbesturing",
     "general_enable_plan": "Schakel automatische irrigatie in voor dit plan",

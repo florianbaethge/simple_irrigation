@@ -349,6 +349,8 @@
     "general_plan_off_hint": "This plan is turned off. No automatic runs will start until you enable it again.",
     "general_next_scheduled_run": "Next scheduled run",
     "general_no_slots": "No enabled schedule slots or no zones assigned yet.",
+    "overview_turn_plan_on": "Turn plan on",
+    "overview_all_slots_off": "All schedule slots are switched off. You can still start one by hand.",
     "general_none_scheduled": "None scheduled",
     "general_card_plan_control": "Plan control",
     "general_enable_plan": "Enable automatic irrigation for this plan",

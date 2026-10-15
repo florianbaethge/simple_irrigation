@@ -397,11 +397,17 @@ export class ViewOverview extends LitElement {
     return opens.toDateString() === today.toDateString() ? null : opens;
   }
 
-  /** The next `limit` distinct run fires across all enabled slots (client-side). */
-  private _upcomingRuns(limit: number): UpcomingRun[] {
-    const slots = (this._inst.schedule_slots as Array<Record<string, unknown>> | undefined) ?? [];
-    if (!this._planEnabled()) return [];
-    const pauseMs = this._pauseUntil();
+  /**
+   * The next `limit` distinct run fires across all enabled slots (client-side).
+   * `includeOff` ignores the plan and slot switches and the pause and keeps only
+   * slots with zones: when each would fire if it could -- what "Run next slot"
+   * starts when nothing is scheduled. Mirrors `_next_slot_id` in card_api.py.
+   */
+  private _upcomingRuns(limit: number, includeOff = false): UpcomingRun[] {
+    const all = (this._inst.schedule_slots as Array<Record<string, unknown>> | undefined) ?? [];
+    const slots = includeOff ? all.filter((slot) => this._slotZoneIds(slot).length) : all;
+    if (!this._planEnabled() && !includeOff) return [];
+    const pauseMs = includeOff ? null : this._pauseUntil();
     const now = new Date();
     const runs: UpcomingRun[] = [];
     const mode = this._mode();
@@ -411,7 +417,7 @@ export class ViewOverview extends LitElement {
     let start = now;
     let first: Date | null = null;
     for (const slot of slots) {
-      if (!(slot.enabled ?? true)) continue;
+      if (!includeOff && !(slot.enabled ?? true)) continue;
       const at = nextFire(
         {
           weekdays: Array.isArray(slot.weekdays)
@@ -431,7 +437,7 @@ export class ViewOverview extends LitElement {
       const day = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
       const wd = mondayBasedWeekday(day);
       for (const slot of slots) {
-        if (!(slot.enabled ?? true)) continue;
+        if (!includeOff && !(slot.enabled ?? true)) continue;
         const weekdays = Array.isArray(slot.weekdays)
           ? (slot.weekdays as number[])
           : [Number(slot.weekday ?? 0)];
@@ -443,9 +449,7 @@ export class ViewOverview extends LitElement {
         const when = new Date(day.getFullYear(), day.getMonth(), day.getDate(), h || 0, mi || 0);
         if (when <= now) continue;
         if (pauseMs !== null && when.getTime() < pauseMs) continue;
-        const zoneIds = Array.isArray(slot.zone_ids_ordered)
-          ? (slot.zone_ids_ordered as string[])
-          : [];
+        const zoneIds = this._slotZoneIds(slot);
         runs.push({
           when,
           label: String((slot.cycle_meta as CycleMeta)?.label ?? slot.name ?? "").trim(),
@@ -581,10 +585,26 @@ export class ViewOverview extends LitElement {
     void this._call(() => saveGlobal(this.hass, this.entryId, { mode }));
   }
 
-  private _runNextSlot(runs: UpcomingRun[]): void {
-    const sid = runs[0]?.slotId || this.scheduleNext?.slots?.[0]?.slot_id;
-    if (!sid) return;
-    void this._call(() => runSlotNow(this.hass, this.entryId, sid));
+  /**
+   * The slot "Run next slot now" starts: the next scheduled one, or -- with the
+   * plan or every slot switched off -- the one that would fire next. Starting
+   * by hand does not depend on those switches.
+   */
+  private _runNextTarget(runs: UpcomingRun[]): string | undefined {
+    return (runs[0] ?? this._upcomingRuns(1, true)[0])?.slotId || undefined;
+  }
+
+  private _runNextSlot(slotId: string | undefined): void {
+    if (!slotId) return;
+    void this._call(() => runSlotNow(this.hass, this.entryId, slotId));
+  }
+
+  private _slotZoneIds(slot: Record<string, unknown>): string[] {
+    return Array.isArray(slot.zone_ids_ordered) ? (slot.zone_ids_ordered as string[]) : [];
+  }
+
+  private _turnPlanOn(): void {
+    void this._call(() => saveGlobal(this.hass, this.entryId, { enabled: true }));
   }
 
   private _pause48h(): void {
@@ -622,6 +642,7 @@ export class ViewOverview extends LitElement {
     const waiting = this._waitingLine(rs);
     const mode = this._mode();
     const next = runs[0];
+    const runNextTarget = runBusy ? undefined : this._runNextTarget(runs);
     const badgeClass = runBusy ? "running" : runState === "error" ? "error" : "";
     const stateWord = runBusy
       ? runState === "preparing"
@@ -633,7 +654,9 @@ export class ViewOverview extends LitElement {
             : t(this.hass, "config_panel.general_state_running")
       : runState === "error"
         ? t(this.hass, "config_panel.general_state_error_idle")
-        : t(this.hass, "config_panel.general_state_idle");
+        : !this._planEnabled()
+          ? t(this.hass, "config_panel.entry_badge_plan_off")
+          : t(this.hass, "config_panel.general_state_idle");
     // Only while watering or resting. Before the first zone there is no phase
     // to skip -- only the pump building pressure, and the backend ignores it.
     const showSkip = runState === "running" && (upcoming.length > 0 || soaking);
@@ -800,8 +823,8 @@ export class ViewOverview extends LitElement {
                 `
               : html`
                   <button type="button" class="btn"
-                    ?disabled=${this._busy || !this._planEnabled() || !next}
-                    @click=${() => this._runNextSlot(runs)}>
+                    ?disabled=${this._busy || !runNextTarget}
+                    @click=${() => this._runNextSlot(runNextTarget)}>
                     ${t(this.hass, "config_panel.overview_run_next_now")}
                   </button>
                   <button type="button" class="btn-outline"
@@ -827,6 +850,29 @@ export class ViewOverview extends LitElement {
     `;
   }
 
+  /** Why nothing is coming up, with the one step that changes it. */
+  private _renderNoRuns(): TemplateResult {
+    if (!this._planEnabled()) {
+      return html`<div class="empty-state">
+        <ha-icon icon="mdi:calendar-remove-outline"></ha-icon>
+        <p>${t(this.hass, "config_panel.general_plan_off_hint")}</p>
+        <button type="button" class="btn-outline" ?disabled=${this._busy}
+          @click=${() => this._turnPlanOn()}>
+          ${t(this.hass, "config_panel.overview_turn_plan_on")}
+        </button>
+      </div>`;
+    }
+    const slots = (this._inst.schedule_slots as Array<Record<string, unknown>> | undefined) ?? [];
+    const allOff = slots.length > 0 && slots.every((slot) => !(slot.enabled ?? true));
+    return html`<div class="empty-state">
+      <ha-icon icon="mdi:calendar-blank-outline"></ha-icon>
+      <p>${t(this.hass, allOff ? "config_panel.overview_all_slots_off" : "config_panel.general_no_slots")}</p>
+      <button type="button" class="btn-outline" @click=${() => this._goSchedule()}>
+        ${t(this.hass, "config_panel.tab_schedule")}
+      </button>
+    </div>`;
+  }
+
   private _renderNextRuns(runs: UpcomingRun[]): TemplateResult {
     const seasonOpens = this._seasonOpens();
     return html`
@@ -841,9 +887,6 @@ export class ViewOverview extends LitElement {
           </span>
         </div>
         <div class="card-content">
-          ${!this._planEnabled()
-            ? html`<p class="hint">${t(this.hass, "config_panel.general_plan_off_hint")}</p>`
-            : nothing}
           ${seasonOpens && this._planEnabled()
             ? html`<p class="hint">
                 ${t(this.hass, "config_panel.overview_season_opens", {
@@ -885,13 +928,7 @@ export class ViewOverview extends LitElement {
                   </div>
                 `;
               })
-            : html`<div class="empty-state">
-                <ha-icon icon="mdi:calendar-blank-outline"></ha-icon>
-                <p>${t(this.hass, "config_panel.general_no_slots")}</p>
-                <button type="button" class="btn-outline" @click=${() => this._goSchedule()}>
-                  ${t(this.hass, "config_panel.tab_schedule")}
-                </button>
-              </div>`}
+            : this._renderNoRuns()}
         </div>
       </ha-card>
     `;
